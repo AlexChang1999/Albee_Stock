@@ -62,6 +62,28 @@ const STRATEGIES = [
   { value: "momentum", label: "動量" },
 ];
 
+// 把後端回傳的 Bot 績效 stats 轉成卡片要顯示的 [標籤, 值, 顏色] 陣列。
+// 還沒有任何交易（num_trades = 0 或 stats 不存在）時，一律顯示 "-"，不放假數字。
+function statRows(stats) {
+  if (!stats || stats.num_trades === 0) {
+    return [
+      ["勝率", "-"],
+      ["報酬率", "-"],
+      ["交易次數", stats ? stats.num_trades : "-"],
+      ["最大回撤", "-"],
+    ];
+  }
+  const ret = stats.return_pct;
+  const retColor =
+    ret > 0 ? "success.main" : ret < 0 ? "error.main" : "text.primary";
+  return [
+    ["勝率", `${stats.win_rate_pct}%`],
+    ["報酬率", `${ret}%`, retColor],
+    ["交易次數", stats.num_trades],
+    ["最大回撤", `${stats.max_drawdown_pct}%`],
+  ];
+}
+
 // 小元件：顯示一個帳戶數字（標籤 + 數值）
 function Stat({ label, value }) {
   return (
@@ -422,7 +444,7 @@ function App() {
                       {b.strategy} · {b.symbol} · ${b.trade_amount}
                     </Typography>
 
-                    {/* 績效指標（尚未串接，先留空，不放假數字） */}
+                    {/* 績效指標（依該 Bot 的真實交易紀錄計算；沒交易時顯示 "-"） */}
                     <Box
                       sx={{
                         display: "grid",
@@ -432,12 +454,7 @@ function App() {
                         mt: 0.5,
                       }}
                     >
-                      {[
-                        ["勝率", "-"],
-                        ["報酬率", "-"],
-                        ["交易次數", "-"],
-                        ["最大回撤", "-"],
-                      ].map(([label, val]) => (
+                      {statRows(b.stats).map(([label, val, color]) => (
                         <Box key={label} sx={{ textAlign: "center" }}>
                           <Typography
                             variant="caption"
@@ -446,7 +463,11 @@ function App() {
                           >
                             {label}
                           </Typography>
-                          <Typography variant="body2" fontWeight={600}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            color={color || "text.primary"}
+                          >
                             {val}
                           </Typography>
                         </Box>

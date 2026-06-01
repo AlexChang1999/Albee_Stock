@@ -41,4 +41,4 @@ jobs:
       #    只跑不需要連線 Alpaca 的測試（CI 環境沒有 API 金鑰）。
       #    test_api.py 需要連線，故不在這裡執行。
       - name: 執行單元測試
-        run: pytest tests/test_strategies.py tests/test_backtest.py -v
+        run: pytest tests/test_strategies.py tests/test_backtest.py tests/test_performance.py -v

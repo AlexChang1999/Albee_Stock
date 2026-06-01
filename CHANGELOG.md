@@ -30,6 +30,13 @@
 
 ### Phase 3（進行中）
 
+- Bot 績效指標串接：新增 `services/performance.py`（純函式，依真實交易紀錄
+  以平均成本法配對買賣，算出勝率/報酬率/交易次數/最大回撤）
+  - `GET /bots` 回傳值加入每個 Bot 的 `stats`，另新增 `GET /bots/{id}/stats`
+  - 前端 Bot 卡片改為顯示真實績效數字（報酬率正負以綠/紅標色；無交易顯示 "-"）
+  - 績效計算單元測試（5 個），CI 一併執行
+- 新增換電腦/啟動用批次檔：`setup.bat`（一鍵建環境）、
+  `start_backend.bat`、`start_frontend.bat`
 - 每個 Bot 顯示獨一無二的方塊像素頭像（`BotAvatar.jsx`，前端 SVG 生成，
   暖色系、左右對稱、圓角，呼應 Claude 的可愛風格）
 - Bot 編輯 / 刪除功能（後端 `PUT /bots/{id}`、`DELETE /bots/{id}`；前端編輯彈窗 + 刪除確認）
