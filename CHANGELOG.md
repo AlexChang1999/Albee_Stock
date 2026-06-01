@@ -51,6 +51,13 @@
 - Bot 列表改為 4 欄卡片網格，每張卡顯示頭像與績效欄位（勝率/報酬率/交易次數/最大回撤，目前留空待串接）
 - 網頁改為滿版（移除左右過寬留白）
 
+### 修正
+
+- `alpaca_client.py` 改為延遲初始化：不再於 import 時就建立需要金鑰的 Alpaca
+  client。修正沒有 `.env`/金鑰的環境（如 CI）光是 import 服務層就因
+  `ValueError: You must supply a method of authentication` 崩潰、導致
+  `test_backtest.py` 收集失敗的問題。
+
 ---
 
 ## [0.1.0] - 2026-06-01

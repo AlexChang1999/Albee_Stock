@@ -29,17 +29,33 @@ class AlpacaClient:
     """封裝 Alpaca 的交易與資料功能。"""
 
     def __init__(self) -> None:
-        # 交易用客戶端（查帳戶、下單）。paper=True 代表模擬交易。
-        self.trading = TradingClient(
-            settings.ALPACA_API_KEY,
-            settings.ALPACA_SECRET_KEY,
-            paper=settings.IS_PAPER,
-        )
-        # 資料用客戶端（查報價、抓 K 線）
-        self.data = StockHistoricalDataClient(
-            settings.ALPACA_API_KEY,
-            settings.ALPACA_SECRET_KEY,
-        )
+        # 延遲初始化：這裡「不」立刻建立 Alpaca 的 client。
+        # 原因：Alpaca SDK 在建立 client 時就會檢查金鑰，金鑰為空會直接丟
+        # ValueError。若在這裡建立，沒有 .env 的環境（例如 CI 跑測試）光是
+        # import 這個模組就會崩潰。改成第一次真正用到時才建立（見下方 property）。
+        self._trading: TradingClient | None = None
+        self._data: StockHistoricalDataClient | None = None
+
+    @property
+    def trading(self) -> TradingClient:
+        """交易用客戶端（查帳戶、下單）。第一次用到才建立。paper=True 為模擬交易。"""
+        if self._trading is None:
+            self._trading = TradingClient(
+                settings.ALPACA_API_KEY,
+                settings.ALPACA_SECRET_KEY,
+                paper=settings.IS_PAPER,
+            )
+        return self._trading
+
+    @property
+    def data(self) -> StockHistoricalDataClient:
+        """資料用客戶端（查報價、抓 K 線）。第一次用到才建立。"""
+        if self._data is None:
+            self._data = StockHistoricalDataClient(
+                settings.ALPACA_API_KEY,
+                settings.ALPACA_SECRET_KEY,
+            )
+        return self._data
 
     # ---------- 帳戶 ----------
     def get_account(self):
@@ -109,6 +125,7 @@ class AlpacaClient:
         return df
 
 
-# 建立一個全域共用的實例，其他檔案 import 後直接用
-# 注意：金鑰無效時，實際呼叫 API 才會報錯，建立物件本身不會。
+# 建立一個全域共用的實例，其他檔案 import 後直接用。
+# 因為改成延遲初始化，這行不會碰到金鑰，沒有 .env 也能安全 import；
+# 真正的金鑰檢查/錯誤會發生在第一次呼叫 API（用到 trading/data）時。
 alpaca_client = AlpacaClient()
