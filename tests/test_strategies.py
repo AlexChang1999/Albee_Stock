@@ -29,6 +29,9 @@ from backend.strategies.ma_crossover import MACrossoverStrategy
 from backend.strategies.rsi import RSIStrategy
 from backend.strategies.macd import MACDStrategy
 from backend.strategies.bollinger import BollingerStrategy
+from backend.strategies.donchian import DonchianStrategy
+from backend.strategies.stochastic import StochasticStrategy
+from backend.strategies.momentum import MomentumStrategy
 from backend.strategies.base import Signal
 
 # 用小參數 short=2, long=3，方便精確構造交叉情境
@@ -136,6 +139,60 @@ def test_bollinger_above_upper_should_sell():
     print(f"✅ 布林上軌測試通過：{reason}")
 
 
+# ============================================================
+# 唐奇安通道突破策略測試
+# ============================================================
+def test_donchian_breakout_should_buy():
+    """突破前 20 日高點 → 應該 buy。"""
+    df = pd.DataFrame({"close": [10] * 20 + [15]})
+    strategy = DonchianStrategy({"period": 20})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.BUY, f"預期 buy，實際 {signal}（{reason}）"
+    print(f"✅ 唐奇安突破測試通過：{reason}")
+
+
+def test_donchian_breakdown_should_sell():
+    """跌破前 20 日低點 → 應該 sell。"""
+    df = pd.DataFrame({"close": [10] * 20 + [5]})
+    strategy = DonchianStrategy({"period": 20})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.SELL, f"預期 sell，實際 {signal}（{reason}）"
+    print(f"✅ 唐奇安跌破測試通過：{reason}")
+
+
+# ============================================================
+# KD 隨機指標策略測試
+# ============================================================
+def test_stochastic_golden_cross_should_buy():
+    """%K 向上穿越 %D → 應該 buy。"""
+    df = pd.DataFrame({"close": [10, 10, 10, 9, 12]})
+    strategy = StochasticStrategy({"k_period": 3, "d_period": 2})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.BUY, f"預期 buy，實際 {signal}（{reason}）"
+    print(f"✅ KD 黃金交叉測試通過：{reason}")
+
+
+# ============================================================
+# 動量策略測試
+# ============================================================
+def test_momentum_up_should_buy():
+    """10 日漲超過門檻 → 應該 buy。"""
+    df = pd.DataFrame({"close": [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 130]})
+    strategy = MomentumStrategy({"period": 10, "threshold": 5})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.BUY, f"預期 buy，實際 {signal}（{reason}）"
+    print(f"✅ 動量追漲測試通過：{reason}")
+
+
+def test_momentum_down_should_sell():
+    """10 日跌超過門檻 → 應該 sell。"""
+    df = pd.DataFrame({"close": [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 70]})
+    strategy = MomentumStrategy({"period": 10, "threshold": 5})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.SELL, f"預期 sell，實際 {signal}（{reason}）"
+    print(f"✅ 動量殺跌測試通過：{reason}")
+
+
 if __name__ == "__main__":
     # 直接用 python 執行時，把所有測試都跑一遍
     # 均線交叉
@@ -152,4 +209,12 @@ if __name__ == "__main__":
     # 布林通道
     test_bollinger_below_lower_should_buy()
     test_bollinger_above_upper_should_sell()
+    # 唐奇安
+    test_donchian_breakout_should_buy()
+    test_donchian_breakdown_should_sell()
+    # KD
+    test_stochastic_golden_cross_should_buy()
+    # 動量
+    test_momentum_up_should_buy()
+    test_momentum_down_should_sell()
     print("\n🎉 全部策略測試通過！")

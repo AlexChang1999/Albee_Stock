@@ -34,6 +34,8 @@ import {
   IconButton,
   Tooltip,
   Stack,
+  Tabs,
+  Tab,
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -55,6 +57,9 @@ const STRATEGIES = [
   { value: "rsi", label: "RSI" },
   { value: "macd", label: "MACD" },
   { value: "bollinger", label: "布林通道" },
+  { value: "donchian", label: "唐奇安通道突破" },
+  { value: "stochastic", label: "KD 隨機指標" },
+  { value: "momentum", label: "動量" },
 ];
 
 // 小元件：顯示一個帳戶數字（標籤 + 數值）
@@ -79,6 +84,9 @@ function App() {
   // 圖表目前顯示的股票（chartSymbol）與輸入框的暫存值（symbolInput）
   const [chartSymbol, setChartSymbol] = useState("AAPL");
   const [symbolInput, setSymbolInput] = useState("AAPL");
+
+  // 目前分頁：0 = 儀表板，1 = K 線圖
+  const [tab, setTab] = useState(0);
 
   // 回測相關狀態
   const [btForm, setBtForm] = useState({
@@ -238,7 +246,7 @@ function App() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="md" sx={{ py: 4 }}>
+      <Container maxWidth={tab === 1 ? "lg" : "md"} sx={{ py: 4 }}>
         {/* 訊息提示 */}
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -250,6 +258,16 @@ function App() {
             {message}
           </Alert>
         )}
+
+        {/* 分頁切換 */}
+        <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 3 }}>
+          <Tab label="儀表板" />
+          <Tab label="K 線圖" />
+        </Tabs>
+
+        {/* ===== 儀表板分頁 ===== */}
+        {tab === 0 && (
+          <Box>
 
         {/* 1. 帳戶資訊 */}
         <Card sx={{ mb: 3 }}>
@@ -284,31 +302,6 @@ function App() {
                 載入中…（若一直沒出現，請確認後端已啟動）
               </Typography>
             )}
-          </CardContent>
-        </Card>
-
-        {/* 即時線圖（TradingView） */}
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              即時線圖（TradingView）
-            </Typography>
-            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
-              <TextField
-                size="small"
-                label="股票代號"
-                value={symbolInput}
-                onChange={(e) => setSymbolInput(e.target.value)}
-                placeholder="例如：AAPL、TSLA、NVDA"
-              />
-              <Button
-                variant="contained"
-                onClick={() => setChartSymbol(symbolInput.toUpperCase())}
-              >
-                載入圖表
-              </Button>
-            </Box>
-            <TradingViewChart symbol={chartSymbol} height={520} />
           </CardContent>
         </Card>
 
@@ -677,6 +670,46 @@ function App() {
             )}
           </CardContent>
         </Card>
+          </Box>
+        )}
+
+        {/* ===== K 線圖分頁 ===== */}
+        {tab === 1 && (
+          <Box>
+            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+              <TextField
+                size="small"
+                label="股票代號"
+                value={symbolInput}
+                onChange={(e) => setSymbolInput(e.target.value)}
+                placeholder="例如：AAPL、TSLA、NVDA"
+              />
+              <Button
+                variant="contained"
+                onClick={() => setChartSymbol(symbolInput.toUpperCase())}
+              >
+                載入圖表
+              </Button>
+            </Box>
+            {/* 可拖拉調整大小的圖表容器（拉右下角） */}
+            <Box
+              sx={{
+                resize: "vertical",
+                overflow: "hidden",
+                height: "75vh",
+                minHeight: 320,
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+              }}
+            >
+              <TradingViewChart symbol={chartSymbol} height="100%" />
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              提示：拖曳圖表框的右下角可調整高度。
+            </Typography>
+          </Box>
+        )}
       </Container>
 
       {/* 編輯 Bot 的彈出視窗 */}

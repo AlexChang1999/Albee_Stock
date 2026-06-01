@@ -13,6 +13,9 @@ from backend.strategies.ma_crossover import MACrossoverStrategy
 from backend.strategies.rsi import RSIStrategy
 from backend.strategies.macd import MACDStrategy
 from backend.strategies.bollinger import BollingerStrategy
+from backend.strategies.donchian import DonchianStrategy
+from backend.strategies.stochastic import StochasticStrategy
+from backend.strategies.momentum import MomentumStrategy
 
 # 策略註冊表：代號 -> 類別
 # 之後新增策略，就在這裡多加一行對應即可。
@@ -21,6 +24,9 @@ STRATEGY_REGISTRY = {
     "rsi": RSIStrategy,
     "macd": MACDStrategy,
     "bollinger": BollingerStrategy,
+    "donchian": DonchianStrategy,
+    "stochastic": StochasticStrategy,
+    "momentum": MomentumStrategy,
 }
 
 

@@ -1,82 +1,112 @@
 // ============================================================
-// BotAvatar — Bot 的方塊像素頭像
+// BotAvatar — Cyberpunk 機器人頭像
 // ============================================================
-// 根據傳入的 seed（通常是 Bot 的 id + 名字）產生一個獨一無二、
-// 方塊像素風、左右對稱的可愛頭像。同一個 seed 永遠長一樣。
+// 深色底 + 霓虹色機器人臉。主色與眼睛色由 seed（Bot id+名字）決定，
+// 所以每個 Bot 顏色不同，但都長得像機器人。
 //
-// 用法：<BotAvatar seed="1-我的Bot" size={40} />
+// 用法：<BotAvatar seed="1-我的Bot" size={40} active={true} />
 
-// 把字串轉成一個穩定的數字（簡單的字串雜湊）
+// 把字串轉成穩定的數字（簡單字串雜湊）
 function hashString(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
-    // h * 31 + 字元碼，是常見的字串雜湊算法
     h = (h << 5) - h + str.charCodeAt(i);
-    h |= 0; // 保持在 32 位元整數範圍
+    h |= 0;
   }
   return Math.abs(h);
 }
 
-// 可愛的暖色系配色盤（呼應 Claude 的橘，加上幾個柔和色）
-const PALETTE = [
-  "#D97757", // Claude 橘
-  "#E8A87C", // 杏桃
-  "#F2C14E", // 暖黃
-  "#7FB069", // 抹茶綠
-  "#6FB3C9", // 天空藍
-  "#9B8BC4", // 薰衣草紫
-  "#E07A9E", // 玫瑰粉
+// Cyberpunk 霓虹色盤
+const NEON = [
+  "#00f0ff", // 青
+  "#ff00a0", // 洋紅
+  "#a3ff00", // 螢光綠
+  "#ff6b00", // 霓虹橘
+  "#bd00ff", // 紫
+  "#00ff9f", // 薄荷綠
 ];
 
 export default function BotAvatar({ seed = "bot", size = 40, active = false }) {
   const hash = hashString(seed);
-
-  // 用雜湊值挑一個顏色
-  const color = PALETTE[hash % PALETTE.length];
-
-  const grid = 5; // 5x5 像素網格
-  const cellSize = size / grid;
-  const cells = [];
-
-  // 只決定「左半邊 + 中間欄」，再鏡射到右半邊 → 左右對稱
-  for (let y = 0; y < grid; y++) {
-    for (let x = 0; x < Math.ceil(grid / 2); x++) {
-      // 取雜湊值的某一個 bit 決定這格要不要填色
-      const bitIndex = y * 3 + x;
-      const filled = (hash >> bitIndex) & 1;
-      if (filled) {
-        cells.push([x, y]);
-        const mirrorX = grid - 1 - x; // 對稱位置
-        if (mirrorX !== x) cells.push([mirrorX, y]);
-      }
-    }
-  }
+  const color = NEON[hash % NEON.length]; // 機器人主色
+  const eyeColor = NEON[(hash >> 3) % NEON.length]; // 眼睛色（可能不同）
+  const glowId = `glow-${hash}`; // 發光濾鏡的唯一 id
 
   return (
     <svg
       width={size}
       height={size}
-      viewBox={`0 0 ${size} ${size}`}
+      viewBox="0 0 100 100"
       style={{
-        borderRadius: size * 0.25,
-        background: "#f5ebe6",
-        // 啟用中的 Bot 頭像會發光（用該 Bot 自己的顏色）
-        boxShadow: active ? `0 0 0 2px #fff, 0 0 10px 3px ${color}` : "none",
+        borderRadius: size * 0.22,
+        background: "#0a0e1a", // 深色底（填滿）
+        boxShadow: active
+          ? `0 0 0 2px #fff, 0 0 12px 3px ${color}`
+          : `inset 0 0 0 1px ${color}33`,
         transition: "box-shadow 0.3s",
       }}
     >
-      {cells.map(([x, y], i) => (
-        <rect
-          key={i}
-          x={x * cellSize}
-          y={y * cellSize}
-          width={cellSize}
-          height={cellSize}
-          rx={cellSize * 0.3} // 圓角，讓方塊更可愛
-          ry={cellSize * 0.3}
-          fill={color}
-        />
-      ))}
+      <defs>
+        {/* 霓虹發光效果 */}
+        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.5" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* 天線 */}
+      <line
+        x1="50"
+        y1="6"
+        x2="50"
+        y2="22"
+        stroke={color}
+        strokeWidth="3"
+        filter={`url(#${glowId})`}
+      />
+      <circle cx="50" cy="6" r="4" fill={color} filter={`url(#${glowId})`} />
+
+      {/* 機器人頭（填色 + 霓虹描邊） */}
+      <rect
+        x="22"
+        y="22"
+        width="56"
+        height="56"
+        rx="12"
+        fill={color}
+        fillOpacity="0.18"
+        stroke={color}
+        strokeWidth="3"
+      />
+
+      {/* 兩顆發光眼睛 */}
+      <rect
+        x="33"
+        y="42"
+        width="12"
+        height="12"
+        rx="3"
+        fill={eyeColor}
+        filter={`url(#${glowId})`}
+      />
+      <rect
+        x="55"
+        y="42"
+        width="12"
+        height="12"
+        rx="3"
+        fill={eyeColor}
+        filter={`url(#${glowId})`}
+      />
+
+      {/* 嘴巴（柵欄狀） */}
+      <rect x="36" y="64" width="28" height="8" rx="2" fill={color} fillOpacity="0.6" />
+      <line x1="44" y1="64" x2="44" y2="72" stroke="#0a0e1a" strokeWidth="2" />
+      <line x1="52" y1="64" x2="52" y2="72" stroke="#0a0e1a" strokeWidth="2" />
+      <line x1="60" y1="64" x2="60" y2="72" stroke="#0a0e1a" strokeWidth="2" />
     </svg>
   );
 }
