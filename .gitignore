@@ -37,3 +37,7 @@ htmlcov/
 # 日誌
 *.log
 logs/
+
+# Claude 技能安裝物（另存於 ClaudeSkill repo，不混進本交易專案）
+.agents/
+skills-lock.json

@@ -26,6 +26,7 @@ from backend.models import Bot, TradeLog
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager, run_bot_once
 from backend.services.backtest_engine import run_backtest
+from backend.services.performance import compute_bot_stats
 
 
 # lifespan：定義 app「啟動時」與「關閉時」要做的事。
@@ -141,9 +142,21 @@ def delete_bot(bot_id: int, db: Session = Depends(get_db)):
     return {"message": f"已刪除 Bot：{bot.name}"}
 
 
+def _bot_stats(db: Session, bot_id: int) -> dict:
+    """查出某個 Bot 的交易紀錄（由舊到新），算出績效指標。"""
+    rows = (
+        db.query(TradeLog)
+        .filter(TradeLog.bot_id == bot_id)
+        .order_by(TradeLog.created_at.asc())
+        .all()
+    )
+    trades = [{"side": r.side, "qty": r.qty, "price": r.price} for r in rows]
+    return compute_bot_stats(trades)
+
+
 @app.get("/bots")
 def list_bots(db: Session = Depends(get_db)):
-    """列出所有 Bot。"""
+    """列出所有 Bot（含各自的績效指標）。"""
     bots = db.query(Bot).all()
     return [
         {
@@ -154,9 +167,20 @@ def list_bots(db: Session = Depends(get_db)):
             "params": b.params,
             "trade_amount": b.trade_amount,
             "is_active": b.is_active,
+            # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
+            "stats": _bot_stats(db, b.id),
         }
         for b in bots
     ]
+
+
+@app.get("/bots/{bot_id}/stats")
+def get_bot_stats(bot_id: int, db: Session = Depends(get_db)):
+    """單獨取得某個 Bot 的績效指標。"""
+    bot = db.query(Bot).filter(Bot.id == bot_id).first()
+    if not bot:
+        raise HTTPException(status_code=404, detail="找不到這個 Bot")
+    return _bot_stats(db, bot_id)
 
 
 @app.post("/bots/{bot_id}/run")
