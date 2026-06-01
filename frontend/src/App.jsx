@@ -246,7 +246,7 @@ function App() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth={tab === 1 ? "lg" : "md"} sx={{ py: 4 }}>
+      <Container maxWidth={false} sx={{ py: 4, px: { xs: 2, md: 4 } }}>
         {/* 訊息提示 */}
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -377,96 +377,123 @@ function App() {
                 還沒有任何 Bot，先用上面的表單建立一個吧！
               </Typography>
             ) : (
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>ID</TableCell>
-                      <TableCell>名稱</TableCell>
-                      <TableCell>策略</TableCell>
-                      <TableCell>股票</TableCell>
-                      <TableCell>金額</TableCell>
-                      <TableCell>狀態</TableCell>
-                      <TableCell>操作</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {bots.map((b) => (
-                      <TableRow key={b.id}>
-                        <TableCell>{b.id}</TableCell>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 1,
-                            }}
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "repeat(2, 1fr)",
+                    md: "repeat(4, 1fr)",
+                  },
+                  gap: 2,
+                }}
+              >
+                {bots.map((b) => (
+                  <Paper
+                    key={b.id}
+                    variant="outlined"
+                    sx={{
+                      p: 2,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <BotAvatar
+                      seed={`${b.id}-${b.name}`}
+                      size={56}
+                      active={b.is_active}
+                    />
+                    <Typography
+                      variant="subtitle2"
+                      noWrap
+                      title={b.name}
+                      sx={{ maxWidth: "100%" }}
+                    >
+                      {b.name}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      color={b.is_active ? "success" : "default"}
+                      label={b.is_active ? "啟用" : "停用"}
+                    />
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      {b.strategy} · {b.symbol} · ${b.trade_amount}
+                    </Typography>
+
+                    {/* 績效指標（尚未串接，先留空，不放假數字） */}
+                    <Box
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 0.5,
+                        width: "100%",
+                        mt: 0.5,
+                      }}
+                    >
+                      {[
+                        ["勝率", "-"],
+                        ["報酬率", "-"],
+                        ["交易次數", "-"],
+                        ["最大回撤", "-"],
+                      ].map(([label, val]) => (
+                        <Box key={label} sx={{ textAlign: "center" }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            display="block"
                           >
-                            <BotAvatar
-                              seed={`${b.id}-${b.name}`}
-                              size={36}
-                              active={b.is_active}
-                            />
-                            {b.name}
-                          </Box>
-                        </TableCell>
-                        <TableCell>{b.strategy}</TableCell>
-                        <TableCell>{b.symbol}</TableCell>
-                        <TableCell>${b.trade_amount}</TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            color={b.is_active ? "success" : "default"}
-                            label={b.is_active ? "啟用" : "停用"}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={0.5}>
-                            <Tooltip title={b.is_active ? "停止" : "啟動"}>
-                              <IconButton
-                                size="small"
-                                color={b.is_active ? "warning" : "success"}
-                                onClick={() => handleToggleActive(b)}
-                              >
-                                {b.is_active ? (
-                                  <StopIcon fontSize="small" />
-                                ) : (
-                                  <PlayArrowIcon fontSize="small" />
-                                )}
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="執行一次">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleRun(b.id)}
-                              >
-                                <RefreshIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="編輯">
-                              <IconButton
-                                size="small"
-                                onClick={() => setEditBot({ ...b })}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="刪除">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleDelete(b)}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                            {label}
+                          </Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            {val}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+
+                    {/* 操作 */}
+                    <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                      <Tooltip title={b.is_active ? "停止" : "啟動"}>
+                        <IconButton
+                          size="small"
+                          color={b.is_active ? "warning" : "success"}
+                          onClick={() => handleToggleActive(b)}
+                        >
+                          {b.is_active ? (
+                            <StopIcon fontSize="small" />
+                          ) : (
+                            <PlayArrowIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="執行一次">
+                        <IconButton size="small" onClick={() => handleRun(b.id)}>
+                          <RefreshIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="編輯">
+                        <IconButton
+                          size="small"
+                          onClick={() => setEditBot({ ...b })}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="刪除">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDelete(b)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Paper>
+                ))}
+              </Box>
             )}
           </CardContent>
         </Card>
