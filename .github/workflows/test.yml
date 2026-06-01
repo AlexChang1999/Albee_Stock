@@ -1,0 +1,44 @@
+# ============================================================
+# GitHub Actions — 自動化測試
+# ============================================================
+# 作用：每次 push 或開 Pull Request 時，GitHub 會自動在雲端
+#       幫我們跑策略單元測試，確保程式碼沒被改壞。
+#
+# 結果會顯示在 GitHub 專案的 "Actions" 分頁，
+# 以及 PR 頁面上的綠勾(通過)／紅叉(失敗)。
+
+name: 測試 (Tests)
+
+# 什麼時候觸發這個流程
+on:
+  push:
+    branches: [main, master] # 推到 main/master 分支時
+  pull_request: # 任何 Pull Request
+
+jobs:
+  test:
+    runs-on: ubuntu-latest # 在雲端的 Ubuntu 機器上跑
+
+    steps:
+      # 1) 把專案程式碼抓下來
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      # 2) 安裝 Python 3.13
+      - name: 設定 Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip # 快取套件，加快下次速度
+
+      # 3) 安裝依賴套件
+      - name: 安裝依賴
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4) 執行策略單元測試
+      #    只跑不需要連線 Alpaca 的測試（CI 環境沒有 API 金鑰）。
+      #    test_api.py 需要連線，故不在這裡執行。
+      - name: 執行單元測試
+        run: pytest tests/test_strategies.py tests/test_backtest.py -v

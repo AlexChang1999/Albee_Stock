@@ -1,0 +1,39 @@
+# 環境變數（含 API Key，絕對不可提交）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Node / React
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# SQLite 資料庫檔案
+*.db
+*.sqlite3
+
+# 測試 / 覆蓋率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 日誌
+*.log
+logs/

@@ -1,0 +1,569 @@
+// ============================================================
+// Albee Stock 主畫面（使用 MUI 元件）
+// ============================================================
+// 四個區塊：1.帳戶資訊 2.建立 Bot 3.Bot 列表 4.交易紀錄
+// 邏輯跟之前一樣，只是改用 Material UI 的現成元件讓畫面更漂亮。
+
+import { useState, useEffect } from "react";
+import { api } from "./api";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Container,
+  Card,
+  CardContent,
+  Box,
+  TextField,
+  MenuItem,
+  Button,
+  Alert,
+  Chip,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  TableContainer,
+  Paper,
+  CssBaseline,
+} from "@mui/material";
+import { createTheme, ThemeProvider } from "@mui/material/styles";
+import TradingViewChart from "./TradingViewChart";
+
+// 建立一個主題（主色用藍色）
+const theme = createTheme({
+  palette: { primary: { main: "#2563eb" } },
+});
+
+// 可選的策略清單（對應後端的策略註冊表）
+const STRATEGIES = [
+  { value: "ma_crossover", label: "均線交叉" },
+  { value: "rsi", label: "RSI" },
+  { value: "macd", label: "MACD" },
+  { value: "bollinger", label: "布林通道" },
+];
+
+// 小元件：顯示一個帳戶數字（標籤 + 數值）
+function Stat({ label, value }) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography variant="h6">{value}</Typography>
+    </Box>
+  );
+}
+
+function App() {
+  const [account, setAccount] = useState(null);
+  const [bots, setBots] = useState([]);
+  const [trades, setTrades] = useState([]);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  // 圖表目前顯示的股票（chartSymbol）與輸入框的暫存值（symbolInput）
+  const [chartSymbol, setChartSymbol] = useState("AAPL");
+  const [symbolInput, setSymbolInput] = useState("AAPL");
+
+  // 回測相關狀態
+  const [btForm, setBtForm] = useState({
+    strategy: "ma_crossover",
+    symbol: "AAPL",
+    days: 365,
+    initial_cash: 10000,
+  });
+  const [btResult, setBtResult] = useState(null); // 回測結果
+  const [btLoading, setBtLoading] = useState(false); // 是否回測中
+
+  const [form, setForm] = useState({
+    name: "",
+    strategy: "ma_crossover",
+    symbol: "",
+    trade_amount: 1000,
+  });
+
+  // 從後端載入所有資料
+  async function loadAll() {
+    try {
+      setAccount(await api.getAccount());
+    } catch (e) {
+      setError("無法取得帳戶資料（後端有啟動嗎？API 金鑰正確嗎？）：" + e.message);
+    }
+    try {
+      setBots(await api.getBots());
+      setTrades(await api.getTrades());
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  // 送出建立 Bot
+  async function handleCreate(e) {
+    e.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      await api.createBot({
+        name: form.name,
+        strategy: form.strategy,
+        symbol: form.symbol.toUpperCase(),
+        params: {},
+        trade_amount: Number(form.trade_amount),
+      });
+      setMessage(`已建立 Bot：${form.name}`);
+      setForm({ ...form, name: "", symbol: "" });
+      loadAll();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 手動執行某個 Bot
+  async function handleRun(id) {
+    setError("");
+    setMessage("");
+    try {
+      const r = await api.runBot(id);
+      setMessage(`${r.message}（買賣訊號請看後端終端機的 log）`);
+      loadAll();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 執行回測
+  async function handleBacktest() {
+    setError("");
+    setBtResult(null);
+    setBtLoading(true); // 開始載入（按鈕會變「回測中…」）
+    try {
+      const r = await api.runBacktest({
+        strategy: btForm.strategy,
+        symbol: btForm.symbol.toUpperCase(),
+        params: {},
+        days: Number(btForm.days),
+        initial_cash: Number(btForm.initial_cash),
+      });
+      setBtResult(r);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBtLoading(false); // 不論成功失敗都結束載入
+    }
+  }
+
+  return (
+    <ThemeProvider theme={theme}>
+      {/* CssBaseline：統一各瀏覽器的預設樣式 */}
+      <CssBaseline />
+
+      {/* 頂部標題列 */}
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6">🤖 Albee Stock 交易機器人</Typography>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="md" sx={{ py: 4 }}>
+        {/* 訊息提示 */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        {message && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            {message}
+          </Alert>
+        )}
+
+        {/* 1. 帳戶資訊 */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              帳戶資訊
+            </Typography>
+            {account ? (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" },
+                  gap: 2,
+                }}
+              >
+                <Stat label="狀態" value={account.status} />
+                <Stat
+                  label="現金"
+                  value={`$${Number(account.cash).toLocaleString()}`}
+                />
+                <Stat
+                  label="購買力"
+                  value={`$${Number(account.buying_power).toLocaleString()}`}
+                />
+                <Stat
+                  label="總值"
+                  value={`$${Number(account.portfolio_value).toLocaleString()}`}
+                />
+              </Box>
+            ) : (
+              <Typography color="text.secondary">
+                載入中…（若一直沒出現，請確認後端已啟動）
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 即時線圖（TradingView） */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              即時線圖（TradingView）
+            </Typography>
+            <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+              <TextField
+                size="small"
+                label="股票代號"
+                value={symbolInput}
+                onChange={(e) => setSymbolInput(e.target.value)}
+                placeholder="例如：AAPL、TSLA、NVDA"
+              />
+              <Button
+                variant="contained"
+                onClick={() => setChartSymbol(symbolInput.toUpperCase())}
+              >
+                載入圖表
+              </Button>
+            </Box>
+            <TradingViewChart symbol={chartSymbol} height={520} />
+          </CardContent>
+        </Card>
+
+        {/* 2. 建立 Bot */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              建立新的 Bot
+            </Typography>
+            <Box
+              component="form"
+              onSubmit={handleCreate}
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                gap: 2,
+                mt: 1,
+              }}
+            >
+              <TextField
+                label="名稱"
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="例如：我的蘋果均線 Bot"
+              />
+              <TextField
+                select
+                label="策略"
+                value={form.strategy}
+                onChange={(e) => setForm({ ...form, strategy: e.target.value })}
+              >
+                {STRATEGIES.map((s) => (
+                  <MenuItem key={s.value} value={s.value}>
+                    {s.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="股票代號"
+                required
+                value={form.symbol}
+                onChange={(e) => setForm({ ...form, symbol: e.target.value })}
+                placeholder="例如：AAPL"
+              />
+              <TextField
+                label="每次下單金額 (USD)"
+                type="number"
+                value={form.trade_amount}
+                onChange={(e) =>
+                  setForm({ ...form, trade_amount: e.target.value })
+                }
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                sx={{ gridColumn: { sm: "1 / -1" }, justifySelf: "start" }}
+              >
+                建立 Bot
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* 3. Bot 列表 */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Bot 列表（{bots.length}）
+            </Typography>
+            {bots.length === 0 ? (
+              <Typography color="text.secondary">
+                還沒有任何 Bot，先用上面的表單建立一個吧！
+              </Typography>
+            ) : (
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>名稱</TableCell>
+                      <TableCell>策略</TableCell>
+                      <TableCell>股票</TableCell>
+                      <TableCell>金額</TableCell>
+                      <TableCell>狀態</TableCell>
+                      <TableCell>操作</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {bots.map((b) => (
+                      <TableRow key={b.id}>
+                        <TableCell>{b.id}</TableCell>
+                        <TableCell>{b.name}</TableCell>
+                        <TableCell>{b.strategy}</TableCell>
+                        <TableCell>{b.symbol}</TableCell>
+                        <TableCell>${b.trade_amount}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            color={b.is_active ? "success" : "default"}
+                            label={b.is_active ? "啟用" : "停用"}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleRun(b.id)}
+                          >
+                            執行一次
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 策略回測 */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              策略回測
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              用歷史資料模擬策略表現，跟「單純買進持有」比較，看策略有沒有效。
+            </Typography>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" },
+                gap: 2,
+                mb: 2,
+              }}
+            >
+              <TextField
+                select
+                label="策略"
+                value={btForm.strategy}
+                onChange={(e) =>
+                  setBtForm({ ...btForm, strategy: e.target.value })
+                }
+              >
+                {STRATEGIES.map((s) => (
+                  <MenuItem key={s.value} value={s.value}>
+                    {s.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="股票代號"
+                value={btForm.symbol}
+                onChange={(e) => setBtForm({ ...btForm, symbol: e.target.value })}
+              />
+              <TextField
+                label="回測天數"
+                type="number"
+                value={btForm.days}
+                onChange={(e) => setBtForm({ ...btForm, days: e.target.value })}
+              />
+              <TextField
+                label="初始資金 (USD)"
+                type="number"
+                value={btForm.initial_cash}
+                onChange={(e) =>
+                  setBtForm({ ...btForm, initial_cash: e.target.value })
+                }
+              />
+            </Box>
+            <Button
+              variant="contained"
+              onClick={handleBacktest}
+              disabled={btLoading}
+            >
+              {btLoading ? "回測中…" : "開始回測"}
+            </Button>
+
+            {/* 回測結果 */}
+            {btResult && (
+              <Box sx={{ mt: 3 }}>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: {
+                      xs: "1fr 1fr",
+                      sm: "repeat(4, 1fr)",
+                    },
+                    gap: 2,
+                  }}
+                >
+                  <Stat
+                    label="策略總報酬"
+                    value={`${btResult.total_return_pct}%`}
+                  />
+                  <Stat
+                    label="買進持有對照"
+                    value={`${btResult.buy_and_hold_pct}%`}
+                  />
+                  <Stat
+                    label="最大回撤"
+                    value={`${btResult.max_drawdown_pct}%`}
+                  />
+                  <Stat label="勝率" value={`${btResult.win_rate_pct}%`} />
+                  <Stat
+                    label="最終資產"
+                    value={`$${btResult.final_equity.toLocaleString()}`}
+                  />
+                  <Stat label="交易次數" value={btResult.num_trades} />
+                  <Stat label="完整買賣" value={btResult.num_round_trips} />
+                  <Stat label="資料天數" value={btResult.data_points} />
+                </Box>
+
+                {/* 一句話解讀 */}
+                <Alert
+                  severity={
+                    btResult.total_return_pct >= btResult.buy_and_hold_pct
+                      ? "success"
+                      : "info"
+                  }
+                  sx={{ mt: 2 }}
+                >
+                  {btResult.total_return_pct >= btResult.buy_and_hold_pct
+                    ? "👍 這次策略表現優於「單純買進持有」。"
+                    : "這次策略跑輸「單純買進持有」，可以調整參數或換策略再試試。"}
+                </Alert>
+
+                {/* 交易明細 */}
+                {btResult.trades.length > 0 && (
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{ mt: 2 }}
+                  >
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>日期</TableCell>
+                          <TableCell>買/賣</TableCell>
+                          <TableCell>價格</TableCell>
+                          <TableCell>盈虧</TableCell>
+                          <TableCell>原因</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {btResult.trades.map((t, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{t.date}</TableCell>
+                            <TableCell>
+                              {t.side === "buy" ? "買進" : "賣出"}
+                            </TableCell>
+                            <TableCell>${t.price}</TableCell>
+                            <TableCell
+                              sx={{
+                                color:
+                                  t.profit > 0
+                                    ? "success.main"
+                                    : t.profit < 0
+                                    ? "error.main"
+                                    : "text.secondary",
+                              }}
+                            >
+                              {t.profit !== undefined ? `$${t.profit}` : "-"}
+                            </TableCell>
+                            <TableCell>{t.reason}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 4. 交易紀錄 */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              交易紀錄（{trades.length}）
+            </Typography>
+            {trades.length === 0 ? (
+              <Typography color="text.secondary">
+                目前還沒有任何交易紀錄。
+              </Typography>
+            ) : (
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>時間</TableCell>
+                      <TableCell>股票</TableCell>
+                      <TableCell>買/賣</TableCell>
+                      <TableCell>股數</TableCell>
+                      <TableCell>價格</TableCell>
+                      <TableCell>原因</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {trades.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell>
+                          {new Date(t.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell>{t.symbol}</TableCell>
+                        <TableCell>{t.side === "buy" ? "買進" : "賣出"}</TableCell>
+                        <TableCell>{t.qty}</TableCell>
+                        <TableCell>${t.price}</TableCell>
+                        <TableCell>{t.reason}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+      </Container>
+    </ThemeProvider>
+  );
+}
+
+export default App;
