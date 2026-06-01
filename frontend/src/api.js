@@ -40,6 +40,19 @@ export const api = {
   // 取得交易紀錄
   getTrades: () => request("/trades"),
 
+  // 編輯 Bot
+  updateBot: (id, data) =>
+    request(`/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  // 刪除 Bot
+  deleteBot: (id) => request(`/bots/${id}`, { method: "DELETE" }),
+
+  // 啟動 Bot 定時執行
+  startBot: (id) => request(`/bots/${id}/start`, { method: "POST" }),
+
+  // 停止 Bot 定時執行
+  stopBot: (id) => request(`/bots/${id}/stop`, { method: "POST" }),
+
   // 執行回測
   runBacktest: (data) =>
     request("/backtest", { method: "POST", body: JSON.stringify(data) }),

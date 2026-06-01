@@ -112,6 +112,35 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
 
 
+@app.put("/bots/{bot_id}")
+def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
+    """編輯一個既有的 Bot。"""
+    bot = db.query(Bot).filter(Bot.id == bot_id).first()
+    if not bot:
+        raise HTTPException(status_code=404, detail="找不到這個 Bot")
+    # 更新欄位
+    bot.name = payload.name
+    bot.strategy = payload.strategy
+    bot.symbol = payload.symbol.upper()
+    bot.params = payload.params
+    bot.trade_amount = payload.trade_amount
+    db.commit()
+    db.refresh(bot)
+    return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
+
+
+@app.delete("/bots/{bot_id}")
+def delete_bot(bot_id: int, db: Session = Depends(get_db)):
+    """刪除一個 Bot（會先停掉它的排程）。"""
+    bot = db.query(Bot).filter(Bot.id == bot_id).first()
+    if not bot:
+        raise HTTPException(status_code=404, detail="找不到這個 Bot")
+    bot_manager.stop_bot(bot_id)  # 先停掉定時排程，避免刪了還在跑
+    db.delete(bot)
+    db.commit()
+    return {"message": f"已刪除 Bot：{bot.name}"}
+
+
 @app.get("/bots")
 def list_bots(db: Session = Depends(get_db)):
     """列出所有 Bot。"""

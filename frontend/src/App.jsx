@@ -27,9 +27,22 @@ import {
   TableContainer,
   Paper,
   CssBaseline,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Tooltip,
+  Stack,
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import StopIcon from "@mui/icons-material/Stop";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 import TradingViewChart from "./TradingViewChart";
+import BotAvatar from "./BotAvatar";
 
 // 建立一個主題（主色用藍色）
 const theme = createTheme({
@@ -83,6 +96,9 @@ function App() {
     symbol: "",
     trade_amount: 1000,
   });
+
+  // 正在編輯的 Bot（null = 沒有打開編輯視窗）
+  const [editBot, setEditBot] = useState(null);
 
   // 從後端載入所有資料
   async function loadAll() {
@@ -155,6 +171,58 @@ function App() {
       setError(e.message);
     } finally {
       setBtLoading(false); // 不論成功失敗都結束載入
+    }
+  }
+
+  // 啟動 / 停止 Bot（依目前狀態切換）
+  async function handleToggleActive(bot) {
+    setError("");
+    setMessage("");
+    try {
+      if (bot.is_active) {
+        await api.stopBot(bot.id);
+        setMessage(`已停止 Bot：${bot.name}`);
+      } else {
+        await api.startBot(bot.id);
+        setMessage(`已啟動 Bot：${bot.name}（每 60 秒檢查一次）`);
+      }
+      loadAll();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 刪除 Bot（先跳出確認）
+  async function handleDelete(bot) {
+    if (!window.confirm(`確定要刪除「${bot.name}」嗎？此動作無法復原。`)) return;
+    setError("");
+    setMessage("");
+    try {
+      await api.deleteBot(bot.id);
+      setMessage(`已刪除 Bot：${bot.name}`);
+      loadAll();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 儲存編輯（送出 PUT）
+  async function handleEditSave() {
+    setError("");
+    setMessage("");
+    try {
+      await api.updateBot(editBot.id, {
+        name: editBot.name,
+        strategy: editBot.strategy,
+        symbol: editBot.symbol.toUpperCase(),
+        params: {},
+        trade_amount: Number(editBot.trade_amount),
+      });
+      setMessage(`已更新 Bot：${editBot.name}`);
+      setEditBot(null); // 關閉視窗
+      loadAll();
+    } catch (e) {
+      setError(e.message);
     }
   }
 
@@ -333,7 +401,22 @@ function App() {
                     {bots.map((b) => (
                       <TableRow key={b.id}>
                         <TableCell>{b.id}</TableCell>
-                        <TableCell>{b.name}</TableCell>
+                        <TableCell>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                            }}
+                          >
+                            <BotAvatar
+                              seed={`${b.id}-${b.name}`}
+                              size={36}
+                              active={b.is_active}
+                            />
+                            {b.name}
+                          </Box>
+                        </TableCell>
                         <TableCell>{b.strategy}</TableCell>
                         <TableCell>{b.symbol}</TableCell>
                         <TableCell>${b.trade_amount}</TableCell>
@@ -345,13 +428,46 @@ function App() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleRun(b.id)}
-                          >
-                            執行一次
-                          </Button>
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title={b.is_active ? "停止" : "啟動"}>
+                              <IconButton
+                                size="small"
+                                color={b.is_active ? "warning" : "success"}
+                                onClick={() => handleToggleActive(b)}
+                              >
+                                {b.is_active ? (
+                                  <StopIcon fontSize="small" />
+                                ) : (
+                                  <PlayArrowIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="執行一次">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleRun(b.id)}
+                              >
+                                <RefreshIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="編輯">
+                              <IconButton
+                                size="small"
+                                onClick={() => setEditBot({ ...b })}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="刪除">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDelete(b)}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -562,6 +678,64 @@ function App() {
           </CardContent>
         </Card>
       </Container>
+
+      {/* 編輯 Bot 的彈出視窗 */}
+      <Dialog
+        open={!!editBot}
+        onClose={() => setEditBot(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>編輯 Bot</DialogTitle>
+        <DialogContent>
+          {editBot && (
+            <Box sx={{ display: "grid", gap: 2, mt: 1 }}>
+              <TextField
+                label="名稱"
+                value={editBot.name}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, name: e.target.value })
+                }
+              />
+              <TextField
+                select
+                label="策略"
+                value={editBot.strategy}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, strategy: e.target.value })
+                }
+              >
+                {STRATEGIES.map((s) => (
+                  <MenuItem key={s.value} value={s.value}>
+                    {s.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                label="股票代號"
+                value={editBot.symbol}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, symbol: e.target.value })
+                }
+              />
+              <TextField
+                label="每次下單金額 (USD)"
+                type="number"
+                value={editBot.trade_amount}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, trade_amount: e.target.value })
+                }
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditBot(null)}>取消</Button>
+          <Button variant="contained" onClick={handleEditSave}>
+            儲存
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }
