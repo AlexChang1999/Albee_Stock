@@ -65,6 +65,8 @@ def _patch_common(monkeypatch, position, price, orders):
     monkeypatch.setattr(bm, "_record_and_notify", lambda *a, **k: None)
     # 最高價持久化會碰資料庫，測試裡換成「只更新記憶體物件」的假版本
     monkeypatch.setattr(bm, "_persist_peak", lambda bot, peak: setattr(bot, "peak_price", peak))
+    # 記錄檢查時間也會碰資料庫，測試裡換成 no-op
+    monkeypatch.setattr(bm, "_mark_checked", lambda bot: None)
 
 
 def test_stop_loss_sells_even_when_strategy_hold(monkeypatch):

@@ -25,7 +25,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import BotAvatar from "../BotAvatar";
-import { statRows } from "../utils/botStats";
+import { statRows, formatCheckedAgo, holdingText } from "../utils/botStats";
 
 export default function BotList({ bots, onToggle, onRun, onEdit, onDelete }) {
   return (
@@ -82,6 +82,11 @@ export default function BotList({ bots, onToggle, onRun, onEdit, onDelete }) {
                 />
                 <Typography variant="caption" color="text.secondary" noWrap>
                   {b.strategy} · {b.symbol} · ${b.trade_amount}
+                </Typography>
+
+                {/* 監聽狀態：持倉/空手 + 最後檢查時間（確認排程真的在動） */}
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {holdingText(b.peak_price)} · {formatCheckedAgo(b.last_checked_at)}
                 </Typography>
 
                 {/* 績效指標（依該 Bot 的真實交易紀錄計算；沒交易時顯示 "-"） */}

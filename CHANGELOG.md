@@ -17,6 +17,11 @@
 
 ### 新增
 
+- Phase 4 收尾—監聽狀態前端可視化：`models/bot.py` 新增 `last_checked_at`，
+  `bot_manager` 每輪成功檢查後更新（新增 `_mark_checked`）。`GET /bots` 回傳值加上
+  `peak_price`／`last_checked_at`。前端 Bot 卡片新增一行「持倉中·峰值 $X · N 秒前檢查」
+  （`utils/botStats.js` 加純函式 `formatCheckedAgo`／`holdingText`，附 6 個前端測試）。
+  附 Alembic 遷移 `b2c3d4e5f6a7_add_bot_last_checked_at`。
 - Phase 4 收尾—通知擴充 Discord：`services/notifier.py` 重構成多管道（LINE + Discord），
   各管道獨立、任一失敗不影響其他。Discord 走最簡單的 Webhook（`DISCORD_WEBHOOK_URL`，
   `.env.example` 已補欄位說明），沒設定就靜默跳過。附 3 個測試（mock requests，不真發）。

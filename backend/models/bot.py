@@ -63,6 +63,10 @@ class Bot(Base):
     # Bot 是否啟用中
     is_active = Column(Boolean, default=False)
 
+    # 最後一次成功跑完監測檢查的時間（None = 還沒跑過）。
+    # 前端用它顯示「最後檢查：X 秒前」，確認排程真的在動。
+    last_checked_at = Column(DateTime, nullable=True)
+
     # 建立時間
     created_at = Column(DateTime, default=datetime.now)
 

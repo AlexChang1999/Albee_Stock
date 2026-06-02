@@ -16,6 +16,8 @@ Bot 管理器
 注意：實際抓資料/下單需要有效的 Alpaca 金鑰才會成功。
 """
 
+from datetime import datetime
+
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from backend.database import SessionLocal
@@ -47,6 +49,20 @@ def _persist_peak(bot: Bot, peak: float | None) -> None:
     bot.peak_price = peak
 
 
+def _mark_checked(bot: Bot) -> None:
+    """記錄這個 Bot「最後一次成功跑完檢查」的時間，給前端顯示排程是否在動。"""
+    now = datetime.now()
+    db = SessionLocal()
+    try:
+        row = db.query(Bot).filter(Bot.id == bot.id).first()
+        if row is not None:
+            row.last_checked_at = now
+            db.commit()
+    finally:
+        db.close()
+    bot.last_checked_at = now
+
+
 def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
     """
     執行單一 Bot 一次完整循環。
@@ -66,6 +82,7 @@ def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
         # --- 0. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
         if not ignore_market_hours and not alpaca_client.is_market_open():
             print(f"[{bot.name}] 美股休市中，本次跳過。")
+            _mark_checked(bot)  # 有跑這一輪（只是休市沒動作），仍更新檢查時間
             return
 
         # --- 1. 查目前持倉與現價 ---
@@ -76,6 +93,8 @@ def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
             _handle_holding(bot, position, current_price)
         else:
             _handle_flat(bot, current_price)
+
+        _mark_checked(bot)  # 這一輪成功跑完，記錄檢查時間
 
     except Exception as e:
         # 單一 Bot 出錯不應影響其他 Bot，這裡接住並通知

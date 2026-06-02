@@ -26,3 +26,24 @@ export function statRows(stats) {
     ["最大回撤", `${stats.max_drawdown_pct}%`],
   ];
 }
+
+// 把後端的 last_checked_at（ISO 字串或 null）轉成「X 秒/分/小時前」這種好讀的相對時間。
+// nowMs 預設取現在，傳入是為了好寫測試（同輸入同輸出）。
+export function formatCheckedAgo(iso, nowMs = Date.now()) {
+  if (!iso) return "尚未檢查";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "尚未檢查";
+  const diffSec = Math.max(0, Math.round((nowMs - then) / 1000));
+  if (diffSec < 60) return `${diffSec} 秒前檢查`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} 分鐘前檢查`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} 小時前檢查`;
+  return `${Math.round(diffHr / 24)} 天前檢查`;
+}
+
+// 持倉狀態文字：有 peak_price = 持倉中（附峰值）、否則空手。
+export function holdingText(peakPrice) {
+  if (peakPrice == null) return "空手";
+  return `持倉中 · 峰值 $${Number(peakPrice).toFixed(2)}`;
+}
