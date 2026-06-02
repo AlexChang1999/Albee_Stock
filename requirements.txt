@@ -23,6 +23,9 @@ uvicorn[standard]==0.40.0
 # --- 資料庫 ORM ---
 sqlalchemy==2.0.45
 
+# --- 資料庫遷移（schema 變更版本化，取代手動 ALTER；未來換 Postgres 也通用） ---
+alembic==1.18.4
+
 # --- 任務排程（讓 Bot 定時跑策略） ---
 apscheduler==3.11.0
 

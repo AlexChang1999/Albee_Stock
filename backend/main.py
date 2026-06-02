@@ -9,24 +9,23 @@ FastAPI 入口
 啟動後打開瀏覽器看自動產生的 API 文件：
     http://127.0.0.1:8000/docs
 
-備註：Phase 1 先把 API 都放這個檔案，方便理解；
-Phase 2 再依 CLAUDE.md 的規劃拆分到 routers/。
+本檔只負責三件事：
+1. 建立 app、設定 CORS、定義啟動/關閉流程（lifespan）
+2. 提供最基本的端點（健康檢查 /、帳戶 /account）
+3. 把各功能的路由（routers/）掛上去
+
+實際的 API 細節分散在 backend/routers/ 底下，依功能各自一個檔案。
 """
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.database import init_db, get_db
-from backend.models import Bot, TradeLog
+from backend.database import init_db
 from backend.services.alpaca_client import alpaca_client
-from backend.bots.bot_manager import bot_manager, run_bot_once
-from backend.services.backtest_engine import run_backtest
-from backend.services.performance import compute_bot_stats
+from backend.routers import bots, backtest, orders
 
 
 # lifespan：定義 app「啟動時」與「關閉時」要做的事。
@@ -55,26 +54,7 @@ app.add_middleware(
 )
 
 
-# ---------- 請求/回應的資料格式（Pydantic） ----------
-class BotCreate(BaseModel):
-    """建立 Bot 時要傳的資料。"""
-    name: str
-    strategy: str = "ma_crossover"
-    symbol: str
-    params: dict = {}
-    trade_amount: float = 1000.0
-
-
-class BacktestRequest(BaseModel):
-    """執行回測時要傳的資料。"""
-    strategy: str = "ma_crossover"
-    symbol: str
-    params: dict = {}
-    days: int = 365  # 回測往前抓幾天
-    initial_cash: float = 10000.0  # 初始資金
-
-
-# ---------- 基本 ----------
+# ---------- 基本端點 ----------
 @app.get("/")
 def root():
     """健康檢查：確認服務有在跑。"""
@@ -96,159 +76,8 @@ def get_account():
         raise HTTPException(status_code=400, detail=f"連線 Alpaca 失敗：{e}")
 
 
-# ---------- Bot 管理 ----------
-@app.post("/bots")
-def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
-    """建立一個新的 Bot。"""
-    bot = Bot(
-        name=payload.name,
-        strategy=payload.strategy,
-        symbol=payload.symbol.upper(),
-        params=payload.params,
-        trade_amount=payload.trade_amount,
-    )
-    db.add(bot)
-    db.commit()
-    db.refresh(bot)
-    return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
-
-
-@app.put("/bots/{bot_id}")
-def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
-    """編輯一個既有的 Bot。"""
-    bot = db.query(Bot).filter(Bot.id == bot_id).first()
-    if not bot:
-        raise HTTPException(status_code=404, detail="找不到這個 Bot")
-    # 更新欄位
-    bot.name = payload.name
-    bot.strategy = payload.strategy
-    bot.symbol = payload.symbol.upper()
-    bot.params = payload.params
-    bot.trade_amount = payload.trade_amount
-    db.commit()
-    db.refresh(bot)
-    return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
-
-
-@app.delete("/bots/{bot_id}")
-def delete_bot(bot_id: int, db: Session = Depends(get_db)):
-    """刪除一個 Bot（會先停掉它的排程）。"""
-    bot = db.query(Bot).filter(Bot.id == bot_id).first()
-    if not bot:
-        raise HTTPException(status_code=404, detail="找不到這個 Bot")
-    bot_manager.stop_bot(bot_id)  # 先停掉定時排程，避免刪了還在跑
-    db.delete(bot)
-    db.commit()
-    return {"message": f"已刪除 Bot：{bot.name}"}
-
-
-def _bot_stats(db: Session, bot_id: int) -> dict:
-    """查出某個 Bot 的交易紀錄（由舊到新），算出績效指標。"""
-    rows = (
-        db.query(TradeLog)
-        .filter(TradeLog.bot_id == bot_id)
-        .order_by(TradeLog.created_at.asc())
-        .all()
-    )
-    trades = [{"side": r.side, "qty": r.qty, "price": r.price} for r in rows]
-    return compute_bot_stats(trades)
-
-
-@app.get("/bots")
-def list_bots(db: Session = Depends(get_db)):
-    """列出所有 Bot（含各自的績效指標）。"""
-    bots = db.query(Bot).all()
-    return [
-        {
-            "id": b.id,
-            "name": b.name,
-            "strategy": b.strategy,
-            "symbol": b.symbol,
-            "params": b.params,
-            "trade_amount": b.trade_amount,
-            "is_active": b.is_active,
-            # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
-            "stats": _bot_stats(db, b.id),
-        }
-        for b in bots
-    ]
-
-
-@app.get("/bots/{bot_id}/stats")
-def get_bot_stats(bot_id: int, db: Session = Depends(get_db)):
-    """單獨取得某個 Bot 的績效指標。"""
-    bot = db.query(Bot).filter(Bot.id == bot_id).first()
-    if not bot:
-        raise HTTPException(status_code=404, detail="找不到這個 Bot")
-    return _bot_stats(db, bot_id)
-
-
-@app.post("/bots/{bot_id}/run")
-def run_bot_now(bot_id: int, db: Session = Depends(get_db)):
-    """手動讓某個 Bot 立刻跑一次策略（測試用）。"""
-    bot = db.query(Bot).filter(Bot.id == bot_id).first()
-    if not bot:
-        raise HTTPException(status_code=404, detail="找不到這個 Bot")
-    run_bot_once(bot)
-    return {"message": f"Bot {bot.name} 已執行一次"}
-
-
-@app.post("/bots/{bot_id}/start")
-def start_bot(bot_id: int, interval: int = 60, db: Session = Depends(get_db)):
-    """啟動 Bot 的定時執行。"""
-    bot = db.query(Bot).filter(Bot.id == bot_id).first()
-    if not bot:
-        raise HTTPException(status_code=404, detail="找不到這個 Bot")
-    bot.is_active = True
-    db.commit()
-    bot_manager.start_bot(bot, interval_seconds=interval)
-    return {"message": f"Bot {bot.name} 已啟動"}
-
-
-@app.post("/bots/{bot_id}/stop")
-def stop_bot(bot_id: int, db: Session = Depends(get_db)):
-    """停止 Bot 的定時執行。"""
-    bot = db.query(Bot).filter(Bot.id == bot_id).first()
-    if not bot:
-        raise HTTPException(status_code=404, detail="找不到這個 Bot")
-    bot.is_active = False
-    db.commit()
-    bot_manager.stop_bot(bot_id)
-    return {"message": f"Bot {bot.name} 已停止"}
-
-
-@app.get("/trades")
-def list_trades(db: Session = Depends(get_db)):
-    """列出所有交易紀錄（最新的在前）。"""
-    trades = db.query(TradeLog).order_by(TradeLog.created_at.desc()).all()
-    return [
-        {
-            "id": t.id,
-            "bot_id": t.bot_id,
-            "symbol": t.symbol,
-            "side": t.side,
-            "qty": t.qty,
-            "price": t.price,
-            "reason": t.reason,
-            "created_at": t.created_at,
-        }
-        for t in trades
-    ]
-
-
-@app.post("/backtest")
-def backtest(payload: BacktestRequest):
-    """
-    執行回測：用歷史資料模擬策略表現，回傳績效。
-    這不會真的下單，純粹是「如果過去這樣做，結果會如何」的試算。
-    """
-    try:
-        return run_backtest(
-            strategy_name=payload.strategy,
-            symbol=payload.symbol.upper(),
-            params=payload.params,
-            days=payload.days,
-            initial_cash=payload.initial_cash,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"回測失敗：{e}")
+# ---------- 掛上各功能的路由 ----------
+# include_router 會把 routers/ 裡定義好的那一疊路由併進這個 app。
+app.include_router(bots.router)
+app.include_router(backtest.router)
+app.include_router(orders.router)

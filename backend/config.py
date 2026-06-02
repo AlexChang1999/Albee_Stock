@@ -43,13 +43,26 @@ class Settings:
     # 這是一道安全保險：避免不小心用到真錢。
     IS_PAPER: bool = "paper" in os.getenv("ALPACA_BASE_URL", "paper").lower()
 
+    # --- 實盤交易安全閥（第二道保險，預設關閉）---
+    # 就算 ALPACA_BASE_URL 指到實盤(真錢)，沒有把這個明確設成 true，
+    # 系統仍會「拒絕送出真錢單」。要動真錢必須同時：
+    #   1) ALPACA_BASE_URL 用實盤網址（IS_PAPER 變 False）
+    #   2) ALLOW_LIVE_TRADING=true
+    # 兩道閘都開才會下真單，避免手滑或設定錯誤就燒到真錢。
+    ALLOW_LIVE_TRADING: bool = os.getenv("ALLOW_LIVE_TRADING", "false").lower() in ("1", "true", "yes")
+
     # --- LINE 通知設定（之後再填，現在可留空） ---
     LINE_CHANNEL_ACCESS_TOKEN: str = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
     LINE_CHANNEL_SECRET: str = os.getenv("LINE_CHANNEL_SECRET", "")
 
     # --- 資料庫設定 ---
-    # 用 SQLite，資料庫檔案就放在專案根目錄，叫 albee_stock.db
-    DATABASE_URL: str = f"sqlite:///{BASE_DIR / 'albee_stock.db'}"
+    # 預設用 SQLite，資料庫檔案放在專案根目錄（albee_stock.db）。
+    # 但允許用環境變數 DATABASE_URL 覆寫 → 未來要換 PostgreSQL，
+    # 只要在 .env 設 DATABASE_URL=postgresql://... 即可，程式一行都不用改。
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{BASE_DIR / 'albee_stock.db'}",
+    )
 
     def check(self) -> bool:
         """檢查必要設定有沒有填好，回傳 True/False。"""

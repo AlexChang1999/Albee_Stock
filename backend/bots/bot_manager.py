@@ -22,52 +22,110 @@ from backend.database import SessionLocal
 from backend.models import Bot, TradeLog
 from backend.services.alpaca_client import alpaca_client
 from backend.services.notifier import notify
+from backend.services.risk_manager import check_exit
 from backend.strategies import get_strategy, Signal
 
 
-def run_bot_once(bot: Bot) -> None:
-    """執行單一 Bot 一次完整的策略循環。"""
+# 追蹤止損要記住「持倉期間出現過的最高價」。
+# 這裡用一個記憶體 dict：{bot_id: 最高價}。進場時設值、每次檢查更新、平倉/空手時清除。
+# v1 先放記憶體（後端重啟會清空，最高價重新從當下算起）；
+# 但固定止損是用「進場價」算的、不受影響，仍是保護底線。日後可改存資料庫。
+_peak_prices: dict[int, float] = {}
+
+
+def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
+    """
+    執行單一 Bot 一次完整循環。
+
+    :param ignore_market_hours: 是否略過「開市才執行」的檢查。
+        排程自動跑時用預設 False（休市就跳過，省 API、避免怪單）；
+        手動測試（/run）時傳 True，方便休市時間也能驗證風控邏輯。
+
+    流程（持倉與否走不同分支）：
+    - 持倉中：先跑風控（止損/追蹤止損/止盈），任一觸發就平倉；
+              沒觸發才看策略要不要賣。
+      → 重點：風控必須「不分策略訊號」都先檢查，所以不能像舊版那樣
+        策略一觀望就提早 return，否則持倉時的止損會被跳過。
+    - 空手中：跑策略，出現買進訊號就進場。
+    """
     try:
-        # --- 1. 抓資料 ---
-        df = alpaca_client.get_bars(bot.symbol, days=60)
-        if df.empty:
-            notify(f"[{bot.name}] 抓不到 {bot.symbol} 的資料，跳過這次。")
+        # --- 0. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
+        if not ignore_market_hours and not alpaca_client.is_market_open():
+            print(f"[{bot.name}] 美股休市中，本次跳過。")
             return
 
-        # --- 2. 跑策略 ---
-        strategy = get_strategy(bot.strategy, bot.params or {})
-        signal, reason = strategy.generate_signal(df)
-
-        # 觀望就直接結束，不下單
-        if signal == Signal.HOLD:
-            print(f"[{bot.name}] {bot.symbol} 訊號：觀望 — {reason}")
-            return
-
-        # --- 3. 依訊號下單 ---
+        # --- 1. 查目前持倉與現價 ---
         position = alpaca_client.get_position(bot.symbol)
         current_price = alpaca_client.get_latest_price(bot.symbol)
 
-        if signal == Signal.BUY:
-            if position is not None:
-                print(f"[{bot.name}] 已持有 {bot.symbol}，不重複買進。")
-                return
-            # 用設定金額換算要買幾股（保留 4 位小數，支援碎股）
-            qty = round(bot.trade_amount / current_price, 4)
-            order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
-            _record_and_notify(bot, "buy", qty, current_price, order, reason)
-
-        elif signal == Signal.SELL:
-            if position is None:
-                print(f"[{bot.name}] 沒有 {bot.symbol} 持倉，無法賣出。")
-                return
-            # 賣出全部持倉
-            qty = float(position.qty)
-            order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
-            _record_and_notify(bot, "sell", qty, current_price, order, reason)
+        if position is not None:
+            _handle_holding(bot, position, current_price)
+        else:
+            _handle_flat(bot, current_price)
 
     except Exception as e:
         # 單一 Bot 出錯不應影響其他 Bot，這裡接住並通知
         notify(f"[{bot.name}] 執行時發生錯誤：{e}")
+
+
+def _handle_holding(bot: Bot, position, current_price: float) -> None:
+    """持倉中：先風控出場，再看策略賣出訊號。"""
+    entry_price = float(position.avg_entry_price)
+
+    # 更新「持倉期間最高價」（給追蹤止損用）
+    peak = max(_peak_prices.get(bot.id, entry_price), current_price)
+    _peak_prices[bot.id] = peak
+
+    # --- 風控出場判斷（止損 → 追蹤止損 → 止盈）---
+    should_exit, exit_reason = check_exit(
+        entry_price=entry_price,
+        current_price=current_price,
+        peak_price=peak,
+        take_profit_pct=bot.take_profit_pct,
+        stop_loss_pct=bot.stop_loss_pct,
+        trailing_stop_pct=bot.trailing_stop_pct,
+    )
+    if should_exit:
+        qty = float(position.qty)
+        order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
+        _record_and_notify(bot, "sell", qty, current_price, order, exit_reason)
+        _peak_prices.pop(bot.id, None)  # 已平倉，清掉最高價紀錄
+        return
+
+    # --- 風控沒觸發 → 看策略要不要賣 ---
+    signal, reason = _run_strategy(bot)
+    if signal == Signal.SELL:
+        qty = float(position.qty)
+        order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
+        _record_and_notify(bot, "sell", qty, current_price, order, reason)
+        _peak_prices.pop(bot.id, None)
+    else:
+        # 策略買進/觀望且風控未觸發 → 續抱（不重複買進）
+        print(f"[{bot.name}] 續抱 {bot.symbol}：{reason}")
+
+
+def _handle_flat(bot: Bot, current_price: float) -> None:
+    """空手中：跑策略，出現買進訊號就進場。"""
+    _peak_prices.pop(bot.id, None)  # 沒持倉，確保沒有殘留的最高價
+
+    signal, reason = _run_strategy(bot)
+    if signal == Signal.BUY:
+        # 用設定金額換算要買幾股（保留 4 位小數，支援碎股）
+        qty = round(bot.trade_amount / current_price, 4)
+        order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
+        _record_and_notify(bot, "buy", qty, current_price, order, reason)
+        _peak_prices[bot.id] = current_price  # 進場價當作最高價的起點
+    else:
+        print(f"[{bot.name}] {bot.symbol} 空手觀望：{reason}")
+
+
+def _run_strategy(bot: Bot):
+    """抓 K 線、跑策略，回傳 (訊號, 原因)。抓不到資料時視為觀望。"""
+    df = alpaca_client.get_bars(bot.symbol, days=60)
+    if df.empty:
+        return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
+    strategy = get_strategy(bot.strategy, bot.params or {})
+    return strategy.generate_signal(df)
 
 
 def _record_and_notify(bot, side, qty, price, order, reason) -> None:

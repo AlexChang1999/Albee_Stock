@@ -57,6 +57,15 @@ class AlpacaClient:
             )
         return self._data
 
+    # ---------- 市場狀態 ----------
+    def is_market_open(self) -> bool:
+        """
+        美股現在是否開盤中。
+        監聽系統每次檢查前先問這個：休市就別抓資料/下單，
+        省 API 額度、也避免在沒有成交的時段送出怪單。
+        """
+        return bool(self.trading.get_clock().is_open)
+
     # ---------- 帳戶 ----------
     def get_account(self):
         """取得帳戶資訊（現金、購買力等）。"""
@@ -81,6 +90,15 @@ class AlpacaClient:
         :param side: "buy" 或 "sell"
         :return: Alpaca 的訂單物件
         """
+        # === 實盤安全閥（所有下單的唯一出口，第一道就擋）===
+        # 連到實盤(真錢) 但沒有明確開啟 ALLOW_LIVE_TRADING → 直接拒絕，不送出。
+        # 這道檢查刻意放在最前面：早於建立 client、早於任何真錢動作。
+        if not settings.IS_PAPER and not settings.ALLOW_LIVE_TRADING:
+            raise RuntimeError(
+                "拒絕下單：目前連到『實盤(真錢)』環境，但安全閥未開啟。"
+                "若確定要用真錢交易，請在 .env 設定 ALLOW_LIVE_TRADING=true。"
+            )
+
         order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
 
         order_request = MarketOrderRequest(
