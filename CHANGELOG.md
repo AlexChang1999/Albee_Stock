@@ -30,6 +30,9 @@
 
 - 新增 `docs/phase4-paper-checklist.md`：Phase 4 Paper 連續實跑驗收清單，
   涵蓋排程／開市判斷／風控出場／重啟恢復／通知／績效／多 Bot 並發，逐項「預期 vs 實際」打勾。
+- 新增 `docs/financial-services-reference.md`：摘錄 Anthropic `financial-services`
+  repo 對本專案有用的部分（Skill 寫法、slash command 模式、選股篩選條件、
+  未來 AI 輔助層方向）。完整副本放本機 `D:\reference\`，不納入 git。
 
 ### 變更
 
