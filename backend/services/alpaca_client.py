@@ -12,6 +12,7 @@ Alpaca API 封裝
 - get_latest_price()      取得最新成交價
 """
 
+import time
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -35,6 +36,9 @@ class AlpacaClient:
         # import 這個模組就會崩潰。改成第一次真正用到時才建立（見下方 property）。
         self._trading: TradingClient | None = None
         self._data: StockHistoricalDataClient | None = None
+        # 開市狀態的短期快取：(到期時間戳, 是否開市)。
+        # 多個 Bot 幾乎同時排程時，不必每個都各問一次 Alpaca 的 clock，省 API 額度。
+        self._clock_cache: tuple[float, bool] | None = None
 
     @property
     def trading(self) -> TradingClient:
@@ -58,13 +62,26 @@ class AlpacaClient:
         return self._data
 
     # ---------- 市場狀態 ----------
+    # 開市狀態快取多久（秒）。開/收盤只在固定時刻發生，短暫快取不影響正確性，
+    # 卻能讓「多 Bot 同一輪檢查」共用一次查詢結果。
+    CLOCK_CACHE_TTL_SEC = 30
+
     def is_market_open(self) -> bool:
         """
         美股現在是否開盤中。
         監聽系統每次檢查前先問這個：休市就別抓資料/下單，
         省 API 額度、也避免在沒有成交的時段送出怪單。
+
+        結果會快取 CLOCK_CACHE_TTL_SEC 秒：多個 Bot 幾乎同時跑時，
+        只有第一個真的去問 Alpaca，其餘吃快取，避免短時間內重複呼叫。
         """
-        return bool(self.trading.get_clock().is_open)
+        now = time.monotonic()
+        if self._clock_cache is not None and now < self._clock_cache[0]:
+            return self._clock_cache[1]
+
+        is_open = bool(self.trading.get_clock().is_open)
+        self._clock_cache = (now + self.CLOCK_CACHE_TTL_SEC, is_open)
+        return is_open
 
     # ---------- 帳戶 ----------
     def get_account(self):

@@ -17,6 +17,9 @@
 
 ### 變更
 
+- Phase 4 收尾—降低多 Bot 並發 API 壓力：`alpaca_client.is_market_open()` 加 30 秒
+  TTL 快取，多個 Bot 幾乎同時排程時只第一個真的問 Alpaca clock、其餘吃快取，省 API 額度。
+  （只快取開市狀態；現價／持倉刻意不快取，交易決策需即時值。）附 2 個測試。
 - Phase 4 收尾—追蹤止損最高價持久化：`models/bot.py` 新增 `peak_price` 欄位，
   `bot_manager.py` 把原本記憶體 dict `_peak_prices` 改成寫資料庫（新增 `_persist_peak`）。
   修正後端重啟後追蹤止損最高價歸零、保護中斷一段時間的問題。
