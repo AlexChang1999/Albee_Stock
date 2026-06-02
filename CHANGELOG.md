@@ -15,6 +15,12 @@
 
 ## [未發布]
 
+### 文件
+
+- 新增 `docs/financial-services-reference.md`：摘錄 Anthropic `financial-services`
+  repo 對本專案有用的部分（Skill 寫法、slash command 模式、選股篩選條件、
+  未來 AI 輔助層方向）。完整副本放本機 `D:\reference\`，不納入 git。
+
 ---
 
 ## [0.2.0] - 2026-06-02
