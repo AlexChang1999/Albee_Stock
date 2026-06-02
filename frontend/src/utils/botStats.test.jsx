@@ -2,7 +2,7 @@
 // statRows 的單元測試（純函式最好測：給輸入、比對輸出，不碰畫面）
 // ============================================================
 import { describe, it, expect } from "vitest";
-import { statRows } from "../utils/botStats";
+import { statRows, formatCheckedAgo, holdingText } from "../utils/botStats";
 
 describe("statRows", () => {
   it("沒有 stats 時，四個欄位都顯示 '-'", () => {
@@ -38,5 +38,36 @@ describe("statRows", () => {
       max_drawdown_pct: 10,
     });
     expect(rows[1][2]).toBe("error.main"); // 報酬率顏色（負 = 紅）
+  });
+});
+
+describe("formatCheckedAgo", () => {
+  const now = new Date("2026-06-02T12:00:00Z").getTime();
+
+  it("null / 無效值 → 尚未檢查", () => {
+    expect(formatCheckedAgo(null, now)).toBe("尚未檢查");
+    expect(formatCheckedAgo("not-a-date", now)).toBe("尚未檢查");
+  });
+
+  it("30 秒前 → 秒", () => {
+    expect(formatCheckedAgo("2026-06-02T11:59:30Z", now)).toBe("30 秒前檢查");
+  });
+
+  it("5 分鐘前 → 分鐘", () => {
+    expect(formatCheckedAgo("2026-06-02T11:55:00Z", now)).toBe("5 分鐘前檢查");
+  });
+
+  it("3 小時前 → 小時", () => {
+    expect(formatCheckedAgo("2026-06-02T09:00:00Z", now)).toBe("3 小時前檢查");
+  });
+});
+
+describe("holdingText", () => {
+  it("null（空手）→ 空手", () => {
+    expect(holdingText(null)).toBe("空手");
+  });
+
+  it("有最高價 → 持倉中附峰值（兩位小數）", () => {
+    expect(holdingText(123.4)).toBe("持倉中 · 峰值 $123.40");
   });
 });

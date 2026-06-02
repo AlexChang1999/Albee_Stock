@@ -128,6 +128,9 @@ def list_bots(db: Session = Depends(get_db)):
             "trailing_stop_pct": b.trailing_stop_pct,
             "check_interval_sec": b.check_interval_sec,
             "is_active": b.is_active,
+            # 監聽狀態：持倉最高價（None=空手）、最後一次檢查時間（給前端顯示排程是否在動）
+            "peak_price": b.peak_price,
+            "last_checked_at": b.last_checked_at.isoformat() if b.last_checked_at else None,
             # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
             "stats": _bot_stats(db, b.id),
         }

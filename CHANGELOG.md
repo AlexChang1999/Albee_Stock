@@ -15,11 +15,35 @@
 
 ## [未發布]
 
+### 新增
+
+- Phase 4 收尾—監聽狀態前端可視化：`models/bot.py` 新增 `last_checked_at`，
+  `bot_manager` 每輪成功檢查後更新（新增 `_mark_checked`）。`GET /bots` 回傳值加上
+  `peak_price`／`last_checked_at`。前端 Bot 卡片新增一行「持倉中·峰值 $X · N 秒前檢查」
+  （`utils/botStats.js` 加純函式 `formatCheckedAgo`／`holdingText`，附 6 個前端測試）。
+  附 Alembic 遷移 `b2c3d4e5f6a7_add_bot_last_checked_at`。
+- Phase 4 收尾—通知擴充 Discord：`services/notifier.py` 重構成多管道（LINE + Discord），
+  各管道獨立、任一失敗不影響其他。Discord 走最簡單的 Webhook（`DISCORD_WEBHOOK_URL`，
+  `.env.example` 已補欄位說明），沒設定就靜默跳過。附 3 個測試（mock requests，不真發）。
+
 ### 文件
 
+- 新增 `docs/phase4-paper-checklist.md`：Phase 4 Paper 連續實跑驗收清單，
+  涵蓋排程／開市判斷／風控出場／重啟恢復／通知／績效／多 Bot 並發，逐項「預期 vs 實際」打勾。
 - 新增 `docs/financial-services-reference.md`：摘錄 Anthropic `financial-services`
   repo 對本專案有用的部分（Skill 寫法、slash command 模式、選股篩選條件、
   未來 AI 輔助層方向）。完整副本放本機 `D:\reference\`，不納入 git。
+
+### 變更
+
+- Phase 4 收尾—降低多 Bot 並發 API 壓力：`alpaca_client.is_market_open()` 加 30 秒
+  TTL 快取，多個 Bot 幾乎同時排程時只第一個真的問 Alpaca clock、其餘吃快取，省 API 額度。
+  （只快取開市狀態；現價／持倉刻意不快取，交易決策需即時值。）附 2 個測試。
+- Phase 4 收尾—追蹤止損最高價持久化：`models/bot.py` 新增 `peak_price` 欄位，
+  `bot_manager.py` 把原本記憶體 dict `_peak_prices` 改成寫資料庫（新增 `_persist_peak`）。
+  修正後端重啟後追蹤止損最高價歸零、保護中斷一段時間的問題。
+  附 Alembic 遷移 `a1b2c3d4e5f6_add_bot_peak_price`，並補 2 個測試（持久化往返、
+  追蹤止損讀持久化最高價），`tests/` 共 40 個全綠。
 
 ---
 

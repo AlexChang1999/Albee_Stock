@@ -16,6 +16,8 @@ Bot 管理器
 注意：實際抓資料/下單需要有效的 Alpaca 金鑰才會成功。
 """
 
+from datetime import datetime
+
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from backend.database import SessionLocal
@@ -27,10 +29,38 @@ from backend.strategies import get_strategy, Signal
 
 
 # 追蹤止損要記住「持倉期間出現過的最高價」。
-# 這裡用一個記憶體 dict：{bot_id: 最高價}。進場時設值、每次檢查更新、平倉/空手時清除。
-# v1 先放記憶體（後端重啟會清空，最高價重新從當下算起）；
-# 但固定止損是用「進場價」算的、不受影響，仍是保護底線。日後可改存資料庫。
-_peak_prices: dict[int, float] = {}
+# 改存資料庫欄位 bot.peak_price（取代舊版記憶體 dict）：後端重啟後最高價仍在，
+# 追蹤止損不會被重置、保護不中斷。None = 空手或尚未進場。
+def _persist_peak(bot: Bot, peak: float | None) -> None:
+    """把某 Bot 的「持倉最高價」寫回資料庫（peak=None 代表清除）。
+
+    注意：bot 可能是排程帶進來的舊物件，這裡用 bot.id 重新查一筆最新的來更新，
+    避免 session 過期問題。查不到（例如測試用的假物件）就靜默跳過。
+    """
+    db = SessionLocal()
+    try:
+        row = db.query(Bot).filter(Bot.id == bot.id).first()
+        if row is not None:
+            row.peak_price = peak
+            db.commit()
+    finally:
+        db.close()
+    # 同步更新手上這顆物件，讓同一輪後續邏輯讀到新值
+    bot.peak_price = peak
+
+
+def _mark_checked(bot: Bot) -> None:
+    """記錄這個 Bot「最後一次成功跑完檢查」的時間，給前端顯示排程是否在動。"""
+    now = datetime.now()
+    db = SessionLocal()
+    try:
+        row = db.query(Bot).filter(Bot.id == bot.id).first()
+        if row is not None:
+            row.last_checked_at = now
+            db.commit()
+    finally:
+        db.close()
+    bot.last_checked_at = now
 
 
 def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
@@ -52,6 +82,7 @@ def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
         # --- 0. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
         if not ignore_market_hours and not alpaca_client.is_market_open():
             print(f"[{bot.name}] 美股休市中，本次跳過。")
+            _mark_checked(bot)  # 有跑這一輪（只是休市沒動作），仍更新檢查時間
             return
 
         # --- 1. 查目前持倉與現價 ---
@@ -63,6 +94,8 @@ def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
         else:
             _handle_flat(bot, current_price)
 
+        _mark_checked(bot)  # 這一輪成功跑完，記錄檢查時間
+
     except Exception as e:
         # 單一 Bot 出錯不應影響其他 Bot，這裡接住並通知
         notify(f"[{bot.name}] 執行時發生錯誤：{e}")
@@ -72,9 +105,11 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
     """持倉中：先風控出場，再看策略賣出訊號。"""
     entry_price = float(position.avg_entry_price)
 
-    # 更新「持倉期間最高價」（給追蹤止損用）
-    peak = max(_peak_prices.get(bot.id, entry_price), current_price)
-    _peak_prices[bot.id] = peak
+    # 更新「持倉期間最高價」（給追蹤止損用）。
+    # 起算基準：資料庫存的 peak_price；若還沒有（剛接手/重啟後第一次）就用進場價起算。
+    peak = max(bot.peak_price or entry_price, current_price)
+    if peak != bot.peak_price:
+        _persist_peak(bot, peak)
 
     # --- 風控出場判斷（止損 → 追蹤止損 → 止盈）---
     should_exit, exit_reason = check_exit(
@@ -89,7 +124,7 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, exit_reason)
-        _peak_prices.pop(bot.id, None)  # 已平倉，清掉最高價紀錄
+        _persist_peak(bot, None)  # 已平倉，清掉最高價紀錄
         return
 
     # --- 風控沒觸發 → 看策略要不要賣 ---
@@ -98,7 +133,7 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, reason)
-        _peak_prices.pop(bot.id, None)
+        _persist_peak(bot, None)
     else:
         # 策略買進/觀望且風控未觸發 → 續抱（不重複買進）
         print(f"[{bot.name}] 續抱 {bot.symbol}：{reason}")
@@ -106,7 +141,9 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
 
 def _handle_flat(bot: Bot, current_price: float) -> None:
     """空手中：跑策略，出現買進訊號就進場。"""
-    _peak_prices.pop(bot.id, None)  # 沒持倉，確保沒有殘留的最高價
+    # 沒持倉，確保沒有殘留的最高價（只在原本有值時才寫 DB，省一次無謂的 commit）
+    if bot.peak_price is not None:
+        _persist_peak(bot, None)
 
     signal, reason = _run_strategy(bot)
     if signal == Signal.BUY:
@@ -114,7 +151,7 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
         qty = round(bot.trade_amount / current_price, 4)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
         _record_and_notify(bot, "buy", qty, current_price, order, reason)
-        _peak_prices[bot.id] = current_price  # 進場價當作最高價的起點
+        _persist_peak(bot, current_price)  # 進場價當作最高價的起點
     else:
         print(f"[{bot.name}] {bot.symbol} 空手觀望：{reason}")
 

@@ -55,8 +55,17 @@ class Bot(Base):
     # 監測頻率（秒）：啟動後每隔幾秒檢查一次行情。預設 60 秒
     check_interval_sec = Column(Integer, default=60)
 
+    # 持倉期間出現過的最高價（給「追蹤止損」用，內部狀態非使用者設定）。
+    # None = 目前空手或尚未進場。進場時設為進場價、每次檢查更新、平倉/空手時清回 None。
+    # 為何存進資料庫而非記憶體：後端重啟後追蹤止損才不會把最高價歸零、保護中斷一段時間。
+    peak_price = Column(Float, nullable=True)
+
     # Bot 是否啟用中
     is_active = Column(Boolean, default=False)
+
+    # 最後一次成功跑完監測檢查的時間（None = 還沒跑過）。
+    # 前端用它顯示「最後檢查：X 秒前」，確認排程真的在動。
+    last_checked_at = Column(DateTime, nullable=True)
 
     # 建立時間
     created_at = Column(DateTime, default=datetime.now)
