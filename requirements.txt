@@ -35,6 +35,9 @@ line-bot-sdk==3.23.0
 # --- HTTP 請求（通知、備用） ---
 requests==2.34.2
 
+# --- LLM 思考助手（Phase 5；OpenAI 相容介面，預設接本機 Ollama，免費） ---
+openai==2.40.0
+
 # --- 測試（開發/CI 用） ---
 pytest==9.0.3
 httpx==0.28.1

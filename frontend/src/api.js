@@ -65,4 +65,39 @@ export const api = {
   // 執行回測
   runBacktest: (data) =>
     request("/backtest", { method: "POST", body: JSON.stringify(data) }),
+
+  // ===== Phase 5：策略工作台 =====
+  // 策略方案 CRUD
+  getPresets: () => request("/presets"),
+  createPreset: (data) =>
+    request("/presets", { method: "POST", body: JSON.stringify(data) }),
+  updatePreset: (id, data) =>
+    request(`/presets/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deletePreset: (id) => request(`/presets/${id}`, { method: "DELETE" }),
+
+  // 對某方案一鍵跑回測（Python），回結果並存一筆回測紀錄
+  backtestPreset: (id, options = {}) =>
+    request(`/presets/${id}/backtest`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+
+  // 回測歷史（依 EV 排序）；favorite=true 只看好策略
+  getBacktestRuns: (favorite = false) =>
+    request(`/backtest-runs${favorite ? "?favorite=true" : ""}`),
+  getBacktestRun: (id) => request(`/backtest-runs/${id}`),
+  // 收藏/取消收藏某筆回測
+  favoriteBacktestRun: (id, isGood = true) =>
+    request(`/backtest-runs/${id}/favorite?is_good=${isGood}`, { method: "PUT" }),
+
+  // ===== Claude 思考助手（步驟 4 為 stub）=====
+  // 聊天（無狀態，送完整 messages）
+  sendChat: (messages) =>
+    request("/chat", { method: "POST", body: JSON.stringify({ messages }) }),
+  // 對某筆回測做事後檢討
+  postmortem: (runId) =>
+    request("/chat/postmortem", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
 };

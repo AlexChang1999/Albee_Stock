@@ -43,6 +43,7 @@ import BacktestPanel from "./components/BacktestPanel";
 import TradesTable from "./components/TradesTable";
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
+import StrategyWorkbench from "./components/StrategyWorkbench";
 
 // 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
 // 但後端存的是小數（0.10）。下面兩個小工具負責互轉，空白 = null（不啟用該機制）。
@@ -238,7 +239,12 @@ function App() {
       {/* 載入中時，在標題列下方顯示一條細進度條（抓資料時才出現） */}
       {loading && <LinearProgress />}
 
-      <Container maxWidth={false} sx={{ py: 4, px: { xs: 2, md: 4 } }}>
+      {/* 主內容（左）＋ 策略工作台（右）橫向並排 */}
+      <Box sx={{ display: "flex", alignItems: "flex-start" }}>
+        <Container
+          maxWidth={false}
+          sx={{ flex: 1, minWidth: 0, py: 4, px: { xs: 2, md: 4 } }}
+        >
         {/* 訊息提示：操作錯誤(error) 與 資料載入錯誤(loadError) 都顯示出來 */}
         {(error || loadError) && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -343,7 +349,11 @@ function App() {
             </Typography>
           </Box>
         )}
-      </Container>
+        </Container>
+
+        {/* 右側策略工作台（自管資料流，可收合／橫向拉寬） */}
+        <StrategyWorkbench />
+      </Box>
 
       {/* 編輯 Bot 的彈出視窗 */}
       <EditBotDialog

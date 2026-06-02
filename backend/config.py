@@ -64,6 +64,25 @@ class Settings:
         f"sqlite:///{BASE_DIR / 'albee_stock.db'}",
     )
 
+    # --- LLM 思考助手設定（Phase 5）---
+    # 用「OpenAI 相容介面」串接，所以同一套程式可接很多家：
+    #   - 本機 Ollama（預設，完全免費）：base_url=http://localhost:11434/v1
+    #   - Google Gemini 免費層 / Groq 免費層 / 甚至 OpenAI、Anthropic 也都有相容端點。
+    # 想換供應商只要改這三個環境變數，程式一行都不用動。
+    # 預設指向本機 Ollama，金鑰隨便填（Ollama 不檢查）。沒裝/沒開 Ollama 時，
+    # /chat 會回 400 並提示怎麼啟動，不會讓系統崩潰。
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "ollama")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama3.1")
+
+    # --- 探討（檢討）檔案記憶（Phase 5）---
+    # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，
+    # 之後寫新檢討前會先讀路標、挑相關舊探討來參考（越來越聰明）。
+    # 預設放專案根目錄的 explorations/（會進 git）。可用環境變數覆寫位置。
+    EXPLORATIONS_DIR: str = os.getenv(
+        "EXPLORATIONS_DIR", str(BASE_DIR / "explorations")
+    )
+
     def check(self) -> bool:
         """檢查必要設定有沒有填好，回傳 True/False。"""
         if not self.ALPACA_API_KEY or not self.ALPACA_SECRET_KEY:

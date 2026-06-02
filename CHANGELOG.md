@@ -26,6 +26,58 @@
 
 ### 新增
 
+- Phase 5—探討（檢討）檔案記憶：路標索引 + 內容檔。新增 `backend/services/explorations.py`，
+  把思考助手每次事後檢討寫成 `explorations/run-XXXX-策略-標的.md`，並用 `explorations/INDEX.md`
+  當「路標索引」（探討主檔案）。`/chat/postmortem` 改成**兩段式**：先讀路標讓模型挑相關的過去
+  探討（挑檔失敗自動回退：同策略優先、再取最近）→ 讀那幾篇內容 → 再寫新檢討；接著寫回探討檔
+  + 更新路標 + 存 DB 摘要。`/chat` 一般對話也注入路標當提示。**防路徑穿越**（只准讀資料夾內
+  的 .md）。檔案為知識主體、進 git、用 run_id 連結，不動 DB schema。附 `tests/test_explorations.py`
+  5 測試（寫檔往返／同 run_id 不重覆／防穿越／路標解析／回退挑檔），`tests/` 全套 62 綠。
+
+- Phase 5 步驟 5—思考助手改用本機 LLM（OpenAI 相容，預設 Ollama，完全免費）：因付費考量，
+  從 Anthropic 付費 API 改成 **OpenAI 相容介面**，預設指向本機 Ollama；換供應商（Gemini／Groq…）
+  只改 `.env` 三行（`LLM_BASE_URL`／`LLM_API_KEY`／`LLM_MODEL`），程式不動。`config.py` 加 `LLM_*`
+  與 `EXPLORATIONS_DIR`；`requirements.txt` 換 `openai==2.40.0`（移除 anthropic）；`.env.example`
+  列出 Ollama／Gemini／Groq 三種設定。捨棄 tool-use，改成**預先注入回測歷史**（小型/本機模型更穩）。
+  未設定 LLM 或連不上 → 優雅回 400 + Ollama 啟動提示，不崩潰。附 `tests/test_chat.py` 4 測試。
+
+- Phase 5 步驟 4—前端策略工作台（先不接 Claude）：新增右側面板
+  `components/StrategyWorkbench.jsx`，可收合（收合剩細邊條）、可橫向拖曳拉寬
+  （左緣 6px 把手，寬度 clamp 320–720，記 localStorage），玻璃風 + NEON 青。
+  四分區：①策略方案（presets 新增/改名/調參/收藏/刪除）②一鍵回測結果卡
+  （**EV 當頭條**，EV<0 提示檢討）③回測歷史（依 EV 排序、收藏標星）④Claude 助手聊天區
+  （每筆回測「總結這次錯在哪」按鈕）。`App.jsx` 外層改橫向 flex（左主內容 flex:1
+  + 右工作台）。`api.js` 加 presets／backtest-runs／sendChat／postmortem 呼叫。
+  後端新增 `routers/chat.py`：`POST /chat`、`POST /chat/postmortem` 先回 **stub**
+  （步驟 5 接真 Anthropic API），已掛 `main.py`。前端 build 通過、Vitest 13 綠、
+  後端 pytest 53 綠。
+
+- Phase 5 步驟 3—策略方案／回測紀錄資料層 + API：新增 2 張表 `strategy_presets`
+  （`StrategyPreset`：可命名策略草稿，CRUD/收藏）、`backtest_runs`（`BacktestRun`：每次
+  回測存一筆當 Claude 記憶，含 EV 全套 metrics、`claude_postmortem` 欄位）。走 Alembic
+  遷移 `42855ad7c572`（batch 模式，接 head）。新增 `routers/presets.py`：
+  `GET/POST/PUT/DELETE /presets`、`POST /presets/{id}/backtest`（Python 跑回測→存紀錄→回
+  結果）、`GET /backtest-runs`（**依 EV 由高到低排序**、可篩 favorite）、
+  `GET /backtest-runs/{id}`、`PUT /backtest-runs/{id}/favorite`。已掛上 `main.py`。
+  附 `tests/test_presets.py` 3 測試（CRUD 往返、404、EV 排序+收藏篩選），`tests/` 全套 53 綠。
+
+- Phase 5 步驟 2—回測引擎加期望值（EV）指標：`services/backtest_engine.py` 的
+  `_run_on_df` 在原本（總報酬／最大回撤／勝率／Buy&Hold）之外新增 `num_wins`／
+  `num_losses`／`loss_rate_pct`／`avg_win`／`avg_loss`／**`expected_value`（EV／筆）**／
+  `expectancy_pct`（EV 佔本金%）／`profit_factor`（總賺/總賠，無虧損回 None）。
+  純函式、欄位純增量不破壞既有回傳。附 2 個手算驗證測試（兩輪一賺一賠驗 EV=100、
+  無虧損驗 profit_factor=None），`tests/` 全套 50 個全綠。
+  選策略改看 EV 不只看勝率（防「高勝率但一次大賠」陷阱）。
+
+- Phase 5 步驟 1—策略產生 Skill（`.claude/skills/strategy-builder/`）：本專案第一個自製
+  Skill，依漸進式揭露拆成 `SKILL.md`（5 步流程）＋ `references/`（6 落地點與命名規則、
+  避坑清單）＋ `assets/`（策略/文件/測試三骨架）。把「人類講的交易策略」一條龍變成
+  已註冊、有文件、有測試的策略模組。
+- Phase 5 步驟 1 驗證產物—威廉指標策略 `williams_r`（`WilliamsRStrategy`）：純 pandas
+  自算 Williams %R（用 close 近似高低點），超賣(<-80)買、超買(>-20)賣、資料不足/無波動
+  HOLD。完成 6 落地點（策略檔＋註冊＋前端 `constants.js`＋`docs/strategies/williams_r.md`
+  ＋`tests/test_williams_r.py` 3 情境）。`tests/` 全套 48 個全綠。
+
 - Phase 4 收尾—監聽狀態前端可視化：`models/bot.py` 新增 `last_checked_at`，
   `bot_manager` 每輪成功檢查後更新（新增 `_mark_checked`）。`GET /bots` 回傳值加上
   `peak_price`／`last_checked_at`。前端 Bot 卡片新增一行「持倉中·峰值 $X · N 秒前檢查」

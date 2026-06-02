@@ -1,0 +1,40 @@
+# ============================================
+# Albee Stock — Python 依賴套件清單
+# ============================================
+# 安裝方式（在啟動 venv 後）：
+#     pip install -r requirements.txt
+#
+# 版本有鎖定，確保在不同電腦上行為一致、方便搬遷。
+
+# --- Alpaca 交易 / 資料 API（官方新版 SDK） ---
+alpaca-py==0.43.4
+
+# --- 環境變數 ---
+python-dotenv==1.2.2
+
+# --- 資料處理（策略計算用） ---
+pandas==3.0.3
+numpy==2.4.6
+
+# --- Web 框架（Phase 2 Web UI 會用到，先裝起來） ---
+fastapi==0.121.2
+uvicorn[standard]==0.40.0
+
+# --- 資料庫 ORM ---
+sqlalchemy==2.0.45
+
+# --- 資料庫遷移（schema 變更版本化，取代手動 ALTER；未來換 Postgres 也通用） ---
+alembic==1.18.4
+
+# --- 任務排程（讓 Bot 定時跑策略） ---
+apscheduler==3.11.0
+
+# --- LINE 通知 ---
+line-bot-sdk==3.23.0
+
+# --- HTTP 請求（通知、備用） ---
+requests==2.34.2
+
+# --- 測試（開發/CI 用） ---
+pytest==9.0.3
+httpx==0.28.1
