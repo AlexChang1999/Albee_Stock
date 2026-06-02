@@ -15,6 +15,10 @@
 
 ## [未發布]
 
+---
+
+## [0.2.0] - 2026-06-02
+
 ### 新增
 
 - Phase 4 收尾—風控欄位全鏈路接通：`BotCreate` schema 與 `create_bot`／`update_bot`／
