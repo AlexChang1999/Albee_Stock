@@ -22,28 +22,32 @@ if errorlevel 1 (
 
 REM --- 1) 建立虛擬環境 ---
 if exist "venv\Scripts\python.exe" (
-    echo [1/4] venv 已存在，略過建立。
+    echo [1/5] venv 已存在，略過建立。
 ) else (
-    echo [1/4] 建立虛擬環境 venv...
+    echo [1/5] 建立虛擬環境 venv...
     python -m venv venv
 )
 
 REM --- 2) 安裝後端套件 ---
-echo [2/4] 安裝後端套件 ^(requirements.txt^)...
+echo [2/5] 安裝後端套件 ^(requirements.txt^)...
 venv\Scripts\python.exe -m pip install --upgrade pip
 venv\Scripts\python.exe -m pip install -r requirements.txt
 
 REM --- 3) 產生 .env ---
 if exist ".env" (
-    echo [3/4] .env 已存在，略過。^(請自行確認金鑰已填妥^)
+    echo [3/5] .env 已存在，略過。^(請自行確認金鑰已填妥^)
 ) else (
-    echo [3/4] 從 .env.example 複製產生 .env...
+    echo [3/5] 從 .env.example 複製產生 .env...
     copy ".env.example" ".env" >nul
     echo        請用編輯器打開 .env 並填入 Alpaca 金鑰！
 )
 
-REM --- 4) 安裝前端套件 ---
-echo [4/4] 安裝前端套件 ^(npm install^)...
+REM --- 4) 建立/升級資料庫 schema（用 Alembic 遷移） ---
+echo [4/5] 建立/升級資料庫 schema ^(alembic upgrade head^)...
+venv\Scripts\alembic.exe upgrade head
+
+REM --- 5) 安裝前端套件 ---
+echo [5/5] 安裝前端套件 ^(npm install^)...
 cd frontend
 call npm install
 cd ..
