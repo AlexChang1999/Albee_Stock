@@ -24,6 +24,9 @@ async function request(path, options = {}) {
 
 // 把各個 API 包成好懂的函式
 export const api = {
+  // 取得交易環境狀態（模擬／實盤）
+  getStatus: () => request("/status"),
+
   // 取得帳戶資訊
   getAccount: () => request("/account"),
 

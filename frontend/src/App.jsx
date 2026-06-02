@@ -84,6 +84,19 @@ function statRows(stats) {
   ];
 }
 
+// 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
+// 但後端存的是小數（0.10）。下面兩個小工具負責互轉，空白 = null（不啟用該機制）。
+function pctToDecimal(v) {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n / 100 : null;
+}
+function decimalToPct(v) {
+  if (v === null || v === undefined || v === "") return "";
+  // 用 toFixed 收掉浮點誤差（0.03*100 = 3.0000000004），再轉回數字去尾零
+  return Number((Number(v) * 100).toFixed(4));
+}
+
 // 小元件：顯示一個帳戶數字（標籤 + 數值）
 function Stat({ label, value }) {
   return (
@@ -98,6 +111,7 @@ function Stat({ label, value }) {
 
 function App() {
   const [account, setAccount] = useState(null);
+  const [status, setStatus] = useState(null); // 交易環境狀態（模擬／實盤）
   const [bots, setBots] = useState([]);
   const [trades, setTrades] = useState([]);
   const [error, setError] = useState("");
@@ -125,6 +139,11 @@ function App() {
     strategy: "ma_crossover",
     symbol: "",
     trade_amount: 1000,
+    // 風控欄位（填百分比整數，空白 = 不啟用）；interval 為監測頻率（秒）
+    tp: "",
+    sl: "",
+    trail: "",
+    interval: 60,
   });
 
   // 正在編輯的 Bot（null = 沒有打開編輯視窗）
@@ -132,6 +151,11 @@ function App() {
 
   // 從後端載入所有資料
   async function loadAll() {
+    try {
+      setStatus(await api.getStatus());
+    } catch {
+      // 狀態列拿不到不致命，靜默略過（後端沒開時下面帳戶錯誤已會提示）
+    }
     try {
       setAccount(await api.getAccount());
     } catch (e) {
@@ -161,6 +185,10 @@ function App() {
         symbol: form.symbol.toUpperCase(),
         params: {},
         trade_amount: Number(form.trade_amount),
+        take_profit_pct: pctToDecimal(form.tp),
+        stop_loss_pct: pctToDecimal(form.sl),
+        trailing_stop_pct: pctToDecimal(form.trail),
+        check_interval_sec: Number(form.interval) || 60,
       });
       setMessage(`已建立 Bot：${form.name}`);
       setForm({ ...form, name: "", symbol: "" });
@@ -214,7 +242,9 @@ function App() {
         setMessage(`已停止 Bot：${bot.name}`);
       } else {
         await api.startBot(bot.id);
-        setMessage(`已啟動 Bot：${bot.name}（每 60 秒檢查一次）`);
+        setMessage(
+          `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
+        );
       }
       loadAll();
     } catch (e) {
@@ -247,6 +277,10 @@ function App() {
         symbol: editBot.symbol.toUpperCase(),
         params: {},
         trade_amount: Number(editBot.trade_amount),
+        take_profit_pct: pctToDecimal(editBot.tp),
+        stop_loss_pct: pctToDecimal(editBot.sl),
+        trailing_stop_pct: pctToDecimal(editBot.trail),
+        check_interval_sec: Number(editBot.interval) || 60,
       });
       setMessage(`已更新 Bot：${editBot.name}`);
       setEditBot(null); // 關閉視窗
@@ -264,9 +298,27 @@ function App() {
       {/* 頂部標題列 */}
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6">🤖 Albee Stock 交易機器人</Typography>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+            🤖 Albee Stock 交易機器人
+          </Typography>
+          {/* 交易環境標示：模擬=綠、實盤(真錢)=紅 */}
+          {status && (
+            <Chip
+              size="small"
+              color={status.live_armed ? "error" : "success"}
+              label={status.live_armed ? "⚠️ 實盤（真錢）" : "模擬交易"}
+              sx={{ fontWeight: 700 }}
+            />
+          )}
         </Toolbar>
       </AppBar>
+
+      {/* 實盤警告橫幅：雙閘全開時才出現，提醒此刻下單會動真錢 */}
+      {status?.live_armed && (
+        <Alert severity="error" square sx={{ borderRadius: 0 }}>
+          ⚠️ 目前是<strong>實盤模式</strong>，所有下單將動用<strong>真實資金</strong>。請務必確認。
+        </Alert>
+      )}
 
       <Container maxWidth={false} sx={{ py: 4, px: { xs: 2, md: 4 } }}>
         {/* 訊息提示 */}
@@ -377,6 +429,44 @@ function App() {
                   setForm({ ...form, trade_amount: e.target.value })
                 }
               />
+
+              {/* ----- 風控設定（選填，空白 = 不啟用該機制）----- */}
+              <Typography
+                variant="subtitle2"
+                color="text.secondary"
+                sx={{ gridColumn: { sm: "1 / -1" }, mt: 1 }}
+              >
+                風控設定（選填，留空表示不啟用）
+              </Typography>
+              <TextField
+                label="止盈 %"
+                type="number"
+                value={form.tp}
+                onChange={(e) => setForm({ ...form, tp: e.target.value })}
+                helperText="漲多少就賣，例：10 = +10%"
+              />
+              <TextField
+                label="止損 %"
+                type="number"
+                value={form.sl}
+                onChange={(e) => setForm({ ...form, sl: e.target.value })}
+                helperText="跌多少就賣，例：5 = −5%"
+              />
+              <TextField
+                label="追蹤止損 %"
+                type="number"
+                value={form.trail}
+                onChange={(e) => setForm({ ...form, trail: e.target.value })}
+                helperText="從最高價回落多少就賣，例：3"
+              />
+              <TextField
+                label="監測頻率（秒）"
+                type="number"
+                value={form.interval}
+                onChange={(e) => setForm({ ...form, interval: e.target.value })}
+                helperText="啟動後每幾秒檢查一次，預設 60"
+              />
+
               <Button
                 type="submit"
                 variant="contained"
@@ -497,7 +587,16 @@ function App() {
                       <Tooltip title="編輯">
                         <IconButton
                           size="small"
-                          onClick={() => setEditBot({ ...b })}
+                          onClick={() =>
+                            setEditBot({
+                              ...b,
+                              // 後端存小數，編輯框顯示百分比整數
+                              tp: decimalToPct(b.take_profit_pct),
+                              sl: decimalToPct(b.stop_loss_pct),
+                              trail: decimalToPct(b.trailing_stop_pct),
+                              interval: b.check_interval_sec ?? 60,
+                            })
+                          }
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -805,6 +904,43 @@ function App() {
                 value={editBot.trade_amount}
                 onChange={(e) =>
                   setEditBot({ ...editBot, trade_amount: e.target.value })
+                }
+              />
+
+              {/* ----- 風控設定（選填，空白 = 不啟用）----- */}
+              <Typography variant="subtitle2" color="text.secondary">
+                風控設定（選填，留空表示不啟用）
+              </Typography>
+              <TextField
+                label="止盈 %"
+                type="number"
+                value={editBot.tp}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, tp: e.target.value })
+                }
+              />
+              <TextField
+                label="止損 %"
+                type="number"
+                value={editBot.sl}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, sl: e.target.value })
+                }
+              />
+              <TextField
+                label="追蹤止損 %"
+                type="number"
+                value={editBot.trail}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, trail: e.target.value })
+                }
+              />
+              <TextField
+                label="監測頻率（秒）"
+                type="number"
+                value={editBot.interval}
+                onChange={(e) =>
+                  setEditBot({ ...editBot, interval: e.target.value })
                 }
               />
             </Box>

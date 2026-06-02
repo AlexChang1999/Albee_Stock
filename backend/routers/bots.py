@@ -33,6 +33,13 @@ class BotCreate(BaseModel):
     params: dict = {}
     trade_amount: float = 1000.0
 
+    # ----- 風控欄位（Phase 4）-----
+    # 三個百分比皆可不填（None = 不啟用該機制），用小數表示（0.10 = 10%）。
+    take_profit_pct: float | None = None     # 固定止盈
+    stop_loss_pct: float | None = None       # 固定止損
+    trailing_stop_pct: float | None = None   # 追蹤止損
+    check_interval_sec: int = 60             # 監測頻率（秒）
+
 
 # ---------- 內部小工具 ----------
 def _bot_stats(db: Session, bot_id: int) -> dict:
@@ -65,6 +72,10 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
         symbol=payload.symbol.upper(),
         params=payload.params,
         trade_amount=payload.trade_amount,
+        take_profit_pct=payload.take_profit_pct,
+        stop_loss_pct=payload.stop_loss_pct,
+        trailing_stop_pct=payload.trailing_stop_pct,
+        check_interval_sec=payload.check_interval_sec,
     )
     db.add(bot)
     db.commit()
@@ -81,6 +92,10 @@ def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     bot.symbol = payload.symbol.upper()
     bot.params = payload.params
     bot.trade_amount = payload.trade_amount
+    bot.take_profit_pct = payload.take_profit_pct
+    bot.stop_loss_pct = payload.stop_loss_pct
+    bot.trailing_stop_pct = payload.trailing_stop_pct
+    bot.check_interval_sec = payload.check_interval_sec
     db.commit()
     db.refresh(bot)
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
@@ -108,6 +123,10 @@ def list_bots(db: Session = Depends(get_db)):
             "symbol": b.symbol,
             "params": b.params,
             "trade_amount": b.trade_amount,
+            "take_profit_pct": b.take_profit_pct,
+            "stop_loss_pct": b.stop_loss_pct,
+            "trailing_stop_pct": b.trailing_stop_pct,
+            "check_interval_sec": b.check_interval_sec,
             "is_active": b.is_active,
             # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
             "stats": _bot_stats(db, b.id),
@@ -133,13 +152,19 @@ def run_bot_now(bot_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{bot_id}/start")
-def start_bot(bot_id: int, interval: int = 60, db: Session = Depends(get_db)):
-    """啟動 Bot 的定時執行。"""
+def start_bot(bot_id: int, interval: int | None = None, db: Session = Depends(get_db)):
+    """
+    啟動 Bot 的定時執行。
+
+    沒帶 interval 時用 Bot 自己設定的 check_interval_sec（預設 60 秒）；
+    帶了 interval（查詢參數）則臨時覆寫，方便測試不同頻率。
+    """
     bot = _get_bot_or_404(db, bot_id)
     bot.is_active = True
     db.commit()
-    bot_manager.start_bot(bot, interval_seconds=interval)
-    return {"message": f"Bot {bot.name} 已啟動"}
+    seconds = interval if interval is not None else (bot.check_interval_sec or 60)
+    bot_manager.start_bot(bot, interval_seconds=seconds)
+    return {"message": f"Bot {bot.name} 已啟動（每 {seconds} 秒檢查一次）"}
 
 
 @router.post("/{bot_id}/stop")

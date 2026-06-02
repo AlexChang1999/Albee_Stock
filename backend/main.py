@@ -23,9 +23,31 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.database import init_db
+from backend.database import init_db, SessionLocal
+from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
+from backend.bots.bot_manager import bot_manager
 from backend.routers import bots, backtest, orders
+
+
+def _resume_active_bots() -> None:
+    """
+    啟動時把資料庫裡 is_active=True 的 Bot 重新掛回排程。
+
+    排程器（APScheduler）只活在記憶體裡，後端一重啟就清空。
+    若不在這裡重掛，重啟後那些「顯示啟用中」的 Bot 其實不會再跑，
+    狀態與實際行為會對不上。這裡用各 Bot 自己的 check_interval_sec 重建排程。
+    """
+    db = SessionLocal()
+    try:
+        active = db.query(Bot).filter(Bot.is_active.is_(True)).all()
+        for bot in active:
+            seconds = bot.check_interval_sec or 60
+            bot_manager.start_bot(bot, interval_seconds=seconds)
+        if active:
+            print(f"♻️  已恢復 {len(active)} 個啟用中的 Bot 排程")
+    finally:
+        db.close()
 
 
 # lifespan：定義 app「啟動時」與「關閉時」要做的事。
@@ -34,6 +56,7 @@ from backend.routers import bots, backtest, orders
 async def lifespan(app: FastAPI):
     # --- 啟動時 ---
     init_db()  # 把資料庫的表建好（如果還沒建）
+    _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")
     yield
     # --- 關閉時 ---（目前沒事要做，先留空）
@@ -59,6 +82,23 @@ app.add_middleware(
 def root():
     """健康檢查：確認服務有在跑。"""
     return {"message": "Albee Stock 後端運行中", "paper_trading": settings.IS_PAPER}
+
+
+@app.get("/status")
+def get_status():
+    """
+    回傳目前的交易環境狀態，給前端顯示醒目的「模擬／實盤」標示。
+
+    live_armed = True 代表雙閘全開（實盤網址 + 安全閥），此時下單會動真錢。
+    切換環境仍須手動改 .env，這裡只負責「如實顯示」現況，不提供切換按鈕，
+    以保留防手滑的設計。
+    """
+    return {
+        "is_paper": settings.IS_PAPER,            # 是否模擬環境（網址含 paper）
+        "allow_live": settings.ALLOW_LIVE_TRADING,  # 安全閥是否開
+        # 兩道閘都開 = 真的會送真錢單
+        "live_armed": (not settings.IS_PAPER) and settings.ALLOW_LIVE_TRADING,
+    }
 
 
 @app.get("/account")
