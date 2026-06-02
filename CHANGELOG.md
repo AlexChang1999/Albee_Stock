@@ -15,6 +15,11 @@
 
 ## [未發布]
 
+### 文件
+
+- 新增 `docs/phase4-paper-checklist.md`：Phase 4 Paper 連續實跑驗收清單，
+  涵蓋排程／開市判斷／風控出場／重啟恢復／通知／績效／多 Bot 並發，逐項「預期 vs 實際」打勾。
+
 ### 變更
 
 - Phase 4 收尾—降低多 Bot 並發 API 壓力：`alpaca_client.is_market_open()` 加 30 秒
