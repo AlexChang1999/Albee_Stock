@@ -13,6 +13,16 @@
 - buy_and_hold_pct ：同期間「單純買進持有」的報酬率(%)（拿來比較）
 - max_drawdown_pct ：最大回撤(%)，資產從最高點跌下來的最大幅度（風險指標）
 - win_rate_pct     ：勝率(%)，賺錢的賣出次數佔比
+
+期望值（EV）相關 ── Phase 5 新增，挑策略要看這組，不是只看勝率：
+- num_wins / num_losses ：賺錢 / 賠錢的完整買賣（round trip）筆數
+- loss_rate_pct         ：敗率(%)，與 win_rate_pct 對稱
+- avg_win / avg_loss    ：平均每筆賺多少 / 賠多少（金額；avg_loss 取正值表示賠的幅度）
+- expected_value        ：★期望值 EV／筆＝每做一筆交易平均賺賠多少「金額」。
+                          公式 EV = 勝率×平均賺 − 敗率×平均賠 = 總盈虧 / 交易筆數。
+                          EV>0 才有正期望；高勝率但 EV<0（小賺多次、一次大賠）很危險。
+- expectancy_pct        ：EV 佔初始資金的百分比（不同資金規模可互相比較）
+- profit_factor         ：獲利因子＝總賺 / 總賠（>1 才賺錢；無任何虧損時回 None）
 """
 
 import pandas as pd
@@ -89,6 +99,32 @@ def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
     wins = [t for t in sells if t.get("profit", 0) > 0]
     win_rate = (len(wins) / len(sells) * 100) if sells else 0.0
 
+    # --- 期望值（EV）相關指標 ---
+    # 每筆「賣出」就是一次完整買賣（round trip），都帶 profit。
+    n_round_trips = len(sells)
+    profits = [t.get("profit", 0.0) for t in sells]
+    win_profits = [p for p in profits if p > 0]   # 賺的筆（正值）
+    loss_profits = [p for p in profits if p < 0]  # 賠的筆（負值）
+
+    num_wins = len(win_profits)
+    num_losses = len(loss_profits)
+    loss_rate = (num_losses / n_round_trips * 100) if n_round_trips else 0.0
+
+    total_win = sum(win_profits)         # 總獲利金額（正）
+    total_loss = -sum(loss_profits)      # 總虧損金額（取正值表示「賠了多少」）
+
+    # 平均每筆賺 / 賠（avg_loss 取正值）
+    avg_win = (total_win / num_wins) if num_wins else 0.0
+    avg_loss = (total_loss / num_losses) if num_losses else 0.0
+
+    # ★期望值 EV／筆：每做一筆交易平均賺賠多少金額。
+    #   數學上 勝率×平均賺 − 敗率×平均賠 == 總盈虧 / 交易筆數（平手筆計入分母不影響分子）。
+    expected_value = (sum(profits) / n_round_trips) if n_round_trips else 0.0
+    # EV 佔初始資金的百分比，讓不同本金規模可互相比較
+    expectancy = (expected_value / initial_cash * 100) if initial_cash else 0.0
+    # 獲利因子：總賺 / 總賠；完全沒虧損（分母 0）時回 None（前端顯示「無虧損」）
+    profit_factor = (total_win / total_loss) if total_loss > 0 else None
+
     # Buy & Hold 對照：第一天買進、最後一天才賣的報酬率
     if len(df) > 0:
         first_price = float(df.iloc[0]["close"])
@@ -104,8 +140,17 @@ def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
         "buy_and_hold_pct": round(bh_return, 2),
         "max_drawdown_pct": round(max_dd, 2),
         "num_trades": len(trades),
-        "num_round_trips": len(sells),
+        "num_round_trips": n_round_trips,
         "win_rate_pct": round(win_rate, 2),
+        # --- 期望值（EV）相關 ---
+        "num_wins": num_wins,
+        "num_losses": num_losses,
+        "loss_rate_pct": round(loss_rate, 2),
+        "avg_win": round(avg_win, 2),
+        "avg_loss": round(avg_loss, 2),
+        "expected_value": round(expected_value, 2),
+        "expectancy_pct": round(expectancy, 2),
+        "profit_factor": round(profit_factor, 2) if profit_factor is not None else None,
         "trades": trades,
         "equity_curve": [round(e, 2) for e in equity_curve],
     }

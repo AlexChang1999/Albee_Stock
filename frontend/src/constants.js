@@ -14,4 +14,5 @@ export const STRATEGIES = [
   { value: "donchian", label: "唐奇安通道突破" },
   { value: "stochastic", label: "KD 隨機指標" },
   { value: "momentum", label: "動量" },
+  { value: "williams_r", label: "威廉指標" },
 ];
