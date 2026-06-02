@@ -15,6 +15,15 @@
 
 ## [未發布]
 
+### 文件
+
+- README 全面更新至現況：技術棧補 Alembic／Discord、進度表改為 Phase 1–4 ✅
+  並新增 Phase 5（規劃中），策略 4→7 種、API/專案結構/測試指令對齊現況。
+- CLAUDE.md 開發階段表：Phase 3／4 標完成、新增 Phase 5 列。
+- 新增 `docs/roadmap-strategy-workbench.md`：Phase 5 設計藍圖（策略產生 Skill、
+  右側策略工作台 + Python 一鍵回測 + 期望值 EV 最優、Claude 思考助手讀回測歷史變聰明、
+  `StrategyPreset`／`BacktestRun` 資料模型、全程 Paper 安全鐵則、建置順序與驗證）。
+
 ### 新增
 
 - Phase 4 收尾—監聽狀態前端可視化：`models/bot.py` 新增 `last_checked_at`，

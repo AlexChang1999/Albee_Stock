@@ -110,8 +110,9 @@ Albee_Stock/
 |------|------|------|
 | Phase 1 | 核心基礎：資料串接 + 策略 Bot + 通知 | ✅ 完成 |
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成（前端 + TradingView 看板 + 回測引擎） |
-| Phase 3 | 多 Bot 管理 + 更多策略 | 🚧 進行中（已完成：Bot CRUD/啟停、績效指標、7 種策略、分頁式 UI、CI） |
-| Phase 4 | 自動交易監聽系統 + 實盤切換 | 🚧 進行中（已完成：Bot 風控欄位、止盈/止損/追蹤止損出場、開市判斷、實盤安全閥、Alembic 遷移） |
+| Phase 3 | 多 Bot 管理 + 更多策略 | ✅ 完成（Bot CRUD/啟停、績效指標、7 種策略、分頁式 UI、CI） |
+| Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成（風控欄位 + 止盈/止損/追蹤止損出場、追蹤止損最高價持久化、開市判斷、實盤雙閘安全閥、Alembic 遷移、監聽狀態可視化、Discord 通知） |
+| Phase 5 | 策略工作台 + Claude 思考助手 + 期望值最優 | 🚧 規劃中（見 [`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)） |
 
 ## 重要規則
 
