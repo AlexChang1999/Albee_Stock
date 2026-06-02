@@ -21,6 +21,7 @@ import { api } from "../api";
 
 export function useDashboardData() {
   const [account, setAccount] = useState(null);
+  const [status, setStatus] = useState(null); // 交易環境狀態（模擬／實盤）
   const [bots, setBots] = useState([]);
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true); // 第一次載入預設為 true
@@ -32,6 +33,12 @@ export function useDashboardData() {
   const reload = useCallback(async () => {
     setLoading(true);
     setLoadError("");
+    try {
+      // 交易環境狀態：拿不到不致命（後端沒開時下面帳戶錯誤已會提示），靜默略過
+      setStatus(await api.getStatus());
+    } catch {
+      /* 略過 */
+    }
     try {
       setAccount(await api.getAccount());
     } catch (e) {
@@ -62,5 +69,5 @@ export function useDashboardData() {
     reload();
   }, [reload]);
 
-  return { account, bots, trades, loading, loadError, reload };
+  return { account, status, bots, trades, loading, loadError, reload };
 }

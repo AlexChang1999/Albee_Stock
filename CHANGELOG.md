@@ -15,7 +15,24 @@
 
 ## [未發布]
 
+---
+
+## [0.2.0] - 2026-06-02
+
 ### 新增
+
+- Phase 4 收尾—風控欄位全鏈路接通：`BotCreate` schema 與 `create_bot`／`update_bot`／
+  `list_bots` 補上 `take_profit_pct`／`stop_loss_pct`／`trailing_stop_pct`／
+  `check_interval_sec`，使用者可從前端設定／編輯風控。前端建立 Bot 表單與編輯彈窗
+  新增「止盈 %／止損 %／追蹤止損 %／監測頻率（秒）」欄位（填百分比整數，空白=不啟用，
+  送出前轉成後端要的小數）。
+- Phase 4 收尾—排程改用各 Bot 的 `check_interval_sec`：`POST /bots/{id}/start`
+  的 `interval` 改為選填，沒帶就用該 Bot 設定的頻率（預設 60 秒）。
+- Phase 4 收尾—重啟自動恢復排程：`main.py` lifespan 啟動時把 `is_active=True` 的
+  Bot 用各自頻率重新掛回 APScheduler，修正後端重啟後「顯示啟用但其實沒在跑」的狀態落差。
+- Phase 4 收尾—實盤狀態顯示：新增 `GET /status`（回 `is_paper`／`allow_live`／
+  `live_armed`）。前端頂部加「模擬交易（綠）／⚠️ 實盤·真錢（紅）」標示 Chip，
+  雙閘全開時再加一條紅色警告橫幅。切換環境仍須手動改 `.env`（保留防手滑的雙閘設計）。
 
 - 接入 **Alpaca 官方 MCP Server**（[alpacahq/alpaca-mcp-server](https://github.com/alpacahq/alpaca-mcp-server)）：
   讓 Claude 能用自然語言查帳戶/報價/歷史資料、下 Paper 測試單，加速開發與策略研究。

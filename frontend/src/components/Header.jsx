@@ -1,13 +1,15 @@
 // ============================================================
 // Header：頂部標題列（霓虹玻璃 sticky header）
 // ============================================================
-// 純展示元件，沒有任何狀態或邏輯，所以不需要 props。
+// props：
+//   status — 交易環境狀態物件 { is_paper, allow_live, live_armed }（可為 null）
+//            用來在右側顯示「模擬交易（綠）／⚠️ 實盤·真錢（紅）」標示。
 // sticky 讓它捲動時固定在最上方。
 
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, Chip } from "@mui/material";
 import { NEON } from "../theme";
 
-export default function Header() {
+export default function Header({ status }) {
   return (
     <Box
       component="header"
@@ -68,6 +70,16 @@ export default function Header() {
           美股自動交易機器人
         </Typography>
       </Box>
+
+      {/* 交易環境標示：模擬=綠、實盤(真錢)=紅。靠右對齊（ml:auto 推到最右） */}
+      {status && (
+        <Chip
+          size="small"
+          color={status.live_armed ? "error" : "success"}
+          label={status.live_armed ? "⚠️ 實盤（真錢）" : "模擬交易"}
+          sx={{ ml: "auto", fontWeight: 700 }}
+        />
+      )}
     </Box>
   );
 }

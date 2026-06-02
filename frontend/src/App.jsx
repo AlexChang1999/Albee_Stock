@@ -44,10 +44,23 @@ import TradesTable from "./components/TradesTable";
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 
+// 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
+// 但後端存的是小數（0.10）。下面兩個小工具負責互轉，空白 = null（不啟用該機制）。
+function pctToDecimal(v) {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n / 100 : null;
+}
+function decimalToPct(v) {
+  if (v === null || v === undefined || v === "") return "";
+  // 用 toFixed 收掉浮點誤差（0.03*100 = 3.0000000004），再轉回數字去尾零
+  return Number((Number(v) * 100).toFixed(4));
+}
+
 function App() {
-  // 儀表板資料（account/bots/trades）與「重新載入」都交給自訂 Hook 管理。
+  // 儀表板資料（account/status/bots/trades）與「重新載入」都交給自訂 Hook 管理。
   // App 不必再自己寫一堆 useState 與 loadAll，畫面邏輯更乾淨。
-  const { account, bots, trades, loading, loadError, reload } =
+  const { account, status, bots, trades, loading, loadError, reload } =
     useDashboardData();
 
   // 這兩個是「操作」產生的訊息（建立/刪除/啟停 Bot 的結果），跟資料載入分開管理。
@@ -76,6 +89,11 @@ function App() {
     strategy: "ma_crossover",
     symbol: "",
     trade_amount: 1000,
+    // 風控欄位（填百分比整數，空白 = 不啟用）；interval 為監測頻率（秒）
+    tp: "",
+    sl: "",
+    trail: "",
+    interval: 60,
   });
 
   // 正在編輯的 Bot（null = 沒有打開編輯視窗）
@@ -96,6 +114,10 @@ function App() {
         symbol: form.symbol.toUpperCase(),
         params: {},
         trade_amount: Number(form.trade_amount),
+        take_profit_pct: pctToDecimal(form.tp),
+        stop_loss_pct: pctToDecimal(form.sl),
+        trailing_stop_pct: pctToDecimal(form.trail),
+        check_interval_sec: Number(form.interval) || 60,
       });
       setMessage(`已建立 Bot：${form.name}`);
       setForm({ ...form, name: "", symbol: "" });
@@ -149,7 +171,9 @@ function App() {
         setMessage(`已停止 Bot：${bot.name}`);
       } else {
         await api.startBot(bot.id);
-        setMessage(`已啟動 Bot：${bot.name}（每 60 秒檢查一次）`);
+        setMessage(
+          `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
+        );
       }
       reload();
     } catch (e) {
@@ -183,6 +207,10 @@ function App() {
         symbol: editBot.symbol.toUpperCase(),
         params: {},
         trade_amount: Number(editBot.trade_amount),
+        take_profit_pct: pctToDecimal(editBot.tp),
+        stop_loss_pct: pctToDecimal(editBot.sl),
+        trailing_stop_pct: pctToDecimal(editBot.trail),
+        check_interval_sec: Number(editBot.interval) || 60,
       });
       setMessage(`已更新 Bot：${editBot.name}`);
       setEditBot(null); // 關閉視窗
@@ -197,8 +225,15 @@ function App() {
       {/* CssBaseline：統一各瀏覽器的預設樣式 */}
       <CssBaseline />
 
-      {/* 頂部標題列 */}
-      <Header />
+      {/* 頂部標題列（右側顯示模擬／實盤標示） */}
+      <Header status={status} />
+
+      {/* 實盤警告橫幅：雙閘全開時才出現，提醒此刻下單會動真錢 */}
+      {status?.live_armed && (
+        <Alert severity="error" square sx={{ borderRadius: 0 }}>
+          ⚠️ 目前是<strong>實盤模式</strong>，所有下單將動用<strong>真實資金</strong>。請務必確認。
+        </Alert>
+      )}
 
       {/* 載入中時，在標題列下方顯示一條細進度條（抓資料時才出現） */}
       {loading && <LinearProgress />}
@@ -231,7 +266,16 @@ function App() {
               bots={bots}
               onToggle={handleToggleActive}
               onRun={handleRun}
-              onEdit={setEditBot}
+              onEdit={(b) =>
+                setEditBot({
+                  ...b,
+                  // 後端存小數，編輯框顯示百分比整數
+                  tp: decimalToPct(b.take_profit_pct),
+                  sl: decimalToPct(b.stop_loss_pct),
+                  trail: decimalToPct(b.trailing_stop_pct),
+                  interval: b.check_interval_sec ?? 60,
+                })
+              }
               onDelete={setDeleteTarget}
             />
             <BacktestPanel

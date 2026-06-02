@@ -11,6 +11,7 @@
 
 import {
   Box,
+  Typography,
   TextField,
   MenuItem,
   Button,
@@ -65,6 +66,37 @@ export default function EditBotDialog({ editBot, setEditBot, onSave }) {
               value={editBot.trade_amount}
               onChange={(e) =>
                 setEditBot({ ...editBot, trade_amount: e.target.value })
+              }
+            />
+
+            {/* ----- 風控設定（選填，空白 = 不啟用）----- */}
+            <Typography variant="subtitle2" color="text.secondary">
+              風控設定（選填，留空表示不啟用）
+            </Typography>
+            <TextField
+              label="止盈 %"
+              type="number"
+              value={editBot.tp ?? ""}
+              onChange={(e) => setEditBot({ ...editBot, tp: e.target.value })}
+            />
+            <TextField
+              label="止損 %"
+              type="number"
+              value={editBot.sl ?? ""}
+              onChange={(e) => setEditBot({ ...editBot, sl: e.target.value })}
+            />
+            <TextField
+              label="追蹤止損 %"
+              type="number"
+              value={editBot.trail ?? ""}
+              onChange={(e) => setEditBot({ ...editBot, trail: e.target.value })}
+            />
+            <TextField
+              label="監測頻率（秒）"
+              type="number"
+              value={editBot.interval ?? 60}
+              onChange={(e) =>
+                setEditBot({ ...editBot, interval: e.target.value })
               }
             />
           </Box>
