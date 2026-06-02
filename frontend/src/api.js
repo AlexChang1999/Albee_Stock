@@ -4,8 +4,14 @@
 // 把「跟後端溝通」的程式都集中在這裡，元件只要呼叫 api.xxx() 即可，
 // 不用在每個頁面重複寫 fetch 的細節。
 
-// 後端伺服器網址（開發時固定在本機 8000 埠）
-const BASE_URL = "http://127.0.0.1:8000";
+// 後端伺服器網址。
+// 優先讀環境變數 VITE_API_URL（搬電腦／部署時不用改程式碼），
+// 沒設定時退回本機預設值，所以新手「什麼都不設定」也能直接跑。
+//
+// 觀念：Vite 只會把「VITE_ 開頭」的環境變數送進前端程式碼，
+// 透過 import.meta.env.VITE_xxx 取用。要覆寫就在 frontend/ 建 .env.local
+// 寫一行 VITE_API_URL=...（.env.local 已被 .gitignore 忽略，不會上傳）。
+const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 // 共用的請求函式：負責組網址、帶 JSON header、處理錯誤
 async function request(path, options = {}) {
