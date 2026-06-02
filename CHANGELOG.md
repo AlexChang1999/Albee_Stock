@@ -15,6 +15,14 @@
 
 ## [未發布]
 
+### 變更
+
+- Phase 4 收尾—追蹤止損最高價持久化：`models/bot.py` 新增 `peak_price` 欄位，
+  `bot_manager.py` 把原本記憶體 dict `_peak_prices` 改成寫資料庫（新增 `_persist_peak`）。
+  修正後端重啟後追蹤止損最高價歸零、保護中斷一段時間的問題。
+  附 Alembic 遷移 `a1b2c3d4e5f6_add_bot_peak_price`，並補 2 個測試（持久化往返、
+  追蹤止損讀持久化最高價），`tests/` 共 40 個全綠。
+
 ---
 
 ## [0.2.0] - 2026-06-02
