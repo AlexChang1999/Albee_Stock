@@ -15,6 +15,12 @@
 
 ## [未發布]
 
+### 新增
+
+- Phase 4 收尾—通知擴充 Discord：`services/notifier.py` 重構成多管道（LINE + Discord），
+  各管道獨立、任一失敗不影響其他。Discord 走最簡單的 Webhook（`DISCORD_WEBHOOK_URL`，
+  `.env.example` 已補欄位說明），沒設定就靜默跳過。附 3 個測試（mock requests，不真發）。
+
 ### 文件
 
 - 新增 `docs/phase4-paper-checklist.md`：Phase 4 Paper 連續實跑驗收清單，
