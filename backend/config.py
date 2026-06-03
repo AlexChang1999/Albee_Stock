@@ -1,6 +1,5 @@
 """
 設定管理
-========
 集中管理所有「設定值」與「環境變數」的地方。
 
 為什麼要有這個檔案？
@@ -79,6 +78,12 @@ class Settings:
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。
     # 數字越小越即時、但越耗 Alpaca 的 REST 額度；5 秒對學習/觀察很夠用。
     QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
+    # --- LLM 外送閘（隱私安全閥，預設關）---
+    # 助手會把「策略方案 + 回測歷史 + 探討筆記」注入 prompt 當記憶。
+    # 若 LLM_BASE_URL 指向**外部雲端**服務，這些資料就會離開本機、送到第三方。
+    # 仿照實盤雙閘的精神：預設只允許本機（localhost/127.0.0.1）。
+    # 要用雲端供應商，必須明確把這個設成 true，等於「我知道資料會外送」。
+    LLM_ALLOW_CLOUD: bool = os.getenv("LLM_ALLOW_CLOUD", "false").lower() in ("1", "true", "yes")
 
     # --- 探討（檢討）檔案記憶（Phase 5）---
     # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，

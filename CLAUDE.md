@@ -147,6 +147,7 @@ LINE_CHANNEL_SECRET=你的_LINE_Secret
 LLM_BASE_URL=http://localhost:11434/v1   # Ollama；換 Gemini/Groq 等只改這三行
 LLM_API_KEY=ollama                        # 本機 Ollama 隨意填；雲端供應商填真金鑰
 LLM_MODEL=llama3.1                        # 想用別的本機模型改這裡
+LLM_ALLOW_CLOUD=false                     # 外送閘：非本機 LLM 須設 true 才放行（防策略資料外洩）
 EXPLORATIONS_DIR=                         # 探討檔案記憶資料夾（留空＝專案根 explorations/）
 ```
 
