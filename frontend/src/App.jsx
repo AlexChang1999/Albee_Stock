@@ -45,6 +45,7 @@ import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import StrategyWorkbench from "./components/StrategyWorkbench";
 import LiveQuote from "./components/LiveQuote";
+import FundamentalsPanel from "./components/FundamentalsPanel";
 
 // 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
 // 但後端存的是小數（0.10）。下面兩個小工具負責互轉，空白 = null（不啟用該機制）。
@@ -262,6 +263,7 @@ function App() {
         <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 3 }}>
           <Tab label="儀表板" />
           <Tab label="K 線圖" />
+          <Tab label="基本面" />
         </Tabs>
 
         {/* ===== 儀表板分頁 ===== */}
@@ -354,6 +356,9 @@ function App() {
             </Typography>
           </Box>
         )}
+
+        {/* ===== 基本面分頁 ===== */}
+        {tab === 2 && <FundamentalsPanel />}
         </Container>
 
         {/* 右側策略工作台（自管資料流，可收合／橫向拉寬） */}

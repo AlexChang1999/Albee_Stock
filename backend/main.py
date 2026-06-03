@@ -27,7 +27,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals
 
 
 def _resume_active_bots() -> None:
@@ -124,3 +124,4 @@ app.include_router(orders.router)
 app.include_router(presets.router)
 app.include_router(chat.router)
 app.include_router(quotes.router)
+app.include_router(fundamentals.router)

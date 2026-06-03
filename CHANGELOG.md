@@ -17,6 +17,15 @@
 
 ### 新增
 
+- 基本面 / 財報 / 新聞（yfinance）：前端新增「基本面」分頁，查股票代號即顯示公司基本資料
+  （市值/PE/EPS/產業/簡介…）、財報三表（損益/資產負債/現金流，可切年度/季度）、配息與分割
+  歷史、相關新聞。後端 `backend/services/fundamentals.py`（抽出 `_clean`／`_statement_to_records`
+  ／`_normalize_news` 純函式，處理 NaN/numpy/Timestamp 不能進 JSON 的問題、相容新舊版 yfinance
+  新聞結構）、`backend/routers/fundamentals.py`（`GET /fundamentals/{symbol}` 及
+  `/financials`(?period=annual|quarterly)、`/news`、`/actions`）。前端
+  `components/FundamentalsPanel.jsx` + `utils/number.js`（大數字縮寫 T/B/M/K）。附
+  `tests/test_fundamentals.py` 6 測試、`utils/number.test.jsx` 5 測試。後端 75 綠、前端 24 綠。
+
 - 即時報價 WebSocket 推送：前端 K 線圖分頁新增即時報價，價格依漲/跌變色、即時跳動。
   架構為「後端單一連線 → 扇出多個前端」（避開 Alpaca 免費版一帳戶一連線限制）：
   後端 `backend/services/quote_stream.py`（`QuoteHub`：訂閱簿記 + 背景輪詢，沒人看時自動停、
