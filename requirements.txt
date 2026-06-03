@@ -16,6 +16,9 @@ python-dotenv==1.2.2
 pandas==3.0.3
 numpy==2.4.6
 
+# --- 第二資料源（免費、無金鑰；OpenBB 底層也是用它） ---
+yfinance==1.4.1
+
 # --- Web 框架（Phase 2 Web UI 會用到，先裝起來） ---
 fastapi==0.121.2
 uvicorn[standard]==0.40.0

@@ -15,6 +15,17 @@
 
 ## [未發布]
 
+### 新增
+
+- 第二資料源 yfinance（OpenBB 輕量替代）：原想裝 OpenBB，但實測其 core 要求 `fastapi ^0.128.0`
+  會頂升本專案鎖的 `fastapi==0.121.2`、且整包拉幾十個 provider 擴充，風險高。改裝免金鑰的
+  `yfinance==1.4.1`（OpenBB 底層也用它），寫成與 `alpaca_client.get_bars` **完全同契約**的
+  `backend/services/yfinance_client.py`（含可離線測試的純函式 `_normalize`）。新增
+  `backend/services/market_data.py` 當資料源分派器（`source="alpaca"`（預設）/`"yfinance"`）。
+  回測接上：`run_backtest` 加選填 `source` 參數、`POST /backtest` 請求模型加選填 `source`，
+  **預設仍走 Alpaca、向後相容**；Bot 即時交易路徑不動（先研究、不碰下單）。附
+  `tests/test_yfinance_client.py` 3 測試（欄位契約／排序索引／空資料）。
+
 ### 文件
 
 - README 全面更新至現況：技術棧補 Alembic／Discord、進度表改為 Phase 1–4 ✅
