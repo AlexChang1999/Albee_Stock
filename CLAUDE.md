@@ -29,6 +29,7 @@
 | 排程 | apscheduler |
 | 資料庫 ORM | sqlalchemy |
 | 環境變數 | python-dotenv |
+| LLM 助手 | openai（OpenAI 相容 SDK，預設指向本機 Ollama，免費；換供應商只改 `.env`） |
 
 ## 專案結構（現況）
 
@@ -58,15 +59,20 @@ Albee_Stock/
 │   ├── routers/           # API 路由（依功能拆檔）
 │   │   ├── bots.py        # Bot 管理（CRUD/啟停/執行/績效）
 │   │   ├── backtest.py    # 回測 API
-│   │   └── orders.py      # 交易紀錄 API
+│   │   ├── orders.py      # 交易紀錄 API
+│   │   ├── presets.py     # 策略方案 CRUD + 一鍵回測 + 回測歷史（依 EV 排序）
+│   │   └── chat.py        # 本機 LLM 思考助手（對話 + 兩段式事後檢討）
 │   ├── models/            # SQLAlchemy 資料模型
 │   │   ├── bot.py         # Bot 模型
-│   │   └── trade.py       # 交易紀錄模型
+│   │   ├── trade.py       # 交易紀錄模型
+│   │   ├── strategy_preset.py # 策略方案（參數組合）
+│   │   └── backtest_run.py    # 回測歷史（含 EV 指標 + 檢討摘要）
 │   ├── services/          # 業務邏輯
 │   │   ├── alpaca_client.py   # Alpaca API 封裝（延遲初始化）
-│   │   ├── backtest_engine.py # 回測引擎
+│   │   ├── backtest_engine.py # 回測引擎（含期望值 EV）
 │   │   ├── performance.py     # Bot 績效指標計算
-│   │   └── notifier.py        # 通知服務（LINE 等）
+│   │   ├── notifier.py        # 通知服務（LINE 等）
+│   │   └── explorations.py    # 探討/檢討檔案記憶（INDEX 路標 + 內容檔，防路徑穿越）
 │   ├── strategies/        # 交易策略模組（每個策略一個檔案）
 │   │   ├── base.py        # 策略基底類別
 │   │   ├── ma_crossover.py    # 均線交叉
@@ -75,9 +81,11 @@ Albee_Stock/
 │   │   ├── bollinger.py       # 布林通道
 │   │   ├── donchian.py        # 唐奇安通道（突破）
 │   │   ├── momentum.py        # 動量
-│   │   └── stochastic.py      # KD 隨機指標
+│   │   ├── stochastic.py      # KD 隨機指標
+│   │   └── williams_r.py      # 威廉指標 %R
 │   └── bots/
 │       └── bot_manager.py # 管理所有 Bot 的啟停
+├── explorations/         # 思考助手「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔，進 git）
 ├── frontend/              # React 前端（Vite，已模組化拆分）
 │   ├── .env.example          # 前端環境變數範本（VITE_API_URL）
 │   └── src/
@@ -91,6 +99,7 @@ Albee_Stock/
 │       │   ├── Header / AccountCard / CreateBotForm / BotList
 │       │   ├── BacktestPanel / TradesTable / EditBotDialog
 │       │   ├── ConfirmDialog / Stat
+│       │   ├── StrategyWorkbench  # 右側可伸縮/收合策略工作台（方案/回測/EV歷史/LLM助手）
 │       │   └── *.test.jsx     # 元件測試（Vitest + RTL）
 │       ├── hooks/             # 自訂 Hook
 │       │   └── useDashboardData.js  # 載入 account/bots/trades
@@ -110,9 +119,9 @@ Albee_Stock/
 |------|------|------|
 | Phase 1 | 核心基礎：資料串接 + 策略 Bot + 通知 | ✅ 完成 |
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成（前端 + TradingView 看板 + 回測引擎） |
-| Phase 3 | 多 Bot 管理 + 更多策略 | ✅ 完成（Bot CRUD/啟停、績效指標、7 種策略、分頁式 UI、CI） |
+| Phase 3 | 多 Bot 管理 + 更多策略 | ✅ 完成（Bot CRUD/啟停、績效指標、8 種策略、分頁式 UI、CI） |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成（風控欄位 + 止盈/止損/追蹤止損出場、追蹤止損最高價持久化、開市判斷、實盤雙閘安全閥、Alembic 遷移、監聽狀態可視化、Discord 通知） |
-| Phase 5 | 策略工作台 + Claude 思考助手 + 期望值最優 | 🚧 規劃中（見 [`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)） |
+| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地：策略工作台 UI、Preset CRUD、EV 回測歷史、本機 Ollama 助手、explorations 檔案記憶；roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)） |
 
 ## 重要規則
 
@@ -133,7 +142,17 @@ ALPACA_BASE_URL=https://paper-api.alpaca.markets  # Paper Trading
 ALLOW_LIVE_TRADING=false  # 實盤安全閥：true 才允許真錢下單（預設關）
 LINE_CHANNEL_ACCESS_TOKEN=你的_LINE_Token
 LINE_CHANNEL_SECRET=你的_LINE_Secret
+
+# 思考助手用的 LLM（OpenAI 相容介面；預設本機 Ollama，免費、離線）
+LLM_BASE_URL=http://localhost:11434/v1   # Ollama；換 Gemini/Groq 等只改這三行
+LLM_API_KEY=ollama                        # 本機 Ollama 隨意填；雲端供應商填真金鑰
+LLM_MODEL=llama3.1                        # 想用別的本機模型改這裡
+EXPLORATIONS_DIR=                         # 探討檔案記憶資料夾（留空＝專案根 explorations/）
 ```
+
+> **LLM 助手定位**：只做策略「設計/微調/事後檢討」與讀回測歷史，**無**下單/啟停 Bot/
+> 改實盤安全閥/跑 shell 的能力。預設本機 Ollama（須先 `ollama serve` + `ollama pull llama3.1`），
+> 沒裝/連不上時 API 回優雅 400 提示，不會卡住其他功能。
 
 ## 常用指令
 

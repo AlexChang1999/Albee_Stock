@@ -11,9 +11,10 @@
 - **前端**：React (Vite) + Material UI
 - **資料庫**：SQLite（用 **Alembic** 做版本化遷移，未來可換 PostgreSQL）
 - **交易/資料 API**：[Alpaca Markets](https://alpaca.markets)（`alpaca-py` 官方 SDK）
-- **回測**：自製 walk-forward 回測引擎
+- **回測**：自製 walk-forward 回測引擎（含**期望值 EV** 指標）
 - **排程**：APScheduler
 - **通知**：LINE Messaging API、Discord Webhook（選用）
+- **LLM 助手**：OpenAI 相容介面，預設接**本機 Ollama**（免費、離線），可改 `.env` 換供應商
 
 ## 目前進度
 
@@ -21,19 +22,25 @@
 |------|------|------|
 | Phase 1 | 核心基礎：資料串接 + 策略 Bot + 通知 | ✅ 完成 |
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成 |
-| Phase 3 | 多 Bot 管理 + 更多策略（7 種） | ✅ 完成 |
+| Phase 3 | 多 Bot 管理 + 更多策略（8 種） | ✅ 完成 |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成 |
-| Phase 5 | 策略工作台 + Claude 思考助手 + 期望值最優 | 🚧 規劃中 |
+| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地） |
 
-**已完成**：專案骨架、**7 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量）、
+**已完成**：專案骨架、**8 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標）、
 Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）、walk-forward 回測引擎、
 **風控出場**（止盈/止損/追蹤止損，最高價持久化）、**開市判斷**、**實盤雙閘安全閥**、
 **監聽狀態可視化**（最後檢查時間/持倉峰值）、Alembic 遷移、分頁式 React 前端（模組化）、
 前後端單元測試、GitHub Actions CI。
 
-**Phase 5 規劃**：見 [`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)
-（右側可伸縮「策略工作台」、Python 一鍵回測、用**期望值 EV** 而非勝率挑最優策略、
-Claude 助手負責設計/微調/事後檢討並讀回測歷史越來越聰明）。
+**Phase 5 已落地**（roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)）：
+- 右側可伸縮 / 可收合「**策略工作台**」（`StrategyWorkbench`）
+- **策略方案（Preset）** CRUD + 一鍵 Python 回測，結果寫入 `backtest_runs`
+- 回測歷史用**期望值 EV**（非勝率）排序挑最優，含 profit factor、expectancy
+- **本機 LLM 思考助手**（預設 Ollama，免費）：設計 / 微調 / 事後檢討
+- **檔案化探討記憶** `explorations/`：每次檢討存一檔 + `INDEX.md` 路標，
+  助手先掃路標挑相關舊探討再寫新檢討（兩段式、讀歷史越來越聰明）
+
+**規劃中**：見 roadmap 後段（自動套用最優參數、批次掃描、更多策略）。
 
 ## 安裝與設定
 
@@ -98,6 +105,15 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 - `POST /backtest`：對某策略跑回測
 - `GET /trades`：查交易紀錄
 
+**策略工作台（Phase 5）**
+
+- `GET/POST/PUT/DELETE /presets`：策略方案（參數組合）CRUD
+- `POST /presets/{id}/backtest`：用方案跑回測並存入歷史
+- `GET /backtest-runs`：回測歷史（依**期望值 EV** 排序，可篩最愛）
+- `PUT /backtest-runs/{id}/favorite`：標記/取消最愛
+- `POST /chat`：與本機 LLM 助手對話（注入帳戶/方案/EV歷史/探討路標當上下文）
+- `POST /chat/postmortem`：對某筆回測做事後檢討，寫入 `explorations/` 檔案記憶
+
 ### 建立 Bot 的範例（POST /bots）
 
 ```json
@@ -114,7 +130,7 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 }
 ```
 
-可用的 `strategy`：`ma_crossover`、`rsi`、`macd`、`bollinger`、`donchian`、`stochastic`、`momentum`
+可用的 `strategy`：`ma_crossover`、`rsi`、`macd`、`bollinger`、`donchian`、`stochastic`、`momentum`、`williams_r`
 
 > 風控欄位（`take_profit_pct`／`stop_loss_pct`／`trailing_stop_pct`）皆為小數百分比、可不填（None=不啟用）。
 
@@ -127,18 +143,19 @@ Albee_Stock/
 │   ├── database.py          # SQLite 連線
 │   ├── main.py              # FastAPI 入口（CORS + 掛 router + lifespan 恢復排程）
 │   ├── test_connection.py   # Alpaca 連線測試
-│   ├── routers/             # API 路由（bots / backtest / orders）
-│   ├── models/              # 資料模型（Bot、TradeLog）
-│   ├── services/            # Alpaca 封裝、回測引擎、績效、風控、通知
-│   ├── strategies/          # 7 種交易策略 + 註冊表
+│   ├── routers/             # API 路由（bots / backtest / orders / presets / chat）
+│   ├── models/              # 資料模型（Bot、TradeLog、StrategyPreset、BacktestRun）
+│   ├── services/            # Alpaca 封裝、回測引擎、績效、風控、通知、探討檔案記憶
+│   ├── strategies/          # 8 種交易策略 + 註冊表
 │   └── bots/                # Bot 管理器（執行 + 排程）
 ├── frontend/                # React 前端（Vite，模組化）
 │   └── src/
 │       ├── api.js           # 後端 API 呼叫層（讀 VITE_API_URL）
 │       ├── App.jsx          # 主畫面編排層
-│       ├── components/      # 畫面區塊元件 + 測試
+│       ├── components/      # 畫面區塊元件 + 測試（含 StrategyWorkbench 策略工作台）
 │       ├── hooks/ utils/    # 自訂 Hook、純函式工具（好測試）
 │       └── ...
+├── explorations/            # 思考助手的「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔）
 ├── alembic/                 # 資料庫遷移
 ├── tests/                   # 後端單元測試（pytest）
 ├── docs/                    # 專案文件（skill 守則、roadmap、驗收清單…）
