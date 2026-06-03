@@ -85,6 +85,31 @@ class Settings:
     # 要用雲端供應商，必須明確把這個設成 true，等於「我知道資料會外送」。
     LLM_ALLOW_CLOUD: bool = os.getenv("LLM_ALLOW_CLOUD", "false").lower() in ("1", "true", "yes")
 
+    # --- AI 策略探勘 / 漏斗式篩選（改版 Phase 2）---
+    # 盤前海選的候選股池（逗號分隔）。第一層用量價先粗篩，第二層才動用本機 Ollama，
+    # 避免一次對幾百檔跑 LLM 把本機算力榨乾（漏斗式：先便宜後昂貴）。
+    SCREENER_WATCHLIST: str = os.getenv(
+        "SCREENER_WATCHLIST",
+        "AAPL,MSFT,NVDA,TSLA,AMZN,GOOGL,META,AMD,NFLX,INTC",
+    )
+    # 第一層量能門檻：最新一根的成交量 > 近 20 日均量 × 此倍數，才算「爆量」入選。
+    SCREENER_VOLUME_RATIO: float = float(os.getenv("SCREENER_VOLUME_RATIO", "2.5"))
+    # 第一層最多放幾檔進第二層（控制 LLM 呼叫次數，建議 5~10）。
+    SCREENER_TOP_N: int = int(os.getenv("SCREENER_TOP_N", "8"))
+
+    # --- 全自動護欄 / 模式 B 自動部署（改版 Phase 4）---
+    # 「自動駕駛」：盤前排程跑 AI 海選，EV + 勝率同時超標就「無人工確認」自動建 Bot。
+    # 風險最高，所以預設**關閉**，且與實盤雙閘獨立（開自動化 ≠ 開實盤，自動建的 Bot 仍預設 Paper）。
+    AUTO_DEPLOY_ENABLED: bool = os.getenv("AUTO_DEPLOY_ENABLED", "false").lower() in ("1", "true", "yes")
+    # 雙重門檻：兩個都要過才自動部署（EV 看絕對期望值、勝率看百分比）。
+    AUTO_DEPLOY_EV_THRESHOLD: float = float(os.getenv("AUTO_DEPLOY_EV_THRESHOLD", "150"))
+    AUTO_DEPLOY_WINRATE_THRESHOLD: float = float(os.getenv("AUTO_DEPLOY_WINRATE_THRESHOLD", "55"))
+    # 最多同時自動建幾個 Bot（防一次梭哈）；每個 Bot 配多少資金。
+    AUTO_DEPLOY_MAX_BOTS: int = int(os.getenv("AUTO_DEPLOY_MAX_BOTS", "5"))
+    AUTO_DEPLOY_CASH_PER_BOT: float = float(os.getenv("AUTO_DEPLOY_CASH_PER_BOT", "1000"))
+    # 盤前掃描的本機時刻（24 小時制的「時」）。美股盤前、開盤前跑一次。
+    AUTO_DEPLOY_HOUR: int = int(os.getenv("AUTO_DEPLOY_HOUR", "8"))
+
     # --- 探討（檢討）檔案記憶（Phase 5）---
     # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，
     # 之後寫新檢討前會先讀路標、挑相關舊探討來參考（越來越聰明）。

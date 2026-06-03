@@ -17,6 +17,76 @@
 
 ### 新增
 
+- 改版 Phase 4：全自動護欄 / 模式 B 自動部署（藍圖見 `docs/redesign/phase-4-automation.md`）。「自動駕駛」：
+  盤前排程跑 AI 海選，對 EV + 勝率**同時**超標的策略無人工確認自動建 Bot。層層設防：
+  - 後端 `backend/services/automation.py`：純函式 `plan_deployments`（EV/勝率雙門檻 + 同標的去重 +
+    名額上限 `max−active`，好測）；編排 `run_auto_deploy`（重用 `screener` 海選 + 既有建 Bot/`start_bot`
+    流程 + `notify` 通知，支援 `force` 略過總開關、`dry_run` 只預覽不寫 DB）。
+  - 後端 `backend/routers/automation.py`：`GET /automation`（看規則與名額狀態）、`POST /automation/run`
+    （手動觸發，`?dry_run=true` 預覽 / `?force=true` 略過總開關，方便不等盤前就驗證）。
+  - `bot_manager.schedule_auto_deploy(hour)` 掛每日盤前 cron job；`main.py` 啟動時掛載（是否真的部署
+    仍由總開關控制）。
+  - `config.py` / `.env.example` 新增 `AUTO_DEPLOY_ENABLED`（**預設關**）/`EV_THRESHOLD`/
+    `WINRATE_THRESHOLD`/`MAX_BOTS`/`CASH_PER_BOT`/`HOUR`。
+  - **安全**：自動化總開關與實盤雙閘**獨立**（開自動化 ≠ 開實盤）；自動建的 Bot 下單仍經
+    `alpaca_client.submit_market_order` 雙閘把關，預設 Paper，本階段完全不碰那道安全閥。
+  - 測試：`tests/test_automation.py` 5 測試（純函式雙門檻/去重/名額 + GET/dry_run API）。後端 93 綠。
+
+### 變更
+
+- 改版 Phase 3：佈局清理 + 深藍沉浸主題（藍圖見 `docs/redesign/phase-3-ui-theme.md`）。捨棄亮色「精緻
+  淺色金融」，全面改用**深海軍藍**基底，讓圖表水位線與獲利（青綠）/虧損（洋紅）數據更跳脫、長時間
+  盯盤不刺眼。改動：
+  - `theme.js`：`palette.mode` 轉 `dark`，`NEON` **沿用匯出名與鍵名只改值**（cyan→亮藍主動作、
+    magenta→黃金點綴、green→青綠獲利、red→洋紅虧損），卡片/按鈕/輸入框/分頁改深藍面板與冷光邊框，
+    既有 `import { NEON }` 的 Header/StrategyWorkbench 不用動就換上新色。
+  - `index.css`：頁面底改深海軍藍 + 冷色光暈、`color-scheme: dark`、捲軸/selection 配深底。
+  - `App.jsx`：儀表板移除「建立 Bot」表單（`CreateBotForm`，AI 架構下改由「AI 探勘」一鍵 Deploy 建
+    Bot），頂部改放「AI 市場燈號」提示卡引導前往探勘分頁；連帶移除已成死碼的 `handleCreate`/`form`
+    狀態。`CreateBotForm.jsx` 元件檔保留備用。
+  - 前端 build + 31 測試綠。（`BotAvatar` 米白徽章在深底下暫未調色，列為後續微調。）
+
+### 新增
+
+- 改版 Phase 2：AI 策略探勘 / 漏斗式海選（模式 A，藍圖見 `docs/redesign/phase-2-ai-recommendations.md`）。
+  讓系統幫你做最繁瑣的「海選、回測、算 EV」，把決策權（Deploy）留給你。核心是**漏斗式篩選**
+  （funnel）以保護本機算力：
+  - 後端 `backend/services/screener.py`：三層漏斗——第一層純 pandas 量能粗篩（最新量 > 近 20 日均量
+    × `SCREENER_VOLUME_RATIO`，取量比前 `SCREENER_TOP_N`）；第二層只對 survivors 的新聞標題請本機
+    Ollama 打多空情緒分（best-effort，連不上就跳過）；第三層重用 `optimizer.run_auto_backtest`
+    挑每檔最佳策略 + EV。純函式 `volume_ratio`/`passes_volume_filter`/`parse_sentiment`/`parse_watchlist`
+    好測。
+  - 後端 `backend/services/llm.py`：抽出共用 LLM 低階工具（`get_client`/`complete`/`cloud_blocked`
+    /`friendly_err`），讓**外送安全閥**只有一份定義；`backend/routers/recommendations.py` 新增
+    `GET /ai-recommendations`（依 EV 排序、含漏斗各層統計、5 分鐘記憶體快取，`?refresh=true` 強制重算）。
+  - `config.py` / `.env.example` 新增 `SCREENER_WATCHLIST` / `SCREENER_VOLUME_RATIO` / `SCREENER_TOP_N`。
+  - 前端 `components/RecommendationsPanel.jsx`：「AI 探勘」分頁，海選結果渲染成卡片（EV 當頭條 +
+    勝率/回撤 + 情緒燈號），「一鍵部署」重用既有 `createBot` + `startBot`（全程 Paper）；`api.js` 加
+    `getRecommendations`、`App.jsx` 加分頁與 `handleDeploy`。
+  - 測試：後端 `tests/test_screener.py` 7 測試（純函式 + API 整合）。後端 88 綠、前端 31 綠。
+
+- 改版 Phase 1：圖表引擎換成原生 `lightweight-charts`（藍圖見 `docs/redesign/phase-1-charting.md`）。
+  廢除 TradingView `<iframe>` widget，改用資料雙向綁定的原生蠟燭圖，讓後端算出的風控水位線能直接畫
+  在圖上。內容：
+  - 後端新增 `GET /bars/{symbol}?days=&source=`（`backend/routers/bars.py`，重用 `market_data.get_bars`，
+    `_to_candles` 純函式把 DataFrame 轉成 lightweight-charts 的 candle 陣列、跳過 NaN）；`/bots` 清單
+    加 `avg_entry_price`（best-effort 查 Alpaca 持倉，空手/離線回 None，給圖表畫進場線/止損線）。
+  - 前端新增 `LightweightChart.jsx`（v5 `addSeries(CandlestickSeries)`、`ResizeObserver` 自適應、接
+    `useLiveQuote` 即時更新最後一根 K 棒、`priceLines` prop 畫水位線）；`utils/priceLines.js`
+    （`buildBotPriceLines` 依 Bot 風控算進場均價/止損/追蹤止盈三條線、`findBotForSymbol` 配對）；
+    `components/ChartGrid.jsx`（2x2 多視窗網格，每格自帶代號輸入與水位線）；`api.js` 加 `getBars`。
+  - K 線分頁加「單一 / 2x2 四格」佈局切換（`App.jsx`）。
+  - 測試：後端 `tests/test_bars.py` 3 測試（純函式 + API 整合），前端 `utils/priceLines.test.jsx`
+    7 測試。後端 81 綠、前端 31 綠。舊 `TradingViewChart.jsx` 已無人引用（暫留）。
+
+- 改版藍圖文件 `docs/redesign/`：把根目錄 `需求更新.md`（AI 驅動量化交易終端機需求）深化、對齊
+  專案現況、拆成 4 個可獨立施工的階段。`README.md`（總藍圖：核心需求/設計 Why/成本算力/**現況 vs
+  需求缺口對照表**，標出每項可重用的既有檔案）、`phase-1-charting.md`（lightweight-charts 換掉
+  TradingView iframe + 水位線 + 網格）、`phase-2-ai-recommendations.md`（漏斗式篩選 volume→Ollama
+  情緒 + `GET /ai-recommendations` + 探勘分頁 + 一鍵 Deploy）、`phase-3-ui-theme.md`（移除建 Bot
+  表單改純監控中心 + 深藍主題）、`phase-4-automation.md`（模式 B：EV 閾值排程自動建 Bot）。純文件，
+  尚未動程式；後續一階段一階段改版，各階段完成再更新本檔。
+
 - 全自動掃描最佳策略（一鍵最強）：使用者只要選股票按一顆按鈕，程式自己把「8 種策略 ×
   各自參數網格」全跑一遍，依期望值 EV 排名挑出冠軍。後端 `backend/services/optimizer.py`
   （`PARAM_GRIDS` 各策略參數網格、`run_auto_backtest()`；關鍵效能設計：歷史資料只抓一次，

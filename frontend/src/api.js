@@ -73,6 +73,15 @@ export const api = {
   // 一次性查某股票最新價（即時報價的 WebSocket 在 hooks/useLiveQuote.js 另外處理）
   getQuote: (symbol) => request(`/quotes/${symbol}`),
 
+  // 取歷史日 K 線（給原生圖表 lightweight-charts 畫蠟燭用）
+  getBars: (symbol, days = 120, source = "alpaca") =>
+    request(`/bars/${symbol}?days=${days}&source=${source}`),
+
+  // ===== AI 策略探勘（漏斗式海選）=====
+  // 回傳值得部署的策略推薦清單（量能→情緒→EV 海選）。refresh=true 強制重算。
+  getRecommendations: ({ days = 365, source = "alpaca", refresh = false } = {}) =>
+    request(`/ai-recommendations?days=${days}&source=${source}&refresh=${refresh}`),
+
   // ===== 基本面 / 財報 / 新聞 =====
   getProfile: (symbol) => request(`/fundamentals/${symbol}`),
   getFinancials: (symbol, period = "annual") =>
