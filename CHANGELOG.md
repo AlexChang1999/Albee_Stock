@@ -17,6 +17,27 @@
 
 ### 新增
 
+- 全自動掃描最佳策略（一鍵最強）：使用者只要選股票按一顆按鈕，程式自己把「8 種策略 ×
+  各自參數網格」全跑一遍，依期望值 EV 排名挑出冠軍。後端 `backend/services/optimizer.py`
+  （`PARAM_GRIDS` 各策略參數網格、`run_auto_backtest()`；關鍵效能設計：歷史資料只抓一次，
+  所有組合共用同一份 df 跑 `backtest_engine._run_on_df`，不重複連線）、
+  `backend/routers/backtest.py` 新增 `POST /auto-backtest`（每個策略的最佳組合各存一筆
+  `BacktestRun`、全場冠軍標記 `is_good=True` 進好策略榜，回完整排行榜摘要）。前端
+  `components/AutoBacktestPanel.jsx`（冠軍金色強調卡 + 完整 EV 排行榜，自管狀態）、
+  `api.js` 新增 `autoBacktest()`，掛在儀表板分頁。無新增資料表（沿用 `BacktestRun`，免遷移）。
+
+### 變更
+
+- 前端視覺改版為「精緻淺色金融」風（像高級財經刊物 / 私人銀行對帳單）：拿掉霓虹發光與
+  玻璃模糊，改走乾淨白卡 + 髮絲線邊框 + 大方留白 + 襯線標題的安靜高級感。字體換 Fraunces
+  （襯線大標）/ Manrope（內文）/ IBM Plex Mono（金融數字），色調收斂為森林綠主色 + 黃銅金
+  點綴 + 漲綠跌紅。改動：`theme.js`（重寫主題，沿用 `NEON` 匯出名以免動既有 import）、
+  `index.css`（米白底 + 暖色光暈 + 進場浮現動畫）、`index.html`（換字體）、`Header.jsx`
+  （襯線字標 + 金色菱形標記）、`App.jsx`（主容器進場動畫）。
+- Bot 頭像重新設計：由「霓虹深色 NFT 風」改為「米白徽章 / 紀念幣」風——暖白紙感圓底 +
+  墨線勾勒幾何小機器人 + 單一典雅點綴色（`BotAvatar.jsx`，維持 seed 雜湊決定部件的隨機但
+  固定特性）。
+
 - 基本面 / 財報 / 新聞（yfinance）：前端新增「基本面」分頁，查股票代號即顯示公司基本資料
   （市值/PE/EPS/產業/簡介…）、財報三表（損益/資產負債/現金流，可切年度/季度）、配息與分割
   歷史、相關新聞。後端 `backend/services/fundamentals.py`（抽出 `_clean`／`_statement_to_records`

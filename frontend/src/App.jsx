@@ -40,6 +40,7 @@ import AccountCard from "./components/AccountCard";
 import CreateBotForm from "./components/CreateBotForm";
 import BotList from "./components/BotList";
 import BacktestPanel from "./components/BacktestPanel";
+import AutoBacktestPanel from "./components/AutoBacktestPanel";
 import TradesTable from "./components/TradesTable";
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -245,7 +246,14 @@ function App() {
       <Box sx={{ display: "flex", alignItems: "flex-start" }}>
         <Container
           maxWidth={false}
-          sx={{ flex: 1, minWidth: 0, py: 4, px: { xs: 2, md: 4 } }}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            py: 4,
+            px: { xs: 2, md: 4 },
+            // 進場輕輕浮現（index.css 定義的 keyframes，克制的高級感）
+            animation: "albeeFadeUp .5s ease both",
+          }}
         >
         {/* 訊息提示：操作錯誤(error) 與 資料載入錯誤(loadError) 都顯示出來 */}
         {(error || loadError) && (
@@ -287,6 +295,8 @@ function App() {
               }
               onDelete={setDeleteTarget}
             />
+            {/* 全自動掃描最佳策略（一鍵最強）：放在手動回測上方當主打 */}
+            <AutoBacktestPanel />
             <BacktestPanel
               btForm={btForm}
               setBtForm={setBtForm}

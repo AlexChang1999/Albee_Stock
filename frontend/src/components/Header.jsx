@@ -1,10 +1,12 @@
 // ============================================================
-// Header：頂部標題列（霓虹玻璃 sticky header）
+// Header：頂部標題列（精緻淺色金融 sticky header）
 // ============================================================
 // props：
 //   status — 交易環境狀態物件 { is_paper, allow_live, live_armed }（可為 null）
 //            用來在右側顯示「模擬交易（綠）／⚠️ 實盤·真錢（紅）」標示。
 // sticky 讓它捲動時固定在最上方。
+//
+// 風格：襯線字標（Fraunces）+ 一個黃銅金的菱形標記，安靜高雅，不發光。
 
 import { Box, Typography, Chip } from "@mui/material";
 import { NEON } from "../theme";
@@ -17,54 +19,50 @@ export default function Header({ status }) {
         position: "sticky",
         top: 0,
         zIndex: 10,
-        px: { xs: 2, md: 4 },
-        py: 1.5,
+        px: { xs: 2, md: 5 },
+        py: 1.75,
         display: "flex",
         alignItems: "center",
-        gap: 1.5,
-        background: "rgba(255,255,255,0.72)",
-        backdropFilter: "blur(18px)",
-        borderBottom: "1px solid rgba(0,184,212,0.18)",
+        gap: 1.75,
+        // 半透明白 + 輕微模糊：捲動時內容不會直接貼著字標
+        background: "rgba(248,246,241,0.82)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        borderBottom: "1px solid rgba(28,34,48,0.08)",
       }}
     >
-      {/* 發光圓點 logo：用 keyframes 做緩慢呼吸脈動 */}
+      {/* 標記：黃銅金菱形（45° 旋轉的小方塊），低調的品牌記號 */}
       <Box
         sx={{
           width: 12,
           height: 12,
-          borderRadius: "50%",
-          bgcolor: NEON.cyan,
-          boxShadow: `0 0 12px ${NEON.cyan}`,
-          "@keyframes pulse": {
-            "0%,100%": { opacity: 1, transform: "scale(1)" },
-            "50%": { opacity: 0.4, transform: "scale(0.8)" },
-          },
-          animation: "pulse 2.4s ease-in-out infinite",
+          bgcolor: NEON.magenta,
+          transform: "rotate(45deg)",
+          borderRadius: "2px",
+          boxShadow: "0 1px 4px rgba(176,136,58,0.4)",
         }}
       />
       <Box sx={{ display: "flex", flexDirection: "column" }}>
         <Typography
           sx={{
-            fontFamily: '"Sora", sans-serif',
-            fontWeight: 800,
-            fontSize: { xs: 18, md: 22 },
-            letterSpacing: 1,
+            fontFamily: '"Fraunces", serif',
+            fontWeight: 600,
+            fontSize: { xs: 20, md: 25 },
+            letterSpacing: "0.02em",
             lineHeight: 1,
-            // 青→洋紅漸層文字
-            background: `linear-gradient(90deg, ${NEON.cyan}, ${NEON.magenta})`,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
+            color: "#1c2230",
           }}
         >
-          ALBEE TERMINAL
+          Albee&nbsp;Terminal
         </Typography>
         <Typography
           sx={{
-            fontFamily: '"JetBrains Mono", monospace',
+            fontFamily: '"IBM Plex Mono", monospace',
             fontSize: 11,
-            letterSpacing: 2,
-            color: "rgba(26,34,56,0.5)",
+            letterSpacing: "0.18em",
+            color: "rgba(28,34,48,0.5)",
             textTransform: "uppercase",
+            mt: 0.4,
           }}
         >
           美股自動交易機器人
@@ -75,9 +73,10 @@ export default function Header({ status }) {
       {status && (
         <Chip
           size="small"
+          variant="outlined"
           color={status.live_armed ? "error" : "success"}
           label={status.live_armed ? "⚠️ 實盤（真錢）" : "模擬交易"}
-          sx={{ ml: "auto", fontWeight: 700 }}
+          sx={{ ml: "auto", fontWeight: 600 }}
         />
       )}
     </Box>
