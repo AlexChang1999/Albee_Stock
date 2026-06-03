@@ -15,6 +15,35 @@
 
 ## [未發布]
 
+### 新增
+
+- 基本面 / 財報 / 新聞（yfinance）：前端新增「基本面」分頁，查股票代號即顯示公司基本資料
+  （市值/PE/EPS/產業/簡介…）、財報三表（損益/資產負債/現金流，可切年度/季度）、配息與分割
+  歷史、相關新聞。後端 `backend/services/fundamentals.py`（抽出 `_clean`／`_statement_to_records`
+  ／`_normalize_news` 純函式，處理 NaN/numpy/Timestamp 不能進 JSON 的問題、相容新舊版 yfinance
+  新聞結構）、`backend/routers/fundamentals.py`（`GET /fundamentals/{symbol}` 及
+  `/financials`(?period=annual|quarterly)、`/news`、`/actions`）。前端
+  `components/FundamentalsPanel.jsx` + `utils/number.js`（大數字縮寫 T/B/M/K）。附
+  `tests/test_fundamentals.py` 6 測試、`utils/number.test.jsx` 5 測試。後端 75 綠、前端 24 綠。
+
+- 即時報價 WebSocket 推送：前端 K 線圖分頁新增即時報價，價格依漲/跌變色、即時跳動。
+  架構為「後端單一連線 → 扇出多個前端」（避開 Alpaca 免費版一帳戶一連線限制）：
+  後端 `backend/services/quote_stream.py`（`QuoteHub`：訂閱簿記 + 背景輪詢，沒人看時自動停、
+  用 `asyncio.to_thread` 拉價不阻塞迴圈）、`backend/routers/quotes.py`（WebSocket `/ws/quotes`
+  + 一次性 `GET /quotes/{symbol}`）。前端 `hooks/useLiveQuote.js`（含斷線自動重連/退訂）、
+  `components/LiveQuote.jsx`、`utils/quote.js`。採「輪詢+WS推送」版（穩、收盤不會像當機），
+  資料源已抽象，未來可無痛換成 Alpaca 真 tick 串流而前端不動。輪詢間隔由 `QUOTE_POLL_INTERVAL_SEC`
+  設定（預設 5 秒）。附 `tests/test_quotes.py` 4 測試（訂閱簿記 3 + WebSocket 推送整合 1）、
+  `utils/quote.test.jsx` 6 測試。後端 69 綠、前端 19 綠。
+
+- 第二資料源 yfinance（OpenBB 輕量替代）：原想裝 OpenBB，但實測其 core 要求 `fastapi ^0.128.0`
+  會頂升本專案鎖的 `fastapi==0.121.2`、且整包拉幾十個 provider 擴充，風險高。改裝免金鑰的
+  `yfinance==1.4.1`（OpenBB 底層也用它），寫成與 `alpaca_client.get_bars` **完全同契約**的
+  `backend/services/yfinance_client.py`（含可離線測試的純函式 `_normalize`）。新增
+  `backend/services/market_data.py` 當資料源分派器（`source="alpaca"`（預設）/`"yfinance"`）。
+  回測接上：`run_backtest` 加選填 `source` 參數、`POST /backtest` 請求模型加選填 `source`，
+  **預設仍走 Alpaca、向後相容**；Bot 即時交易路徑不動（先研究、不碰下單）。附
+  `tests/test_yfinance_client.py` 3 測試（欄位契約／排序索引／空資料）。
 ### 安全
 
 - **LLM 外送閘 `LLM_ALLOW_CLOUD`（預設 false）**：助手會把策略方案/回測歷史/探討筆記

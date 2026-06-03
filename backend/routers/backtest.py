@@ -19,6 +19,7 @@ class BacktestRequest(BaseModel):
     params: dict = {}
     days: int = 365  # 回測往前抓幾天
     initial_cash: float = 10000.0  # 初始資金
+    source: str = "alpaca"  # 資料源："alpaca"（預設）或 "yfinance"（免費）
 
 
 @router.post("/backtest")
@@ -34,6 +35,7 @@ def backtest(payload: BacktestRequest):
             params=payload.params,
             days=payload.days,
             initial_cash=payload.initial_cash,
+            source=payload.source,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"回測失敗：{e}")

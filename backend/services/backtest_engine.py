@@ -27,7 +27,7 @@
 
 import pandas as pd
 
-from backend.services.alpaca_client import alpaca_client
+from backend.services import market_data
 from backend.strategies import get_strategy, Signal
 
 
@@ -162,16 +162,18 @@ def run_backtest(
     params: dict | None = None,
     days: int = 365,
     initial_cash: float = 10000.0,
+    source: str = "alpaca",
 ) -> dict:
     """
-    對某檔股票跑回測（會連 Alpaca 抓歷史資料）。
+    對某檔股票跑回測（會連資料源抓歷史資料）。
     :param strategy_name: 策略代號，例如 "ma_crossover"
     :param symbol: 股票代號
     :param params: 策略參數
     :param days: 回測往前抓幾天的資料
     :param initial_cash: 初始資金
+    :param source: 資料源，"alpaca"（預設）或 "yfinance"
     """
-    df = alpaca_client.get_bars(symbol, days=days)
+    df = market_data.get_bars(symbol, days=days, source=source)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
 
