@@ -66,6 +66,10 @@ export const api = {
   runBacktest: (data) =>
     request("/backtest", { method: "POST", body: JSON.stringify(data) }),
 
+  // 全自動掃描（最強）：程式自己跑遍所有策略×參數，依 EV 排名挑最佳並存歷史
+  autoBacktest: (data) =>
+    request("/auto-backtest", { method: "POST", body: JSON.stringify(data) }),
+
   // 一次性查某股票最新價（即時報價的 WebSocket 在 hooks/useLiveQuote.js 另外處理）
   getQuote: (symbol) => request(`/quotes/${symbol}`),
 
