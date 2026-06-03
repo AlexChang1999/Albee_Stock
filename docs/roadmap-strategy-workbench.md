@@ -1,8 +1,18 @@
-# Phase 5 Roadmap — 策略工作台 + Claude 思考助手 + 期望值最優
+# Phase 5 Roadmap — 策略工作台 + 本機 LLM 思考助手 + 期望值最優
 
-> 本文件是 Phase 5 的設計藍圖（規劃中，尚未實作）。目標：把「設計策略 → Python 回測 →
-> 用期望值挑最優 → Claude 事後檢討 → 越來越聰明」串成閉環。
+> 本文件是 Phase 5 的設計藍圖。目標：把「設計策略 → Python 回測 →
+> 用期望值挑最優 → LLM 事後檢討 → 越來越聰明」串成閉環。
 > 撰寫日期：2026-06-02。
+>
+> **實作進度（2026-06-03 更新）**：核心已落地 ✅
+> - 策略產生 Skill `strategy-builder`、第 8 種策略 `williams_r`
+> - 回測引擎補 **EV** 全套（expectancy、profit factor）
+> - 2 張表 `StrategyPreset` / `BacktestRun`（Alembic `42855ad7c572`）
+> - `presets` / `chat` router、右側「策略工作台」UI
+> - **思考助手改本機 Ollama**（OpenAI 相容、免費；原規劃的付費 Claude 改掉）
+> - **檔案化探討記憶** `explorations/`（INDEX 路標 + 兩段式挑檔，取代純 DB 欄位）
+>
+> 下方原文保留為設計脈絡；與現況差異見上方進度與 `CHANGELOG.md`。
 
 ---
 
