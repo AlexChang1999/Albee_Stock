@@ -75,6 +75,11 @@ class Settings:
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "ollama")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "llama3.1")
 
+    # --- 即時報價推送（Phase 6）---
+    # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。
+    # 數字越小越即時、但越耗 Alpaca 的 REST 額度；5 秒對學習/觀察很夠用。
+    QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
+
     # --- 探討（檢討）檔案記憶（Phase 5）---
     # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，
     # 之後寫新檢討前會先讀路標、挑相關舊探討來參考（越來越聰明）。

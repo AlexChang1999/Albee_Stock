@@ -66,6 +66,9 @@ export const api = {
   runBacktest: (data) =>
     request("/backtest", { method: "POST", body: JSON.stringify(data) }),
 
+  // 一次性查某股票最新價（即時報價的 WebSocket 在 hooks/useLiveQuote.js 另外處理）
+  getQuote: (symbol) => request(`/quotes/${symbol}`),
+
   // ===== Phase 5：策略工作台 =====
   // 策略方案 CRUD
   getPresets: () => request("/presets"),

@@ -44,6 +44,7 @@ import TradesTable from "./components/TradesTable";
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import StrategyWorkbench from "./components/StrategyWorkbench";
+import LiveQuote from "./components/LiveQuote";
 
 // 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
 // 但後端存的是小數（0.10）。下面兩個小工具負責互轉，空白 = null（不啟用該機制）。
@@ -312,6 +313,10 @@ function App() {
               >
                 載入圖表
               </Button>
+            </Box>
+            {/* 即時報價（WebSocket 推送，價格會即時跳動、依漲跌變色） */}
+            <Box sx={{ mb: 2 }}>
+              <LiveQuote symbol={chartSymbol} />
             </Box>
             {/* 可拖拉調整大小的圖表容器（拉右下角） */}
             <Box
