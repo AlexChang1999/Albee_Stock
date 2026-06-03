@@ -19,6 +19,7 @@ LLM 思考助手 API ── Phase 5（OpenAI 相容介面，預設接本機 Olla
 """
 
 import json
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -40,6 +41,27 @@ _MAX_REF_CHARS = 6000     # 注入的過去探討總字數上限（避免本機�
 
 # 可用策略鍵（放進 system 提示，讓助手草擬策略時用對的代號）
 _STRATEGY_KEYS = ", ".join(STRATEGY_REGISTRY.keys())
+
+# 視為「本機」的主機名（資料不離開這台電腦）
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _is_local_llm() -> bool:
+    """LLM_BASE_URL 是否指向本機。空字串/解析不出 host 時，保守當作非本機。"""
+    host = (urlparse(settings.LLM_BASE_URL).hostname or "").lower()
+    return host in _LOCAL_HOSTS
+
+
+def _cloud_blocked() -> bool:
+    """指向外部雲端、卻沒開外送閘 → 擋下（隱私安全閥）。"""
+    return (not _is_local_llm()) and (not settings.LLM_ALLOW_CLOUD)
+
+
+_CLOUD_BLOCKED_DETAIL = (
+    "LLM_BASE_URL 指向外部服務，助手會把『策略方案/回測歷史/探討筆記』送到第三方。"
+    "預設只允許本機（localhost）。確定要用雲端供應商，請在後端 .env 設 "
+    "LLM_ALLOW_CLOUD=true（等於同意資料外送），或把 LLM_BASE_URL 改回本機 Ollama。"
+)
 
 
 def _get_client():
@@ -250,6 +272,8 @@ def chat(payload: ChatRequest):
     client = _get_client()
     if client is None:
         raise HTTPException(status_code=400, detail=_NO_LLM_DETAIL)
+    if _cloud_blocked():
+        raise HTTPException(status_code=400, detail=_CLOUD_BLOCKED_DETAIL)
 
     convo = [{"role": m.role, "content": m.content} for m in payload.messages]
     if not convo:
@@ -273,6 +297,8 @@ def postmortem(payload: PostmortemRequest):
     client = _get_client()
     if client is None:
         raise HTTPException(status_code=400, detail=_NO_LLM_DETAIL)
+    if _cloud_blocked():
+        raise HTTPException(status_code=400, detail=_CLOUD_BLOCKED_DETAIL)
 
     db = SessionLocal()
     try:
