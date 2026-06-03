@@ -19,6 +19,7 @@ from backend.database import get_db
 from backend.models import Bot, TradeLog
 from backend.bots.bot_manager import bot_manager, run_bot_once
 from backend.services.performance import compute_bot_stats
+from backend.services.alpaca_client import alpaca_client
 
 # tags=["Bots"] 只是讓 /docs 文件頁把這組 API 歸在「Bots」分類下，比較好找。
 router = APIRouter(prefix="/bots", tags=["Bots"])
@@ -42,6 +43,22 @@ class BotCreate(BaseModel):
 
 
 # ---------- 內部小工具 ----------
+def _avg_entry_price(symbol: str) -> float | None:
+    """
+    查某檔股票目前持倉的「進場均價」（給前端圖表畫進場線/止損線用）。
+
+    刻意做成 best-effort：沒持倉、離線、或 Alpaca 出錯都回 None，
+    絕不讓 /bots 清單因為一檔查價失敗就整個壞掉。
+    """
+    try:
+        pos = alpaca_client.get_position(symbol)
+        if pos is None:
+            return None
+        return float(pos.avg_entry_price)
+    except Exception:
+        return None
+
+
 def _bot_stats(db: Session, bot_id: int) -> dict:
     """查出某個 Bot 的交易紀錄（由舊到新），算出績效指標。"""
     rows = (
@@ -130,6 +147,8 @@ def list_bots(db: Session = Depends(get_db)):
             "is_active": b.is_active,
             # 監聽狀態：持倉最高價（None=空手）、最後一次檢查時間（給前端顯示排程是否在動）
             "peak_price": b.peak_price,
+            # 進場均價（來自 Alpaca 持倉，空手/離線為 None）：給前端圖表畫進場線/止損線用
+            "avg_entry_price": _avg_entry_price(b.symbol),
             "last_checked_at": b.last_checked_at.isoformat() if b.last_checked_at else None,
             # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
             "stats": _bot_stats(db, b.id),

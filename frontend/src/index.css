@@ -1,8 +1,8 @@
 /* ============================================================
-   Albee Terminal — 全域樣式（精緻淺色金融風）
+   Albee Terminal — 全域樣式（深藍沉浸金融風）
    ============================================================
-   氛圍：溫潤的米白底（不是死白），極淡的暖色光暈 + 細緻紙張顆粒，
-   讓畫面像高級財經刊物 / 私人銀行對帳單，安靜、有質感、留白大方。
+   氛圍：深海軍藍底（不是死黑）+ 冷色光暈，像專業交易終端機，
+   讓發光的圖表水位線與 AI 決策卡片成為視覺焦點、長時間盯盤不刺眼。
    元件層級樣式（卡片、按鈕…）放在 theme.js 的 MUI 主題裡。
    ============================================================ */
 
@@ -12,21 +12,21 @@
   --font-body: "Manrope", "Microsoft JhengHei", sans-serif; /* 內文 */
   --font-mono: "IBM Plex Mono", "Consolas", monospace; /* 數字（帳本感） */
 
-  /* 精緻淺色金融色票 */
-  --ink: #1c2230; /* 主文字：近墨藍黑 */
-  --ink-soft: #5b6573; /* 次要文字：灰藍 */
-  --paper: #ffffff; /* 卡片底 */
-  --bg-base: #f4f1ea; /* 頁面底：溫潤米白 */
-  --line: rgba(28, 34, 48, 0.1); /* 髮絲線邊框 */
+  /* 深藍沉浸金融色票 */
+  --ink: #e7edf7; /* 主文字：近白冷光 */
+  --ink-soft: #9aa9c2; /* 次要文字：灰藍 */
+  --panel: #0f1f3a; /* 卡片/面板底：深海軍藍 */
+  --bg-base: #0a1628; /* 頁面底：更深的海軍藍 */
+  --line: rgba(255, 255, 255, 0.09); /* 冷色髮絲線邊框 */
 
-  /* 收斂的金融色（綠＝漲/主行動、紅＝跌、金＝點綴/強調） */
-  --accent: #1f6f54; /* 森林綠：主色 / 上漲 */
-  --accent-deep: #1a5d47; /* 深綠：hover */
-  --gain: #1f7a5a; /* 上漲綠 */
-  --loss: #b23b32; /* 下跌磚紅 */
-  --gold: #b0883a; /* 黃銅金：點綴（EV 冠軍、收藏星） */
+  /* 數據色（青綠＝漲/獲利、洋紅＝跌/虧損、藍＝主行動、金＝點綴/強調） */
+  --accent: #4da3ff; /* 亮藍：主色 / 主行動 */
+  --accent-deep: #6cb6ff; /* 亮藍 hover */
+  --gain: #1fd6a0; /* 上漲青綠 */
+  --loss: #ff5d7a; /* 下跌洋紅 */
+  --gold: #f5c451; /* 黃金：點綴（EV 冠軍、收藏星） */
 
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
@@ -44,16 +44,16 @@ body {
   font-family: var(--font-body);
   color: var(--ink);
   background-color: var(--bg-base);
-  /* 極淡的暖色光暈，給米白底一點層次（很安靜，不搶內容） */
+  /* 冷色光暈，給深藍底一點層次（很安靜，不搶內容） */
   background-image:
     radial-gradient(
       ellipse 60% 45% at 15% -5%,
-      rgba(31, 111, 84, 0.05),
+      rgba(77, 163, 255, 0.1),
       transparent 60%
     ),
     radial-gradient(
       ellipse 55% 40% at 90% 0%,
-      rgba(176, 136, 58, 0.05),
+      rgba(31, 214, 160, 0.08),
       transparent 55%
     );
   background-attachment: fixed;
@@ -61,14 +61,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* 細緻紙張顆粒：在米白底上提供一點點材質感（很淡） */
+/* 細緻顆粒：在深藍底上提供一點點材質感（很淡） */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.02;
+  opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -89,7 +89,7 @@ body::before {
   }
 }
 
-/* 捲軸（淺色、收斂） */
+/* 捲軸（深色、收斂） */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -98,16 +98,16 @@ body::before {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(28, 34, 48, 0.18);
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(28, 34, 48, 0.32);
+  background: rgba(255, 255, 255, 0.28);
   background-clip: content-box;
 }
 
 ::selection {
-  background: rgba(31, 111, 84, 0.16);
+  background: rgba(77, 163, 255, 0.28);
 }

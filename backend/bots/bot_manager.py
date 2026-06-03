@@ -219,6 +219,25 @@ class BotManager:
             self.scheduler.remove_job(job_id)
             notify(f"⏸️ Bot 已停止：id={bot_id}")
 
+    def schedule_auto_deploy(self, hour: int) -> None:
+        """
+        掛上「模式 B 盤前自動部署」的每日定時工作（改版 Phase 4）。
+
+        每天 hour 時跑一次 run_auto_deploy（force=False，所以是否真的部署仍由
+        AUTO_DEPLOY_ENABLED 總開關決定）。在 main.py 啟動時呼叫一次即可。
+        延遲 import 避免循環依賴（automation 反過來會用到 bot_manager）。
+        """
+        from backend.services.automation import run_auto_deploy
+
+        job_id = "auto_deploy"
+        self.scheduler.add_job(
+            run_auto_deploy,
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
 
 # 全域共用的 Bot 管理器
 bot_manager = BotManager()

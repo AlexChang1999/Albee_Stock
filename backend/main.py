@@ -27,7 +27,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation
 
 
 def _resume_active_bots() -> None:
@@ -57,6 +57,8 @@ async def lifespan(app: FastAPI):
     # --- 啟動時 ---
     init_db()  # 把資料庫的表建好（如果還沒建）
     _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
+    # 模式 B：掛上盤前自動部署的每日定時工作（是否真的部署仍由 AUTO_DEPLOY_ENABLED 控制）
+    bot_manager.schedule_auto_deploy(settings.AUTO_DEPLOY_HOUR)
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")
     yield
     # --- 關閉時 ---（目前沒事要做，先留空）
@@ -125,3 +127,6 @@ app.include_router(presets.router)
 app.include_router(chat.router)
 app.include_router(quotes.router)
 app.include_router(fundamentals.router)
+app.include_router(bars.router)
+app.include_router(recommendations.router)
+app.include_router(automation.router)
