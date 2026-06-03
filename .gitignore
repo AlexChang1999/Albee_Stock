@@ -44,3 +44,7 @@ skills-lock.json
 
 # Claude Code 暫時工作目錄（worktree 隔離用，絕不進 repo）
 .claude/worktrees/
+
+# Claude Code 機器專屬設定（如 bgIsolation、個人 permissions），不進 repo
+.claude/settings.json
+.claude/settings.local.json

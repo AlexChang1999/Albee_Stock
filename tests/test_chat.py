@@ -68,6 +68,41 @@ def test_chat_connection_error_is_graceful(monkeypatch):
     print("✅ /chat 連不上服務優雅回 400 測試通過")
 
 
+def test_chat_cloud_blocked_without_optin(monkeypatch):
+    """LLM_BASE_URL 指向外部雲端、沒開 LLM_ALLOW_CLOUD → 擋下（400 + 外送提示），不送資料。"""
+    monkeypatch.setattr(settings, "LLM_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setattr(settings, "LLM_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setattr(settings, "LLM_ALLOW_CLOUD", False)
+    r = client.post("/chat", json={"messages": [{"role": "user", "content": "嗨"}]})
+    assert r.status_code == 400, r.text
+    assert "LLM_ALLOW_CLOUD" in r.json()["detail"]
+    print("✅ /chat 雲端未開外送閘被擋下測試通過")
+
+
+def test_chat_cloud_allowed_passes_gate(monkeypatch):
+    """開了 LLM_ALLOW_CLOUD 後外送閘放行：不再是『被擋下』訊息（之後才輪到連線錯誤）。"""
+    # 非本機網址（.invalid TLD 永遠解析失敗、會快速報錯）+ 開閘
+    # → 過了外送閘、進到真正呼叫，因連不上而 400，但不該是外送阻擋訊息。
+    monkeypatch.setattr(settings, "LLM_BASE_URL", "https://llm.invalid/v1")
+    monkeypatch.setattr(settings, "LLM_MODEL", "llama3.1")
+    monkeypatch.setattr(settings, "LLM_ALLOW_CLOUD", True)
+    r = client.post("/chat", json={"messages": [{"role": "user", "content": "嗨"}]})
+    assert r.status_code == 400, r.text
+    assert "LLM_ALLOW_CLOUD" not in r.json()["detail"]
+    print("✅ /chat 開外送閘後放行（不再被擋）測試通過")
+
+
+def test_postmortem_cloud_blocked_without_optin(monkeypatch):
+    """/chat/postmortem 同樣受外送閘保護。"""
+    monkeypatch.setattr(settings, "LLM_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setattr(settings, "LLM_MODEL", "llama-3.3-70b-versatile")
+    monkeypatch.setattr(settings, "LLM_ALLOW_CLOUD", False)
+    r = client.post("/chat/postmortem", json={"run_id": 1})
+    assert r.status_code == 400, r.text
+    assert "LLM_ALLOW_CLOUD" in r.json()["detail"]
+    print("✅ /chat/postmortem 雲端未開外送閘被擋下測試通過")
+
+
 if __name__ == "__main__":
     # 手動跑：直接清空 base_url 驗證 400
     settings.LLM_BASE_URL = ""

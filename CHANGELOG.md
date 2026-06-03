@@ -15,6 +15,18 @@
 
 ## [未發布]
 
+### 安全
+
+- **LLM 外送閘 `LLM_ALLOW_CLOUD`（預設 false）**：助手會把策略方案/回測歷史/探討筆記
+  注入 prompt，若 `LLM_BASE_URL` 指向外部雲端，這些資料就會送出本機。仿實盤雙閘精神，
+  預設只允許本機（localhost/127.0.0.1）；用雲端供應商須明確設 `LLM_ALLOW_CLOUD=true`。
+  非本機且未開閘時 `/chat`、`/chat/postmortem` 直接 400 擋下（`chat.py` `_cloud_blocked`）。
+
+### 變更
+
+- `.claude/settings.json`（機器專屬，含 `bgIsolation`）移出版本控管：改放
+  `.claude/settings.local.json`、`.gitignore` 加 `.claude/settings.json`／`settings.local.json`。
+
 ### 文件
 
 - README 全面更新至現況：技術棧補 Alembic／Discord、進度表改為 Phase 1–4 ✅
