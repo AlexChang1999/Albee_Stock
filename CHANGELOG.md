@@ -17,6 +17,15 @@
 
 ### 新增
 
+- 原生 K 線圖（lightweight-charts）取代 TradingView widget：K 線資料改由後端供應，
+  讓圖表能疊上後端算出的風控水位線。後端新增 `backend/routers/bars.py`
+  （`GET /bars/{symbol}?days=&source=`，沿用 `services/market_data.py` 統一資料源分派，
+  把 DataFrame 轉成 lightweight-charts 吃的 `{time, open, high, low, close, volume}`）。
+  前端新增 `LightweightChart.jsx`（v5 API：`addSeries(CandlestickSeries, …)`、`createPriceLine`
+  畫水位線、`autoSize` 自適應、race-safe 抓資料）、`api.getBars()`。App 圖表分頁改用此元件，
+  並把「正在盯盤」Bot 的**追蹤止損線**（`peak_price ×(1−trailing_stop_pct)`）畫上圖。
+  進場均價／固定止損／止盈水位線待後端補上 Alpaca 持倉進場價後再加。Vite build 綠、前端 24 測試綠。
+
 - 基本面 / 財報 / 新聞（yfinance）：前端新增「基本面」分頁，查股票代號即顯示公司基本資料
   （市值/PE/EPS/產業/簡介…）、財報三表（損益/資產負債/現金流，可切年度/季度）、配息與分割
   歷史、相關新聞。後端 `backend/services/fundamentals.py`（抽出 `_clean`／`_statement_to_records`

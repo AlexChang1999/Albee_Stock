@@ -9,7 +9,7 @@
 // 實際長相（卡片、表格、彈窗）都搬到 components/ 底下，這裡只管邏輯。
 // 想改某一塊的外觀，去對應的元件檔改；想改資料流，留在這裡改。
 
-import { useState, lazy, Suspense } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { api } from "./api";
 import {
   Typography,
@@ -32,7 +32,7 @@ import { useDashboardData } from "./hooks/useDashboardData";
 //   lazy(() => import(...)) 改成「第一次真的要顯示它時」才另外去下載那一塊。
 //   K 線圖在獨立分頁、不是一進來就看的東西，很適合這樣切出去。
 //   注意：lazy 元件一定要包在 <Suspense> 裡，提供載入中的替代畫面。
-const TradingViewChart = lazy(() => import("./TradingViewChart"));
+const LightweightChart = lazy(() => import("./LightweightChart"));
 
 // 畫面元件（每塊一個檔案）
 import Header from "./components/Header";
@@ -76,6 +76,27 @@ function App() {
 
   // 目前分頁：0 = 儀表板，1 = K 線圖
   const [tab, setTab] = useState(0);
+
+  // 圖表水位線：把「正盯著目前圖表這檔股票」的 Bot 風控狀態畫成水平線。
+  // 目前只畫「追蹤止損線」── 因為它能純前端算出：peak_price ×(1 − trailing_stop_pct)。
+  // 進場均價、固定止損／止盈需要 Alpaca 持倉的進場價（後端尚未提供），列為下一步。
+  const chartPriceLines = useMemo(() => {
+    const lines = [];
+    bots
+      .filter((b) => b.symbol === chartSymbol && b.is_active)
+      .forEach((b) => {
+        // 追蹤止損：要同時有「持倉最高價」與「追蹤比例」才畫得出來
+        if (b.peak_price != null && b.trailing_stop_pct != null) {
+          lines.push({
+            price: b.peak_price * (1 - b.trailing_stop_pct),
+            color: "#26a69a", // 青綠＝保護獲利的止損
+            lineStyle: 0, // 實線
+            title: `追蹤止損 ${b.name}`,
+          });
+        }
+      });
+    return lines;
+  }, [bots, chartSymbol]);
 
   // 回測相關狀態
   const [btForm, setBtForm] = useState({
@@ -348,7 +369,12 @@ function App() {
                   </Box>
                 }
               >
-                <TradingViewChart symbol={chartSymbol} height="100%" />
+                <LightweightChart
+                  symbol={chartSymbol}
+                  height="100%"
+                  source="yfinance"
+                  priceLines={chartPriceLines}
+                />
               </Suspense>
             </Box>
             <Typography variant="caption" color="text.secondary">

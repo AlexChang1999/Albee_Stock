@@ -69,6 +69,11 @@ export const api = {
   // 一次性查某股票最新價（即時報價的 WebSocket 在 hooks/useLiveQuote.js 另外處理）
   getQuote: (symbol) => request(`/quotes/${symbol}`),
 
+  // 取得日 K 線（給原生 lightweight-charts 圖表用）
+  // days：往前抓幾天；source："alpaca"（預設）或 "yfinance"（免金鑰）
+  getBars: (symbol, days = 120, source = "alpaca") =>
+    request(`/bars/${symbol}?days=${days}&source=${source}`),
+
   // ===== 基本面 / 財報 / 新聞 =====
   getProfile: (symbol) => request(`/fundamentals/${symbol}`),
   getFinancials: (symbol, period = "annual") =>
