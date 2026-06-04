@@ -1,8 +1,8 @@
 /* ============================================================
-   Albee Terminal — 全域樣式（亮色霓虹儀表板）
+   Albee Terminal — 全域樣式（深藍交易終端機）
    ============================================================
-   底層氛圍：淺色乾淨背景 + 柔和彩色光暈（不是純白死板，也不是黑）。
-   元件層級樣式（卡片、按鈕…）放在 App.jsx 的 MUI 主題裡。
+   底層氛圍：深藍色基底 + 柔和彩色光暈（沉浸盯盤、不刺眼）。
+   元件層級樣式（卡片、按鈕…）放在 theme.js 的 MUI 主題裡。
    ============================================================ */
 
 :root {
@@ -11,16 +11,16 @@
   --font-body: "Outfit", "Microsoft JhengHei", sans-serif; /* 內文 */
   --font-mono: "JetBrains Mono", "Consolas", monospace; /* 數字 */
 
-  /* 霓虹色票（亮色系裡當「彩色 accent」用，不再靠發光） */
-  --neon-cyan: #00b8d4;
-  --neon-magenta: #e6007a;
-  --neon-green: #00b87a;
-  --neon-red: #e63950;
+  /* 霓虹色票（深底版：當「彩色 accent」用，靠亮度在深藍上跳出來） */
+  --neon-cyan: #22d3ee;
+  --neon-magenta: #ff3d8b;
+  --neon-green: #00e5a0;
+  --neon-red: #ff4d6d;
 
-  /* 背景底色：淺灰白，不是純白（純白太刺眼又無層次） */
-  --bg-base: #f4f6fb;
+  /* 背景底色：深藍海軍藍（不是純黑，帶藍才有金融科技感） */
+  --bg-base: #0a1024;
 
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
@@ -36,37 +36,37 @@ body,
 
 body {
   font-family: var(--font-body);
-  color: #1a2238; /* 深藍灰字 */
+  color: #e8ecf8; /* 近白字 */
   background-color: var(--bg-base);
-  /* 多層柔和彩色光暈，讓淺色背景有氛圍與層次（淡淡的，不搶內容） */
+  /* 多層柔和彩色光暈，讓深藍背景有氛圍與層次（淡淡的，不搶內容） */
   background-image:
     radial-gradient(
       ellipse 70% 50% at 12% 0%,
-      rgba(0, 184, 212, 0.1),
+      rgba(34, 211, 238, 0.12),
       transparent 60%
     ),
     radial-gradient(
       ellipse 60% 50% at 88% 8%,
-      rgba(230, 0, 122, 0.08),
+      rgba(255, 61, 139, 0.1),
       transparent 55%
     ),
     radial-gradient(
       ellipse 60% 40% at 50% 100%,
-      rgba(0, 184, 122, 0.06),
+      rgba(0, 229, 160, 0.08),
       transparent 60%
     );
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 
-/* 細顆粒雜訊：淺色背景上更淡，僅提供一點點材質感 */
+/* 細顆粒雜訊：深色背景上提供一點點材質感，避免大色塊死板 */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.025;
+  opacity: 0.04;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -75,7 +75,7 @@ body::before {
   z-index: 1;
 }
 
-/* 捲軸（淺色版） */
+/* 捲軸（深色版） */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -84,16 +84,16 @@ body::before {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 184, 212, 0.3);
+  background: rgba(34, 211, 238, 0.3);
   border-radius: 10px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 184, 212, 0.5);
+  background: rgba(34, 211, 238, 0.5);
   background-clip: content-box;
 }
 
 ::selection {
-  background: rgba(0, 184, 212, 0.2);
+  background: rgba(34, 211, 238, 0.25);
 }

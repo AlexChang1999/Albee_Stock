@@ -567,8 +567,8 @@ export default function StrategyWorkbench() {
                   fontSize: 13,
                   background:
                     m.role === "user"
-                      ? "rgba(0,184,212,0.12)"
-                      : "rgba(26,34,56,0.05)",
+                      ? "rgba(34,211,238,0.14)"
+                      : "rgba(255,255,255,0.06)",
                 }}
               >
                 {m.content}

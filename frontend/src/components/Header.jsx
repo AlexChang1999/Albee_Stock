@@ -22,9 +22,9 @@ export default function Header({ status }) {
         display: "flex",
         alignItems: "center",
         gap: 1.5,
-        background: "rgba(255,255,255,0.72)",
+        background: "rgba(16,24,48,0.72)",
         backdropFilter: "blur(18px)",
-        borderBottom: "1px solid rgba(0,184,212,0.18)",
+        borderBottom: "1px solid rgba(34,211,238,0.18)",
       }}
     >
       {/* 發光圓點 logo：用 keyframes 做緩慢呼吸脈動 */}
@@ -63,7 +63,7 @@ export default function Header({ status }) {
             fontFamily: '"JetBrains Mono", monospace',
             fontSize: 11,
             letterSpacing: 2,
-            color: "rgba(26,34,56,0.5)",
+            color: "rgba(232,236,248,0.5)",
             textTransform: "uppercase",
           }}
         >

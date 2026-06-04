@@ -22,6 +22,7 @@ import {
   Tabs,
   Tab,
   LinearProgress,
+  Dialog,
 } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
@@ -187,6 +188,10 @@ function App() {
     interval: 60,
   });
 
+  // 手動建立 Bot 的彈窗開關（藍圖 Phase 3：Dashboard 改純監控中心，
+  // 建立表單從主畫面移進彈窗，需要時才打開，平常不佔版面）
+  const [createOpen, setCreateOpen] = useState(false);
+
   // 正在編輯的 Bot（null = 沒有打開編輯視窗）
   const [editBot, setEditBot] = useState(null);
 
@@ -212,6 +217,7 @@ function App() {
       });
       setMessage(`已建立 Bot：${form.name}`);
       setForm({ ...form, name: "", symbol: "" });
+      setCreateOpen(false); // 建立成功就關閉彈窗
       reload();
     } catch (e) {
       setError(e.message);
@@ -381,8 +387,27 @@ function App() {
         {/* ===== 儀表板分頁 ===== */}
         {tab === 0 && (
           <Box>
+            {/* 上方：總體損益（帳戶卡片） */}
             <AccountCard account={account} />
-            <CreateBotForm form={form} setForm={setForm} onSubmit={handleCreate} />
+
+            {/* 監控中心工具列：標題 + 手動建立入口。
+                藍圖 Phase 3 把 Dashboard 變純監控中心，建立 Bot 主要靠「AI 探勘」
+                一鍵部署；這裡保留一個手動建立的入口（開彈窗），新手仍可自行建。 */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                mt: 3,
+                mb: 1.5,
+              }}
+            >
+              <Typography variant="h6">服役中的 Bot</Typography>
+              <Button variant="outlined" onClick={() => setCreateOpen(true)}>
+                ＋ 手動建立 Bot
+              </Button>
+            </Box>
+
             <BotList
               bots={bots}
               onToggle={handleToggleActive}
@@ -545,6 +570,16 @@ function App() {
         {/* 右側策略工作台（自管資料流，可收合／橫向拉寬） */}
         <StrategyWorkbench />
       </Box>
+
+      {/* 手動建立 Bot 的彈出視窗（Dashboard 移除內嵌表單後的入口） */}
+      <Dialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <CreateBotForm form={form} setForm={setForm} onSubmit={handleCreate} />
+      </Dialog>
 
       {/* 編輯 Bot 的彈出視窗 */}
       <EditBotDialog

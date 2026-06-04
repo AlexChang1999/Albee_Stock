@@ -12,7 +12,7 @@ export default function Stat({ label, value }) {
       <Typography
         variant="caption"
         sx={{
-          color: "rgba(26,34,56,0.5)",
+          color: "rgba(232,236,248,0.5)",
           fontFamily: '"JetBrains Mono", monospace',
           letterSpacing: 1,
           textTransform: "uppercase",
@@ -26,7 +26,7 @@ export default function Stat({ label, value }) {
           fontFamily: '"JetBrains Mono", monospace',
           fontWeight: 700,
           fontSize: 22,
-          color: "#1a2238",
+          color: "#e8ecf8",
         }}
       >
         {value}
