@@ -74,6 +74,10 @@ export const api = {
   getBars: (symbol, days = 120, source = "alpaca") =>
     request(`/bars/${symbol}?days=${days}&source=${source}`),
 
+  // 查某股票目前持倉的進場均價＋股數（給圖表畫止損/止盈水位線用）
+  // 空手時回 { qty: 0, avg_entry_price: null }
+  getPosition: (symbol) => request(`/positions/${symbol}`),
+
   // ===== 基本面 / 財報 / 新聞 =====
   getProfile: (symbol) => request(`/fundamentals/${symbol}`),
   getFinancials: (symbol, period = "annual") =>

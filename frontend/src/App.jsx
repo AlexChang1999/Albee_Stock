@@ -9,7 +9,7 @@
 // 實際長相（卡片、表格、彈窗）都搬到 components/ 底下，這裡只管邏輯。
 // 想改某一塊的外觀，去對應的元件檔改；想改資料流，留在這裡改。
 
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect, lazy, Suspense } from "react";
 import { api } from "./api";
 import {
   Typography,
@@ -77,26 +77,91 @@ function App() {
   // 目前分頁：0 = 儀表板，1 = K 線圖
   const [tab, setTab] = useState(0);
 
-  // 圖表水位線：把「正盯著目前圖表這檔股票」的 Bot 風控狀態畫成水平線。
-  // 目前只畫「追蹤止損線」── 因為它能純前端算出：peak_price ×(1 − trailing_stop_pct)。
-  // 進場均價、固定止損／止盈需要 Alpaca 持倉的進場價（後端尚未提供），列為下一步。
-  const chartPriceLines = useMemo(() => {
+  // 圖表檢視模式："single" 單檔大圖 / "grid" 2×2 多檔同時看
+  const [chartView, setChartView] = useState("single");
+
+  // 各股票的 Alpaca 持倉（含進場均價），以代號為 key。空手時該檔不存在或 avg_entry_price 為 null。
+  // 用 map 而非單一值，是為了「網格模式」能同時拿多檔的進場均價畫線。
+  const [positionsBySymbol, setPositionsBySymbol] = useState({});
+
+  // 網格要顯示哪幾檔：優先用「啟用中 Bot 盯的股票」（去重、最多 4 檔湊 2×2）；
+  // 都沒有啟用中的 Bot 時，退回目前單檔的 chartSymbol。
+  const gridSymbols = useMemo(() => {
+    const actives = [...new Set(bots.filter((b) => b.is_active).map((b) => b.symbol))];
+    return (actives.length ? actives : [chartSymbol]).slice(0, 4);
+  }, [bots, chartSymbol]);
+
+  // 目前畫面上實際顯示的股票清單（單檔模式只有 chartSymbol；網格模式是 gridSymbols）
+  const displayedSymbols = chartView === "grid" ? gridSymbols : [chartSymbol];
+  // 把清單接成穩定字串當 effect 依賴，避免每次 render 都重抓
+  const displayedKey = displayedSymbols.join(",");
+
+  // 顯示中的股票，各去後端查一次持倉進場均價。
+  // 查不到（空手／沒連線）就當沒有，不影響其他水位線。
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      displayedSymbols.map((sym) =>
+        api
+          .getPosition(sym)
+          .then((p) => [sym, p])
+          .catch(() => [sym, null])
+      )
+    ).then((pairs) => {
+      if (!cancelled) setPositionsBySymbol(Object.fromEntries(pairs));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // displayedKey 已涵蓋 displayedSymbols 內容變化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayedKey]);
+
+  // 把某檔股票的 Bot 風控狀態算成圖表水位線：
+  //   進場均價（灰虛線）   ← 來自 Alpaca 持倉
+  //   固定止損（紅實線）   = 進場均價 ×(1 − stop_loss_pct)
+  //   固定止盈（藍實線）   = 進場均價 ×(1 + take_profit_pct)
+  //   追蹤止損（綠實線）   = peak_price ×(1 − trailing_stop_pct)，純前端可算
+  const buildPriceLines = (symbol) => {
     const lines = [];
+    const entry = positionsBySymbol[symbol]?.avg_entry_price ?? null;
+
+    // 進場均價線（整檔股票一條就好，不分 Bot）
+    if (entry != null) {
+      lines.push({ price: entry, color: "#9aa0a6", lineStyle: 2, title: "進場均價" });
+    }
+
     bots
-      .filter((b) => b.symbol === chartSymbol && b.is_active)
+      .filter((b) => b.symbol === symbol && b.is_active)
       .forEach((b) => {
-        // 追蹤止損：要同時有「持倉最高價」與「追蹤比例」才畫得出來
+        if (entry != null && b.stop_loss_pct != null) {
+          lines.push({
+            price: entry * (1 - b.stop_loss_pct),
+            color: "#ef5350", // 紅＝止損
+            lineStyle: 0,
+            title: `止損 ${b.name}`,
+          });
+        }
+        if (entry != null && b.take_profit_pct != null) {
+          lines.push({
+            price: entry * (1 + b.take_profit_pct),
+            color: "#42a5f5", // 藍＝止盈
+            lineStyle: 0,
+            title: `止盈 ${b.name}`,
+          });
+        }
+        // 追蹤止損不依賴進場均價，只要有持倉最高價＋追蹤比例就畫得出來
         if (b.peak_price != null && b.trailing_stop_pct != null) {
           lines.push({
             price: b.peak_price * (1 - b.trailing_stop_pct),
-            color: "#26a69a", // 青綠＝保護獲利的止損
-            lineStyle: 0, // 實線
+            color: "#26a69a", // 青綠＝保護獲利的追蹤止損
+            lineStyle: 0,
             title: `追蹤止損 ${b.name}`,
           });
         }
       });
     return lines;
-  }, [bots, chartSymbol]);
+  };
 
   // 回測相關狀態
   const [btForm, setBtForm] = useState({
@@ -336,50 +401,109 @@ function App() {
               >
                 載入圖表
               </Button>
+              {/* 單檔 / 2×2 網格 檢視切換 */}
+              <Box sx={{ flexGrow: 1 }} />
+              <Button
+                variant={chartView === "single" ? "contained" : "outlined"}
+                onClick={() => setChartView("single")}
+              >
+                單檔
+              </Button>
+              <Button
+                variant={chartView === "grid" ? "contained" : "outlined"}
+                onClick={() => setChartView("grid")}
+              >
+                2×2 網格
+              </Button>
             </Box>
-            {/* 即時報價（WebSocket 推送，價格會即時跳動、依漲跌變色） */}
-            <Box sx={{ mb: 2 }}>
-              <LiveQuote symbol={chartSymbol} />
-            </Box>
-            {/* 可拖拉調整大小的圖表容器（拉右下角） */}
-            <Box
-              sx={{
-                resize: "vertical",
-                overflow: "hidden",
-                height: "75vh",
-                minHeight: 320,
-                border: "1px solid",
-                borderColor: "divider",
-                borderRadius: 1,
-              }}
+
+            {/* Suspense：lazy 圖表元件還在下載時，先顯示 fallback 提示 */}
+            <Suspense
+              fallback={
+                <Box
+                  sx={{
+                    height: "75vh",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "text.secondary",
+                  }}
+                >
+                  圖表載入中…
+                </Box>
+              }
             >
-              {/* Suspense：lazy 元件還在下載時，先顯示 fallback 提示 */}
-              <Suspense
-                fallback={
+              {chartView === "single" ? (
+                // ===== 單檔模式：即時報價 + 一張可拉高的大圖 =====
+                <>
+                  {/* 即時報價（WebSocket 推送，價格會即時跳動、依漲跌變色） */}
+                  <Box sx={{ mb: 2 }}>
+                    <LiveQuote symbol={chartSymbol} />
+                  </Box>
                   <Box
                     sx={{
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "text.secondary",
+                      resize: "vertical",
+                      overflow: "hidden",
+                      height: "75vh",
+                      minHeight: 320,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: 1,
                     }}
                   >
-                    圖表載入中…
+                    <LightweightChart
+                      symbol={chartSymbol}
+                      height="100%"
+                      source="yfinance"
+                      priceLines={buildPriceLines(chartSymbol)}
+                    />
                   </Box>
-                }
-              >
-                <LightweightChart
-                  symbol={chartSymbol}
-                  height="100%"
-                  source="yfinance"
-                  priceLines={chartPriceLines}
-                />
-              </Suspense>
-            </Box>
-            <Typography variant="caption" color="text.secondary">
-              提示：拖曳圖表框的右下角可調整高度。
-            </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    提示：拖曳圖表框的右下角可調整高度。
+                  </Typography>
+                </>
+              ) : (
+                // ===== 網格模式：2×2 同時監控多檔（啟用中 Bot 的標的）=====
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 1,
+                    height: "78vh",
+                  }}
+                >
+                  {gridSymbols.map((sym) => (
+                    <Box
+                      key={sym}
+                      sx={{
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 1,
+                        overflow: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                        minHeight: 0, // 讓 grid 子項能正確收縮，圖表才不會撐爆
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{ px: 1, py: 0.5, fontWeight: 600 }}
+                      >
+                        {sym}
+                      </Typography>
+                      <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                        <LightweightChart
+                          symbol={sym}
+                          height="100%"
+                          source="yfinance"
+                          priceLines={buildPriceLines(sym)}
+                        />
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Suspense>
           </Box>
         )}
 

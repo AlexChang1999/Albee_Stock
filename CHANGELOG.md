@@ -18,13 +18,21 @@
 ### 新增
 
 - 原生 K 線圖（lightweight-charts）取代 TradingView widget：K 線資料改由後端供應，
-  讓圖表能疊上後端算出的風控水位線。後端新增 `backend/routers/bars.py`
-  （`GET /bars/{symbol}?days=&source=`，沿用 `services/market_data.py` 統一資料源分派，
-  把 DataFrame 轉成 lightweight-charts 吃的 `{time, open, high, low, close, volume}`）。
-  前端新增 `LightweightChart.jsx`（v5 API：`addSeries(CandlestickSeries, …)`、`createPriceLine`
-  畫水位線、`autoSize` 自適應、race-safe 抓資料）、`api.getBars()`。App 圖表分頁改用此元件，
-  並把「正在盯盤」Bot 的**追蹤止損線**（`peak_price ×(1−trailing_stop_pct)`）畫上圖。
-  進場均價／固定止損／止盈水位線待後端補上 Alpaca 持倉進場價後再加。Vite build 綠、前端 24 測試綠。
+  讓圖表能疊上後端算出的風控水位線，並支援多視窗監控。
+  - 後端 `backend/routers/bars.py`（`GET /bars/{symbol}?days=&source=`，沿用
+    `services/market_data.py` 統一資料源分派，把 DataFrame 轉成 lightweight-charts 吃的
+    `{time, open, high, low, close, volume}`）。
+  - 後端 `backend/routers/positions.py`（`GET /positions/{symbol}`，回 Alpaca 持倉的
+    進場均價 `avg_entry_price`＋股數；空手回 `{qty:0, avg_entry_price:null}`）── 固定止損／
+    止盈是相對進場均價算的，這支補上「進場均價」這塊資料庫沒有的資訊。
+  - 前端 `LightweightChart.jsx`（v5 API：`addSeries(CandlestickSeries, …)`、`createPriceLine`
+    畫水位線、`autoSize` 自適應、race-safe 抓資料）、`api.getBars()`／`api.getPosition()`。
+  - 風控水位線（針對啟用中 Bot 的標的自動畫）：進場均價（灰虛線）、固定止損
+    `進場價×(1−stop_loss_pct)`（紅）、固定止盈 `進場價×(1+take_profit_pct)`（藍）、
+    追蹤止損 `peak_price×(1−trailing_stop_pct)`（青綠）。
+  - K 線分頁新增「單檔／2×2 網格」檢視切換：網格模式自動排出啟用中 Bot 盯的標的
+    （去重最多 4 檔），同時監控多檔並各自畫上對應水位線。
+  - Vite build 綠、前端 24 測試綠。
 
 - 基本面 / 財報 / 新聞（yfinance）：前端新增「基本面」分頁，查股票代號即顯示公司基本資料
   （市值/PE/EPS/產業/簡介…）、財報三表（損益/資產負債/現金流，可切年度/季度）、配息與分割
