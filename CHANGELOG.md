@@ -15,6 +15,29 @@
 
 ## [未發布]
 
+### 新增
+
+- 模式 B 自動駕駛護欄（藍圖 Phase 4）：後端週期性自動海選，當策略「EV 與勝率同時達標」
+  即**無需人工確認**自動建立 Bot 並掛排程（藍圖雙軌 AI 的「紅燈模式」）。層層設防、預設全關：
+  - 設定全走 `.env`（`backend/config.py` 新增）：`AUTO_PILOT_ENABLED`（總開關，預設 `false`）、
+    `AUTO_PILOT_MIN_EV`（預設 150）、`AUTO_PILOT_MIN_WIN_RATE`（預設 55）、
+    `AUTO_PILOT_INTERVAL_SEC`（預設 3600）、`AUTO_PILOT_MAX_BOTS`（自動 Bot 上限，預設 5）、
+    `AUTO_PILOT_TRADE_AMOUNT`（預設 1000）。
+  - 服務 `backend/services/autopilot.py`：掃描 → 濾（EV≥門檻由 screener 處理、勝率≥門檻在此把關）→
+    同標的去重 → 數量上限 → 自動建立 `auto_created=True` 的 Bot 並啟動排程；單檔出錯不拖垮整輪。
+  - **不繞過實盤雙閘安全閥**：真正下單仍走 `alpaca_client.submit_market_order`，沒開實盤雙閘
+    時只在 Paper 模擬下單，不燒真錢。
+  - 排程 `bot_manager` 新增 `start_autopilot/stop_autopilot/is_autopilot_running` 週期 job；
+    `main.py` 啟動時僅當 `AUTO_PILOT_ENABLED=true` 才自動掛。
+  - API `backend/routers/automation.py`：`GET /automation/rules`（讀規則＋是否運行中）、
+    `POST /automation/scan-now`（手動跑一輪、force）、`POST /automation/toggle?enable=`（執行階段開關，不改 `.env`）。
+  - 資料庫：`bots.auto_created` 欄位 + Alembic 遷移 `c3d4e5f6a7b8`（去重與上限計數用）。
+  - 前端 `components/AutopilotPanel.jsx`（放「AI 探勘」分頁最上方）：顯示規則與下單環境徽章、
+    週期掃描開關（Switch）、「立刻掃描一次」按鈕與結果摘要；`api.js` 新增三個對應呼叫。
+  - 測試 `tests/test_autopilot.py`（5 項，in-memory DB + monkeypatch，不連網不動正式庫）：
+    總開關關閉不執行、EV+勝率達標才部署、勝率不足擋下、同標的去重、達上限停止。
+    後端共 87 測試綠、前端 24 測試綠、Vite build 綠。
+
 ### 變更
 
 - 深藍主題 UI 重構（藍圖 Phase 3）：

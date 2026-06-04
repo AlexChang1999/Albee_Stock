@@ -24,6 +24,7 @@ import {
 } from "@mui/material";
 import { api } from "../api";
 import { STRATEGIES } from "../constants";
+import AutopilotPanel from "./AutopilotPanel";
 
 // 策略代號 → 中文名稱（查不到就原樣顯示）
 function strategyLabel(key) {
@@ -116,7 +117,7 @@ function RecommendationCard({ rec, onDeploy, deploying }) {
   );
 }
 
-export default function AiRecommendations({ onDeploy }) {
+export default function AiRecommendations({ onDeploy, onReload }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState(null); // 後端回的完整結果（含 recommendations 等）
@@ -159,6 +160,9 @@ export default function AiRecommendations({ onDeploy }) {
 
   return (
     <Box>
+      {/* 模式 B 自動駕駛控制台（紅燈模式）：放最上方 */}
+      <AutopilotPanel onReload={onReload} />
+
       {/* 說明 + 掃描控制列 */}
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>

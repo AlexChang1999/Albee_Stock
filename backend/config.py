@@ -85,6 +85,25 @@ class Settings:
     # 要用雲端供應商，必須明確把這個設成 true，等於「我知道資料會外送」。
     LLM_ALLOW_CLOUD: bool = os.getenv("LLM_ALLOW_CLOUD", "false").lower() in ("1", "true", "yes")
 
+    # --- 全自動護欄／模式 B（自動駕駛）設定（Phase 4）---
+    # 「模式 B」＝後端週期性自動海選，當策略 EV 與勝率同時達標就「無需人工確認」
+    # 自動建立 Bot 並掛上排程。這是整套系統風險最高的功能，因此：
+    #   1) 預設整個關閉（AUTO_PILOT_ENABLED=false），要明確開才會啟動。
+    #   2) 自動 Bot 有「數量上限」（AUTO_PILOT_MAX_BOTS），防失控暴增。
+    #   3) 真正下單仍走 alpaca_client 的「實盤雙閘安全閥」——模式 B 不繞過它，
+    #      所以就算開了自動駕駛，沒開實盤雙閘也只會在 Paper（模擬）下單，不燒真錢。
+    AUTO_PILOT_ENABLED: bool = os.getenv("AUTO_PILOT_ENABLED", "false").lower() in ("1", "true", "yes")
+    # EV（期望值）門檻：海選結果的最佳策略 EV ≥ 此值才考慮自動部署。藍圖建議 150。
+    AUTO_PILOT_MIN_EV: float = float(os.getenv("AUTO_PILOT_MIN_EV", "150"))
+    # 勝率門檻（百分比）：win_rate_pct ≥ 此值才考慮自動部署。藍圖建議 55。
+    AUTO_PILOT_MIN_WIN_RATE: float = float(os.getenv("AUTO_PILOT_MIN_WIN_RATE", "55"))
+    # 自動海選頻率（秒）：預設 3600（每小時掃一次），避免太頻繁吃算力。
+    AUTO_PILOT_INTERVAL_SEC: int = int(os.getenv("AUTO_PILOT_INTERVAL_SEC", "3600"))
+    # 自動建立的 Bot 數量上限（達上限後不再自動部署，防失控）。預設 5。
+    AUTO_PILOT_MAX_BOTS: int = int(os.getenv("AUTO_PILOT_MAX_BOTS", "5"))
+    # 每個自動 Bot 的單筆下單金額（美元）。預設 1000。
+    AUTO_PILOT_TRADE_AMOUNT: float = float(os.getenv("AUTO_PILOT_TRADE_AMOUNT", "1000"))
+
     # --- 探討（檢討）檔案記憶（Phase 5）---
     # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，
     # 之後寫新檢討前會先讀路標、挑相關舊探討來參考（越來越聰明）。

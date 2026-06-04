@@ -219,6 +219,46 @@ class BotManager:
             self.scheduler.remove_job(job_id)
             notify(f"⏸️ Bot 已停止：id={bot_id}")
 
+    # ----- 模式 B 自動駕駛排程（Phase 4）-----
+    # 用一個固定 job_id 的週期工作，每隔 interval 秒跑一輪 autopilot 海選+自動部署。
+    AUTOPILOT_JOB_ID = "autopilot_scan"
+
+    def _run_autopilot(self) -> None:
+        """排程實際呼叫的工作：跑一輪自動駕駛掃描（force=False，總開關關著就跳過）。"""
+        # 延後匯入避免模組載入循環（autopilot 會 import 本模組的 bot_manager）
+        from backend.services.autopilot import run_autopilot_scan
+        try:
+            result = run_autopilot_scan(force=False)
+            deployed = result.get("deployed", [])
+            if deployed:
+                print(f"🤖 模式 B 本輪自動部署 {len(deployed)} 個 Bot")
+        except Exception as e:
+            # 自動駕駛出錯不該拖垮整個排程器
+            notify(f"⚠️ 模式 B 自動掃描出錯：{e}")
+
+    def start_autopilot(self, interval_seconds: int) -> None:
+        """啟動模式 B 週期掃描（已存在就先移除，避免重複）。"""
+        if self.scheduler.get_job(self.AUTOPILOT_JOB_ID):
+            self.scheduler.remove_job(self.AUTOPILOT_JOB_ID)
+        self.scheduler.add_job(
+            self._run_autopilot,
+            "interval",
+            seconds=interval_seconds,
+            id=self.AUTOPILOT_JOB_ID,
+            replace_existing=True,
+        )
+        notify(f"🤖 模式 B 自動駕駛已啟動（每 {interval_seconds} 秒掃描一次）")
+
+    def stop_autopilot(self) -> None:
+        """停止模式 B 週期掃描。"""
+        if self.scheduler.get_job(self.AUTOPILOT_JOB_ID):
+            self.scheduler.remove_job(self.AUTOPILOT_JOB_ID)
+            notify("🛑 模式 B 自動駕駛已停止")
+
+    def is_autopilot_running(self) -> bool:
+        """目前模式 B 週期掃描是否在排程中。"""
+        return self.scheduler.get_job(self.AUTOPILOT_JOB_ID) is not None
+
 
 # 全域共用的 Bot 管理器
 bot_manager = BotManager()

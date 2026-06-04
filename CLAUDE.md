@@ -149,11 +149,24 @@ LLM_API_KEY=ollama                        # 本機 Ollama 隨意填；雲端供�
 LLM_MODEL=llama3.1                        # 想用別的本機模型改這裡
 LLM_ALLOW_CLOUD=false                     # 外送閘：非本機 LLM 須設 true 才放行（防策略資料外洩）
 EXPLORATIONS_DIR=                         # 探討檔案記憶資料夾（留空＝專案根 explorations/）
+
+# 模式 B 自動駕駛護欄（藍圖 Phase 4，風險最高，預設全關）
+AUTO_PILOT_ENABLED=false                  # 總開關：true 才會週期自動海選＋無人工確認部署 Bot
+AUTO_PILOT_MIN_EV=150                     # EV 門檻：最佳策略 EV ≥ 此值才考慮自動部署
+AUTO_PILOT_MIN_WIN_RATE=55               # 勝率門檻（%）：win_rate_pct ≥ 此值才部署
+AUTO_PILOT_INTERVAL_SEC=3600             # 自動海選頻率（秒），預設每小時一次
+AUTO_PILOT_MAX_BOTS=5                     # 自動 Bot 數量上限（防失控暴增）
+AUTO_PILOT_TRADE_AMOUNT=1000             # 每個自動 Bot 的單筆下單金額（美元）
 ```
 
 > **LLM 助手定位**：只做策略「設計/微調/事後檢討」與讀回測歷史，**無**下單/啟停 Bot/
 > 改實盤安全閥/跑 shell 的能力。預設本機 Ollama（須先 `ollama serve` + `ollama pull llama3.1`），
 > 沒裝/連不上時 API 回優雅 400 提示，不會卡住其他功能。
+
+> **模式 B 自動駕駛定位**：藍圖雙軌 AI 的「紅燈模式」。後端週期海選，EV 與勝率同時達標即
+> **無需人工確認**自動建立 Bot（`services/autopilot.py`、`routers/automation.py`）。層層設防：
+> 總開關 `AUTO_PILOT_ENABLED` 預設關、雙閾值、自動 Bot 數量上限、同標的去重。**不繞過實盤雙閘**——
+> 沒開實盤雙閘時自動 Bot 只在 Paper 模擬下單，不燒真錢。前端控制台在「AI 探勘」分頁最上方。
 
 ## 常用指令
 

@@ -63,6 +63,11 @@ class Bot(Base):
     # Bot 是否啟用中
     is_active = Column(Boolean, default=False)
 
+    # 是否由「模式 B 自動駕駛」自動建立（Phase 4）。
+    # True = 系統海選達標後自動部署的；False = 使用者手動建立或一鍵部署的。
+    # 自動駕駛用它來：① 去重（同標的不重複自動建）② 計算自動 Bot 是否已達上限。
+    auto_created = Column(Boolean, default=False)
+
     # 最後一次成功跑完監測檢查的時間（None = 還沒跑過）。
     # 前端用它顯示「最後檢查：X 秒前」，確認排程真的在動。
     last_checked_at = Column(DateTime, nullable=True)

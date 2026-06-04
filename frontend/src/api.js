@@ -90,6 +90,15 @@ export const api = {
     return request(`/ai-recommendations${suffix}`);
   },
 
+  // ===== Phase 4：模式 B 自動駕駛（全局自動化規則）=====
+  // 讀目前規則 + 是否正在跑
+  getAutomationRules: () => request("/automation/rules"),
+  // 立刻手動跑一輪海選＋自動部署（force=true）
+  automationScanNow: () => request("/automation/scan-now", { method: "POST" }),
+  // 執行階段開/關週期掃描（不改 .env）
+  toggleAutomation: (enable) =>
+    request(`/automation/toggle?enable=${enable}`, { method: "POST" }),
+
   // ===== 基本面 / 財報 / 新聞 =====
   getProfile: (symbol) => request(`/fundamentals/${symbol}`),
   getFinancials: (symbol, period = "annual") =>

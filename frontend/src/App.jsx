@@ -563,7 +563,7 @@ function App() {
 
         {/* ===== AI 策略探勘分頁 ===== */}
         {tab === 3 && (
-          <AiRecommendations onDeploy={handleDeployRecommendation} />
+          <AiRecommendations onDeploy={handleDeployRecommendation} onReload={reload} />
         )}
         </Container>
 
