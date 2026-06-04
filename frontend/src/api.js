@@ -78,6 +78,18 @@ export const api = {
   // 空手時回 { qty: 0, avg_entry_price: null }
   getPosition: (symbol) => request(`/positions/${symbol}`),
 
+  // ===== Phase 2：AI 策略探勘（漏斗式海選）=====
+  // 跑一輪海選，回高期望值（EV>0）的策略推薦清單。
+  // opts 可帶 days / volume_multiplier / min_ev / top / source / symbols（皆可省略）。
+  getAiRecommendations: (opts = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(opts).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") qs.append(k, v);
+    });
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request(`/ai-recommendations${suffix}`);
+  },
+
   // ===== 基本面 / 財報 / 新聞 =====
   getProfile: (symbol) => request(`/fundamentals/${symbol}`),
   getFinancials: (symbol, period = "annual") =>

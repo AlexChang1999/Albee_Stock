@@ -17,6 +17,23 @@
 
 ### 新增
 
+- AI 策略探勘（漏斗式海選，藍圖 Phase 2）：盤前/盤中對一批股票自動海選出高期望值
+  （EV>0）的策略配置，前端「AI 探勘」分頁渲染成卡片，可一鍵部署成 Bot。
+  - 後端 `backend/services/screener.py`（漏斗式篩選 Funnel Filtering）：
+    第一層（低算力）用 pandas 算「量比＝最新量/20日均量」，量比 ≥ 門檻（預設 2.5）才過關；
+    第二層（高算力）只對過關標的逐一跑多策略回測、每檔取 EV 最高那組，留 EV ≥ 門檻。
+    第一層抓的 K 線「快取重用」到第二層，省一次資料源呼叫；單檔抓不到/爆錯只跳過該檔。
+    第三層（Ollama 情緒打分）先留鉤子、預設關，避免依賴 Ollama 拖慢海選。
+  - 後端 `backend/routers/ai_recommendations.py`（`GET /ai-recommendations`，參數
+    `days/volume_multiplier/min_ev/top/source/symbols`，預設 `source=yfinance` 免金鑰可跑）。
+  - 後端 `backend/services/backtest_engine.py` 新增公開 `backtest_on_bars()`：用已抓好的
+    K 線跑回測，供 screener 重用第一層資料、避免重抓。
+  - 前端 `components/AiRecommendations.jsx`（掃描控制列＋推薦卡片網格：量比徽章、EV/勝率/
+    報酬/回撤/獲利因子/筆數、一鍵部署）、`api.getAiRecommendations()`、App 新增「AI 探勘」分頁與
+    `handleDeployRecommendation`（createBot → startBot 自動掛排程）。
+  - 後端新增 `tests/test_screener.py`（量比計算、漏斗過關/淘汰/skip、EV 排序、min_ev 門檻；
+    monkeypatch 掉資料源、不連網）。後端 82 測試綠、前端 24 測試綠、Vite build 綠。
+
 - 原生 K 線圖（lightweight-charts）取代 TradingView widget：K 線資料改由後端供應，
   讓圖表能疊上後端算出的風控水位線，並支援多視窗監控。
   - 後端 `backend/routers/bars.py`（`GET /bars/{symbol}?days=&source=`，沿用

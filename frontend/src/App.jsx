@@ -46,6 +46,8 @@ import ConfirmDialog from "./components/ConfirmDialog";
 import StrategyWorkbench from "./components/StrategyWorkbench";
 import LiveQuote from "./components/LiveQuote";
 import FundamentalsPanel from "./components/FundamentalsPanel";
+import AiRecommendations from "./components/AiRecommendations";
+import { STRATEGIES } from "./constants";
 
 // 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
 // 但後端存的是小數（0.10）。下面兩個小工具負責互轉，空白 = null（不啟用該機制）。
@@ -285,6 +287,29 @@ function App() {
     }
   }
 
+  // 一鍵部署：把 AI 推薦的策略配置建立成 Bot 並掛上排程。
+  // 先 createBot 建好，再 startBot 讓它開始定時跑（符合藍圖「自動建立 Bot 並掛載排程」）。
+  async function handleDeployRecommendation(rec) {
+    setError("");
+    setMessage("");
+    const label = STRATEGIES.find((s) => s.value === rec.strategy_key)?.label || rec.strategy_key;
+    try {
+      const created = await api.createBot({
+        name: `${rec.symbol} ${label}（AI）`,
+        strategy: rec.strategy_key,
+        symbol: rec.symbol,
+        params: rec.params || {},
+        trade_amount: 1000,
+      });
+      // 建好後立刻掛排程啟動
+      await api.startBot(created.id);
+      setMessage(`已部署並啟動 Bot：${rec.symbol} ${label}（AI）`);
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   // 儲存編輯（送出 PUT）
   async function handleEditSave() {
     setError("");
@@ -350,6 +375,7 @@ function App() {
           <Tab label="儀表板" />
           <Tab label="K 線圖" />
           <Tab label="基本面" />
+          <Tab label="AI 探勘" />
         </Tabs>
 
         {/* ===== 儀表板分頁 ===== */}
@@ -509,6 +535,11 @@ function App() {
 
         {/* ===== 基本面分頁 ===== */}
         {tab === 2 && <FundamentalsPanel />}
+
+        {/* ===== AI 策略探勘分頁 ===== */}
+        {tab === 3 && (
+          <AiRecommendations onDeploy={handleDeployRecommendation} />
+        )}
         </Container>
 
         {/* 右側策略工作台（自管資料流，可收合／橫向拉寬） */}

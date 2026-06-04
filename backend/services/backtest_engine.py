@@ -156,6 +156,28 @@ def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
     }
 
 
+def backtest_on_bars(
+    strategy_name: str,
+    df: pd.DataFrame,
+    params: dict | None = None,
+    initial_cash: float = 10000.0,
+) -> dict:
+    """
+    用「已經抓好的 K 線」跑回測，不再連資料源。
+
+    為什麼要有這支：AI 海選（screener）會先為一批股票抓 K 線做量能篩選，
+    通過的股票若再呼叫 run_backtest 就會「重抓一次同樣的資料」，浪費 yfinance
+    的呼叫額度與時間。讓 screener 把第一層抓到的 df 直接餵進來，省一次抓取。
+
+    :param strategy_name: 策略代號，例如 "ma_crossover"
+    :param df: 已抓好的 K 線（需有 close 欄，時間由舊到新）
+    :param params: 策略參數
+    :param initial_cash: 初始資金
+    """
+    strategy = get_strategy(strategy_name, params or {})
+    return _run_on_df(strategy, df, initial_cash)
+
+
 def run_backtest(
     strategy_name: str,
     symbol: str,
