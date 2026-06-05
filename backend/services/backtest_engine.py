@@ -28,6 +28,7 @@
 import pandas as pd
 
 from backend.services import market_data
+from backend.services.analytics import extended_metrics
 from backend.strategies import get_strategy, Signal
 
 
@@ -185,4 +186,7 @@ def run_backtest(
     result["strategy"] = strategy_name
     result["days"] = days
     result["data_points"] = len(df)
+    # 附上 quantstats 風險調整後指標（Sharpe/Sortino/Calmar/年化波動/CAGR）。
+    # 只在「單筆回測」算（optimizer 海選走 _run_on_df，不經這裡，故不拖慢掃描）。
+    result["extended"] = extended_metrics(result.get("equity_curve"))
     return result

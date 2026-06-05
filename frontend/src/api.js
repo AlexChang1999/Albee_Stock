@@ -113,6 +113,9 @@ export const api = {
   getBacktestRuns: (favorite = false) =>
     request(`/backtest-runs${favorite ? "?favorite=true" : ""}`),
   getBacktestRun: (id) => request(`/backtest-runs/${id}`),
+  // 某筆回測的 quantstats HTML 績效報表「完整網址」（給 <a target="_blank"> 開新分頁用，
+  // 回的是 HTML 不是 JSON，所以給網址、不走 request()）
+  reportUrl: (id) => `${BASE_URL}/backtest-runs/${id}/report`,
   // 收藏/取消收藏某筆回測
   favoriteBacktestRun: (id, isGood = true) =>
     request(`/backtest-runs/${id}/favorite?is_good=${isGood}`, { method: "PUT" }),

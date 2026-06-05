@@ -58,6 +58,10 @@ PARAM_GRIDS = {
     "williams_r": {
         "period": [10, 14, 21],
     },
+    "adx_trend": {
+        "period": [14, 20],
+        "adx_threshold": [20, 25],
+    },
 }
 
 
