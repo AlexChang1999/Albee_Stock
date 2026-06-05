@@ -1,0 +1,15 @@
+{
+  "$comment": "專案共享的 Claude Code 設定（進 git）：只放 plugin / marketplace，讓任何電腦 clone 本專案後，Claude Code 會自動提示安裝這些 plugin。機器專屬設定（bgIsolation、個人 permissions）請放 .claude/settings.local.json（不進 git）。",
+  "extraKnownMarketplaces": {
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "caveman@caveman": true,
+    "frontend-design@claude-plugins-official": true
+  }
+}
