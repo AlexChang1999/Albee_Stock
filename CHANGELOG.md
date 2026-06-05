@@ -15,6 +15,25 @@
 
 ## [未發布]
 
+### 變更
+
+- **Phase 6 step-01：統一資料路徑（實盤 = 回測）**——修 P4「實盤與回測資料源/回看長度分岔」。
+  - `config.py` 新增 `DATA_SOURCE`（預設 `alpaca`，可設 `yfinance`）作為**全系統唯一資料源設定**；
+    `.env.example` 同步補欄位。
+  - 新增純函式 `backend/strategies/lookback.py`：`min_bars_required` 依各策略關鍵參數
+    （`long_window`/`slow+signal`/`period`/`k_period`…）算出最小 K 棒數，`required_lookback_days`
+    再換算成日曆天數（×1.6 暖機緩衝 + 交易日→日曆日 + 假日緩衝）。回測與實盤共用此推算。
+  - `bot_manager._run_strategy` 改走 `market_data.get_bars(..., source=settings.DATA_SOURCE)` +
+    `required_lookback_days(...)`，**不再寫死 `alpaca_client.get_bars(days=60)`**。
+    修掉「`long_window=120` 等長週期策略實盤只拿 60 根、算不出指標、行為與回測不一致」的靜默失準。
+  - `optimizer` / `screener` / `backtest` / `recommendations` 的 `source` 預設改讀 `settings.DATA_SOURCE`
+    （保留呼叫端可覆寫參數，向後相容）。
+  - 測試：新增 `tests/test_lookback.py`（各策略推算回看天數 ≥ 最小 K 棒數、隨參數遞增、舊版 60 不夠）；
+    `tests/test_bot_manager.py` 加實盤資料路徑統一驗證（走 market_data、帶 DATA_SOURCE、帶推算天數）。
+    `pytest tests/ -q` → 137 passed。
+  - 決策備註：「回看天數一致」採「同源 + 兩路皆 ≥ 策略所需」詮釋，**回測續用 365 天不縮短**
+    （縮短會砸爛 EV 樣本數，違反「EV 誠實」）。完整理由見 `docs/phase-6/step-01-unify-data-path.md`「實作備註」。
+
 ### 文件
 
 - 新增 **AI 實作護欄合約** `docs/ai-implementation-guardrails.md`：防止「未來 AI 自己 coding 時偏離原目標

@@ -25,8 +25,12 @@ except Exception:
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pandas as pd
+
 import backend.bots.bot_manager as bm
+from backend.config import settings
 from backend.strategies import Signal
+from backend.strategies.lookback import required_lookback_days
 
 
 class FakePosition:
@@ -169,6 +173,42 @@ def test_persist_peak_survives_restart(tmp_path, monkeypatch):
     assert reloaded.peak_price == 123.45, reloaded.peak_price
     s2.close()
     print("✅ 最高價寫入資料庫並重啟後仍在 測試通過")
+
+
+def test_run_strategy_uses_unified_data_path(monkeypatch):
+    """Phase 6 step-01：實盤抓 K 線要走 market_data、帶 settings.DATA_SOURCE、
+    帶『依策略參數推算』的回看天數——不再寫死 60、不再直接打 alpaca_client.get_bars。"""
+    captured = {}
+
+    def fake_get_bars(symbol, days, source):
+        captured["symbol"] = symbol
+        captured["days"] = days
+        captured["source"] = source
+        # 回一份夠長的假 K 線，讓策略能正常跑（內容不影響本測試重點）
+        n = 200
+        return pd.DataFrame({
+            "open": [100.0] * n, "high": [101.0] * n, "low": [99.0] * n,
+            "close": [100.0] * n, "volume": [1000] * n,
+        })
+
+    # 走 market_data 分派器（非 alpaca_client）；若有人改回直打 alpaca_client 就會炸
+    monkeypatch.setattr(bm.market_data, "get_bars", fake_get_bars)
+    monkeypatch.setattr(
+        bm.alpaca_client, "get_bars",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("實盤不該直接打 alpaca_client.get_bars")),
+    )
+
+    bot = _make_bot()
+    bot.strategy = "ma_crossover"
+    bot.params = {"short_window": 5, "long_window": 120}
+
+    bm._run_strategy(bot)
+
+    assert captured["symbol"] == "TEST", captured
+    assert captured["source"] == settings.DATA_SOURCE, captured
+    assert captured["days"] == required_lookback_days("ma_crossover", bot.params), captured
+    assert captured["days"] != 60, "不該再寫死 60"
+    print("✅ 實盤資料路徑統一（market_data + DATA_SOURCE + 推算天數）測試通過")
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@
 
 from itertools import product
 
+from backend.config import settings
 from backend.services import market_data
 from backend.services.backtest_engine import _run_on_df
 from backend.services.vectorized_engine import is_vectorized, run_vectorized
@@ -92,7 +93,7 @@ def run_auto_backtest(
     symbol: str,
     days: int = 365,
     initial_cash: float = 10000.0,
-    source: str = "alpaca",
+    source: str = settings.DATA_SOURCE,
 ) -> dict:
     """
     對某檔股票做「全自動掃描」：跑遍所有策略 × 參數組合，依 EV 排名。

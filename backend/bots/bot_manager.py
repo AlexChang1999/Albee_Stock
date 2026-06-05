@@ -20,12 +20,15 @@ from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from backend.config import settings
 from backend.database import SessionLocal
 from backend.models import Bot, TradeLog
+from backend.services import market_data
 from backend.services.alpaca_client import alpaca_client
 from backend.services.notifier import notify
 from backend.services.risk_manager import check_exit
 from backend.strategies import get_strategy, Signal
+from backend.strategies.lookback import required_lookback_days
 
 
 # 追蹤止損要記住「持倉期間出現過的最高價」。
@@ -157,8 +160,16 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
 
 
 def _run_strategy(bot: Bot):
-    """抓 K 線、跑策略，回傳 (訊號, 原因)。抓不到資料時視為觀望。"""
-    df = alpaca_client.get_bars(bot.symbol, days=60)
+    """抓 K 線、跑策略，回傳 (訊號, 原因)。抓不到資料時視為觀望。
+
+    Phase 6 step-01：實盤改走「回測同一條資料路徑」——
+    - 走 `market_data.get_bars`（與回測/海選同一個分派器），不再寫死打 `alpaca_client`。
+    - 資料源用 `settings.DATA_SOURCE`（全系統唯一設定），不再鎖死 Alpaca。
+    - 回看天數用 `required_lookback_days` 依策略參數推算，不再寫死 60
+      （否則長均線等策略資料不夠、靜默失準）。
+    """
+    days = required_lookback_days(bot.strategy, bot.params or {})
+    df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
     strategy = get_strategy(bot.strategy, bot.params or {})
