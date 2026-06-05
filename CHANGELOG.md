@@ -60,6 +60,67 @@
   - 測試：新增 `tests/test_oos.py`（split 切分/時序、冠軍依 OOS 排名、過擬合落差可見）；
     `tests/test_automation.py` / `tests/test_screener.py` 的假資料改用 `oos_*` 欄位。
 
+- **Phase 6 step-05：組合層資金 / 購買力守門**——修 P6 前半（無組合層資金控管）。
+  - 新增純函式 `backend/services/capital.py` 的 `plan_capital(planned, available_cash, cash_per_bot,
+    reserve_ratio)`：可動用額度 = `available_cash×(1−reserve_ratio)`，逐筆核可、扣到不夠其餘進
+    `rejected`（附原因）；`cash_per_bot<=0` 全核可、`reserve_ratio` 夾在 [0,1] 防呆。
+  - `config.py` + `.env.example` 新增 `PORTFOLIO_CASH_RESERVE_RATIO`（預設 0.2，永遠留 20% 現金）。
+  - `automation.run_auto_deploy`：部署前 best-effort 查 `get_account().cash` 套 `plan_capital`，
+    只建 `approved`，`rejected` 併進回傳摘要與通知（離線查不到帳戶 → 略過守門、不阻斷預覽/測試）。
+  - `bot_manager._handle_flat`：買進前 best-effort 查可用購買力，`qty×price > 購買力` 則跳過買進並
+    記一筆 `skipped_no_buying_power` 審計（離線/查價失敗放行）。
+  - 測試：新增 `tests/test_capital.py`（剛好夠/不夠/保留比例邊界/配資為 0/保留 100%）。
+
+- **Phase 6 step-06：排程每輪重查 Bot**——修 P7（排程持有過期 ORM 物件）。
+  - `bot_manager.start_bot` 的 `add_job` 改傳 `args=[bot.id]`（整數），不再鎖死當下的 ORM 物件。
+  - `run_bot_once(bot_id, ...)` 改收 `bot_id`，函式開頭用 id 重查最新 Bot：查不到（已刪）→ 移除殭屍
+    排程並 return；查到 → 用新鮮 Bot 跑後續。`routers/bots.run_bot_now` 改傳 `bot.id`。
+  - 效果：用 `PUT /bots/{id}/risk` 拖曳水位線改風控，對**執行中**的 Bot 下一輪即生效，不必重啟後端。
+  - 測試：重寫 `tests/test_bot_manager.py` 改用臨時 SQLite + 真 Bot（驗證重查用新風控值、已刪 Bot
+    安全 no-op + 移除殭屍排程）。
+
+- **Phase 6 step-07：AI 情緒真正進決策**——修 P5（死掉的 AI 情緒層；使用者明確要求）。
+  - `config.py` + `.env.example` 新增 `SENTIMENT_GATING`（預設 true，總開關）、`SENTIMENT_MIN_SCORE`
+    （預設 -20）。
+  - `screener.py` 新增純函式 `sentiment_score` / `is_vetoed_by_sentiment`；最終排序鍵改
+    `(OOS EV, 情緒分數)`（EV 為主、情緒為次）。
+  - `automation.py` 新增純函式 `apply_sentiment`：`bearish` 或分數 `< min_score` → **情緒否決**
+    （剔出部署候選）；其餘以情緒做 OOS EV 排序的次要加權；`sentiment=None`（沒跑情緒）視中性不否決；
+    `enabled=False` 完全退回純 EV（向後相容）。`plan_deployments` 在 EV/勝率門檻**之後**串接它。
+  - 紀律：情緒永遠是「輔」，OOS EV 永遠是「主」——情緒不會把更高 EV 的標的擠到更低 EV 標的之後。
+  - 測試：新增 `tests/test_sentiment.py`（否決規則、停用退回、次要加權、EV 不翻盤、screener 排序）。
+
+- **Phase 6 step-08：決策審計軌跡**——修 P8（無決策審計）。
+  - 新增 model `backend/models/decision_log.py`（`DecisionLog`：`bot_id/symbol/signal/reason/price/
+    action/created_at`，action 列舉 `bought/sold/hold/skipped_market_closed/skipped_no_buying_power/
+    skipped_circuit_breaker`），走 Alembic 遷移 `c3d4e5f6a7b8`。
+  - `bot_manager.run_bot_once` 各分支都寫一筆 `DecisionLog`（休市跳過/觀望/續抱/購買力不足/熔斷/
+    買進/風控賣出/策略賣出）——連「沒成交但有決策」的時點都留痕。
+  - 新增 `GET /bots/{id}/decisions`（最近 N 筆、倒序、limit 夾 1~500）。
+  - 測試：新增 `tests/test_decision_log.py`（各分支寫對 action/signal/reason、端點往返）。
+
+- **Phase 6 step-09：組合回撤熔斷**——修 P6 後半（無全域風險開關）。
+  - 新增純函式 `backend/services/circuit_breaker.py` 的 `portfolio_circuit_breaker(equity_now,
+    equity_peak, max_dd_pct)`；`check_breaker` 編排：best-effort 查 `get_account().portfolio_value`、
+    更新持久化峰值、回是否熔斷，觸發時 `notify` 一次（去抖）。離線查不到帳戶 → 不熔斷（放行）。
+  - 新增 model `backend/models/portfolio_state.py`（單列存權益峰值，重啟仍記得最高水位），
+    走 Alembic 遷移 `d4e5f6a7b8c9`。
+  - `config.py` + `.env.example` 新增 `PORTFOLIO_MAX_DRAWDOWN_PCT`（預設 20）。
+  - 檢查點（只擋**新增曝險**、不碰出場）：`bot_manager._handle_flat` 買進前、`automation.run_auto_deploy`
+    開頭；觸發 → 跳過並記 `skipped_circuit_breaker` / 整輪不建 Bot。既有持倉的 `check_exit` 完全不受影響。
+  - 測試：新增 `tests/test_circuit_breaker.py`（純函式邊界、更新峰值後跌破熔斷、離線安全放行）。
+
+- **Phase 6 step-10：架構與文件整理（無行為變更）**——清技術債、消除漂移風險。
+  - 策略清單收成單一來源：`strategies/__init__.py` 新增 `STRATEGY_LABELS` + `list_strategies()`；
+    新增 `GET /strategies`（`backend/routers/strategies.py`）回 `[{value,label}]`。
+  - `config.py` 依領域分區重排 + 加區段註解（Alpaca/資料源/DB/LLM/Screener/Automation/回測成本 P6/
+    OOS P6/情緒閘 P6/組合風控 P6/即時報價/Explorations），並修正「即時報價」誤標 Phase 6 的註解
+    （即時報價屬改版子軌，本份「可信度地基」才是 Phase 6）。
+  - 測試：新增 `tests/test_strategies_registry.py`（`GET /strategies` 往返 + 斷言「後端註冊鍵集合 ==
+    前端 `constants.js` value 集合」，新增策略忘了同步前端會被測試擋下）。
+
+- ✅ **Phase 6 全數完成（step-01 ~ step-10）**：`pytest tests/ -q` → **173 passed**。
+
 ### 文件
 
 - 新增 **AI 實作護欄合約** `docs/ai-implementation-guardrails.md`：防止「未來 AI 自己 coding 時偏離原目標

@@ -25,6 +25,7 @@
 | Phase 3 | 多 Bot 管理 + 更多策略（8 種） | ✅ 完成 |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成 |
 | Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地） |
+| Phase 6 | 可信度地基（回測 EV ≈ 實盤 EV：成本/隔日/OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10） |
 
 **已完成**：專案骨架、**8 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標）、
 Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）、walk-forward 回測引擎、
@@ -39,6 +40,15 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **本機 LLM 思考助手**（預設 Ollama，免費）：設計 / 微調 / 事後檢討
 - **檔案化探討記憶** `explorations/`：每次檢討存一檔 + `INDEX.md` 路標，
   助手先掃路標挑相關舊探討再寫新檢討（兩段式、讀歷史越來越聰明）
+
+**Phase 6 已落地**（可信度地基，藍圖：[`docs/phase-6/`](docs/phase-6/README.md)）——讓「回測看到的 EV」
+是「實盤拿得到的 EV」的誠實估計，且每筆自動決策可追溯、可熔斷：
+- **回測誠實化**：統一資料路徑（實盤 = 回測同源同回看）、成本模型（手續費 + 滑價）、隔日成交語意、
+  **樣本外（OOS）EV** 排名挑冠軍（防過擬合）
+- **組合層風控**：購買力守門（`capital.plan_capital`）、回撤熔斷（`circuit_breaker`，只擋進不擋出）
+- **AI 情緒入決策**：第二層 LLM 情緒當「否決閘 + 次要加權」（EV 為主、情緒為輔）
+- **決策審計軌跡**：`DecisionLog` 留下每個時點「為何買/賣/不動」（含沒成交的觀望/跳過）
+- **排程每輪重查 Bot**：改風控/參數對執行中的 Bot 立即生效，不必重啟
 
 **規劃中**：見 roadmap 後段（自動套用最優參數、批次掃描、更多策略）。
 
@@ -102,8 +112,10 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 - `PUT /bots/{id}`、`DELETE /bots/{id}`：編輯／刪除 Bot
 - `POST /bots/{id}/run`：讓 Bot 立刻跑一次策略（可休市測試）
 - `POST /bots/{id}/start`、`POST /bots/{id}/stop`：啟動／停止定時執行
+- `GET /bots/{id}/decisions`：查該 Bot 的決策審計軌跡（Phase 6，含「沒成交但有決策」的時點）
 - `POST /backtest`：對某策略跑回測
 - `GET /trades`：查交易紀錄
+- `GET /strategies`：列出可用策略 `[{value,label}]`（Phase 6，策略清單單一來源）
 
 **策略工作台（Phase 5）**
 
@@ -130,7 +142,8 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 }
 ```
 
-可用的 `strategy`：`ma_crossover`、`rsi`、`macd`、`bollinger`、`donchian`、`stochastic`、`momentum`、`williams_r`
+可用的 `strategy`：`ma_crossover`、`rsi`、`macd`、`bollinger`、`donchian`、`stochastic`、`momentum`、`williams_r`、`adx_trend`
+（完整清單以 `GET /strategies` 為準）
 
 > 風控欄位（`take_profit_pct`／`stop_loss_pct`／`trailing_stop_pct`）皆為小數百分比、可不填（None=不啟用）。
 
@@ -143,11 +156,12 @@ Albee_Stock/
 │   ├── database.py          # SQLite 連線
 │   ├── main.py              # FastAPI 入口（CORS + 掛 router + lifespan 恢復排程）
 │   ├── test_connection.py   # Alpaca 連線測試
-│   ├── routers/             # API 路由（bots / backtest / orders / presets / chat）
-│   ├── models/              # 資料模型（Bot、TradeLog、StrategyPreset、BacktestRun）
-│   ├── services/            # Alpaca 封裝、回測引擎、績效、風控、通知、探討檔案記憶
-│   ├── strategies/          # 8 種交易策略 + 註冊表
-│   └── bots/                # Bot 管理器（執行 + 排程）
+│   ├── routers/             # API 路由（bots / backtest / orders / presets / chat / automation / strategies …）
+│   ├── models/              # 資料模型（Bot、TradeLog、StrategyPreset、BacktestRun、DecisionLog、PortfolioState）
+│   ├── services/            # Alpaca 封裝、回測引擎、optimizer、screener、自動部署、資金守門 capital、
+│   │                        #   回撤熔斷 circuit_breaker、績效、風控、通知、LLM、探討檔案記憶
+│   ├── strategies/          # 9 種交易策略 + 註冊表 + 顯示名（list_strategies 單一來源）
+│   └── bots/                # Bot 管理器（執行 + 排程；每輪用 bot_id 重查最新設定）
 ├── frontend/                # React 前端（Vite，模組化）
 │   └── src/
 │       ├── api.js           # 後端 API 呼叫層（讀 VITE_API_URL）

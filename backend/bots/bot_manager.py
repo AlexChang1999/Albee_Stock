@@ -4,16 +4,23 @@ Bot 管理器
 負責「執行」與「排程」Bot。
 
 一個 Bot 的執行流程（run_bot_once）：
-1. 抓該標的的歷史 K 線資料
-2. 丟給策略，產生訊號（buy / sell / hold）
-3. 依訊號決定動作：
-   - buy ：若目前沒持倉 → 買進（用設定的金額換算股數）
+1. 用 bot_id 重查最新的 Bot（Phase 6 step-06：每輪重查，改設定立即生效）
+2. 抓該標的的歷史 K 線資料
+3. 丟給策略，產生訊號（buy / sell / hold）
+4. 依訊號決定動作：
+   - buy ：若目前沒持倉 → 先過組合層守門（熔斷 → 購買力）才買進
    - sell：若目前有持倉 → 全部賣出
    - hold：什麼都不做
-4. 把交易記到資料庫，並發通知
+5. 每個分支都寫一筆決策審計（Phase 6 step-08）；真成交才另記 TradeLog 並發通知
 
 排程的部分用 APScheduler：每個啟用的 Bot 會定時（預設每 60 秒）跑一次。
 注意：實際抓資料/下單需要有效的 Alpaca 金鑰才會成功。
+
+Phase 6 設計重點：
+- step-06：排程只記 bot.id，run_bot_once 開頭用 id 重查，讀到的永遠是最新風控/參數。
+- step-05：空手買進前 best-effort 查購買力，不夠就跳過並記審計。
+- step-08：休市 / 觀望 / 續抱 / 跳過 / 成交各分支都留決策紀錄。
+- step-09：空手買進前先過組合回撤熔斷，熔斷時只擋進、不擋出。
 """
 
 from datetime import datetime
@@ -22,9 +29,18 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from backend.config import settings
 from backend.database import SessionLocal
-from backend.models import Bot, TradeLog
+from backend.models import Bot, TradeLog, DecisionLog
+from backend.models.decision_log import (
+    ACTION_BOUGHT,
+    ACTION_SOLD,
+    ACTION_HOLD,
+    ACTION_SKIPPED_MARKET_CLOSED,
+    ACTION_SKIPPED_NO_BUYING_POWER,
+    ACTION_SKIPPED_CIRCUIT_BREAKER,
+)
 from backend.services import market_data
 from backend.services.alpaca_client import alpaca_client
+from backend.services.circuit_breaker import check_breaker
 from backend.services.notifier import notify
 from backend.services.risk_manager import check_exit
 from backend.strategies import get_strategy, Signal
@@ -37,8 +53,8 @@ from backend.strategies.lookback import required_lookback_days
 def _persist_peak(bot: Bot, peak: float | None) -> None:
     """把某 Bot 的「持倉最高價」寫回資料庫（peak=None 代表清除）。
 
-    注意：bot 可能是排程帶進來的舊物件，這裡用 bot.id 重新查一筆最新的來更新，
-    避免 session 過期問題。查不到（例如測試用的假物件）就靜默跳過。
+    注意：這裡用 bot.id 重新查一筆最新的來更新，避免 session 過期問題。
+    查不到（例如測試用的假物件）就靜默跳過。
     """
     db = SessionLocal()
     try:
@@ -66,10 +82,46 @@ def _mark_checked(bot: Bot) -> None:
     bot.last_checked_at = now
 
 
-def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
+def _record_decision(bot, signal: str, reason: str, price, action: str) -> None:
+    """寫一筆決策審計（Phase 6 step-08）。
+
+    連「沒成交但有決策」的時點都記（觀望 / 續抱 / 休市 / 購買力不足 / 熔斷），
+    讓自動跑真錢的系統可事後查驗每個決定。寫入失敗不可影響交易主流程，故吞例外。
+    """
+    db = SessionLocal()
+    try:
+        db.add(DecisionLog(
+            bot_id=bot.id,
+            symbol=bot.symbol,
+            signal=signal,
+            reason=reason,
+            price=price,
+            action=action,
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _available_buying_power() -> float | None:
+    """best-effort 查帳戶可用購買力。離線 / 無金鑰 / 出錯 → None（呼叫端放行，不阻斷）。"""
+    try:
+        acct = alpaca_client.get_account()
+        return float(acct.buying_power)
+    except Exception:
+        return None
+
+
+def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
     """
     執行單一 Bot 一次完整循環。
 
+    Phase 6 step-06：參數改收 bot_id（整數）而非 ORM 物件。函式開頭用 id 重查最新的 Bot，
+    這樣使用者改了風控 / 參數（例如拖曳水位線），執行中的排程下一輪就生效，不必重啟後端。
+
+    :param bot_id: 要執行的 Bot 的資料庫 id。
     :param ignore_market_hours: 是否略過「開市才執行」的檢查。
         排程自動跑時用預設 False（休市就跳過，省 API、避免怪單）；
         手動測試（/run）時傳 True，方便休市時間也能驗證風控邏輯。
@@ -79,16 +131,28 @@ def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
               沒觸發才看策略要不要賣。
       → 重點：風控必須「不分策略訊號」都先檢查，所以不能像舊版那樣
         策略一觀望就提早 return，否則持倉時的止損會被跳過。
-    - 空手中：跑策略，出現買進訊號就進場。
+    - 空手中：跑策略，出現買進訊號 → 先過組合層守門（熔斷 / 購買力）才進場。
     """
+    # --- 0. 用 id 重查最新的 Bot（step-06 核心）---
+    db = SessionLocal()
     try:
-        # --- 0. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
+        bot = db.query(Bot).filter(Bot.id == bot_id).first()
+    finally:
+        db.close()
+    if bot is None:
+        # Bot 已被刪除 → 移除殭屍排程，避免持續對著不存在的 Bot 報錯
+        bot_manager.stop_bot(bot_id)
+        return
+
+    try:
+        # --- 1. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
         if not ignore_market_hours and not alpaca_client.is_market_open():
             print(f"[{bot.name}] 美股休市中，本次跳過。")
+            _record_decision(bot, Signal.HOLD, "美股休市中", None, ACTION_SKIPPED_MARKET_CLOSED)
             _mark_checked(bot)  # 有跑這一輪（只是休市沒動作），仍更新檢查時間
             return
 
-        # --- 1. 查目前持倉與現價 ---
+        # --- 2. 查目前持倉與現價 ---
         position = alpaca_client.get_position(bot.symbol)
         current_price = alpaca_client.get_latest_price(bot.symbol)
 
@@ -105,7 +169,7 @@ def run_bot_once(bot: Bot, ignore_market_hours: bool = False) -> None:
 
 
 def _handle_holding(bot: Bot, position, current_price: float) -> None:
-    """持倉中：先風控出場，再看策略賣出訊號。"""
+    """持倉中：先風控出場，再看策略賣出訊號（熔斷不擋出場）。"""
     entry_price = float(position.avg_entry_price)
 
     # 更新「持倉期間最高價」（給追蹤止損用）。
@@ -127,6 +191,7 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, exit_reason)
+        _record_decision(bot, Signal.SELL, exit_reason, current_price, ACTION_SOLD)
         _persist_peak(bot, None)  # 已平倉，清掉最高價紀錄
         return
 
@@ -136,27 +201,50 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, reason)
+        _record_decision(bot, Signal.SELL, reason, current_price, ACTION_SOLD)
         _persist_peak(bot, None)
     else:
         # 策略買進/觀望且風控未觸發 → 續抱（不重複買進）
         print(f"[{bot.name}] 續抱 {bot.symbol}：{reason}")
+        _record_decision(bot, signal, reason, current_price, ACTION_HOLD)
 
 
 def _handle_flat(bot: Bot, current_price: float) -> None:
-    """空手中：跑策略，出現買進訊號就進場。"""
+    """空手中：跑策略，出現買進訊號 → 先過組合層守門（熔斷 / 購買力）才進場。"""
     # 沒持倉，確保沒有殘留的最高價（只在原本有值時才寫 DB，省一次無謂的 commit）
     if bot.peak_price is not None:
         _persist_peak(bot, None)
 
     signal, reason = _run_strategy(bot)
-    if signal == Signal.BUY:
-        # 用設定金額換算要買幾股（保留 4 位小數，支援碎股）
-        qty = round(bot.trade_amount / current_price, 4)
-        order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
-        _record_and_notify(bot, "buy", qty, current_price, order, reason)
-        _persist_peak(bot, current_price)  # 進場價當作最高價的起點
-    else:
+    if signal != Signal.BUY:
         print(f"[{bot.name}] {bot.symbol} 空手觀望：{reason}")
+        _record_decision(bot, signal, reason, current_price, ACTION_HOLD)
+        return
+
+    # --- 想買進：組合回撤熔斷（step-09，只擋進不擋出）---
+    if check_breaker()["tripped"]:
+        print(f"[{bot.name}] 組合回撤熔斷中，跳過買進 {bot.symbol}。")
+        _record_decision(bot, signal, "組合回撤熔斷，暫停新增曝險", current_price, ACTION_SKIPPED_CIRCUIT_BREAKER)
+        return
+
+    # 用設定金額換算要買幾股（保留 4 位小數，支援碎股）
+    qty = round(bot.trade_amount / current_price, 4)
+
+    # --- 購買力守門（step-05，best-effort；查不到就放行）---
+    buying_power = _available_buying_power()
+    if buying_power is not None and qty * current_price > buying_power:
+        print(f"[{bot.name}] 購買力不足（需 ${qty * current_price:.2f} > 可用 ${buying_power:.2f}），跳過買進。")
+        _record_decision(
+            bot, signal,
+            f"購買力不足：需 ${qty * current_price:.2f}，可用 ${buying_power:.2f}",
+            current_price, ACTION_SKIPPED_NO_BUYING_POWER,
+        )
+        return
+
+    order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
+    _record_and_notify(bot, "buy", qty, current_price, order, reason)
+    _record_decision(bot, Signal.BUY, reason, current_price, ACTION_BOUGHT)
+    _persist_peak(bot, current_price)  # 進場價當作最高價的起點
 
 
 def _run_strategy(bot: Bot):
@@ -208,7 +296,11 @@ class BotManager:
         self.scheduler.start()
 
     def start_bot(self, bot: Bot, interval_seconds: int = 60) -> None:
-        """啟動一個 Bot，讓它每隔 interval_seconds 秒跑一次。"""
+        """啟動一個 Bot，讓它每隔 interval_seconds 秒跑一次。
+
+        Phase 6 step-06：排程只記 bot.id（整數），不鎖死當下的 ORM 物件，
+        run_bot_once 每輪用 id 重查最新值，改設定才會即時生效。
+        """
         job_id = f"bot_{bot.id}"
         # 若已存在同 id 的工作，先移除避免重複
         if self.scheduler.get_job(job_id):
@@ -217,7 +309,7 @@ class BotManager:
             run_bot_once,
             "interval",
             seconds=interval_seconds,
-            args=[bot],
+            args=[bot.id],
             id=job_id,
             replace_existing=True,
         )

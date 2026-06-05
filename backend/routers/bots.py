@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import Bot, TradeLog
+from backend.models import Bot, TradeLog, DecisionLog
 from backend.bots.bot_manager import bot_manager, run_bot_once
 from backend.services.performance import compute_bot_stats
 from backend.services.alpaca_client import alpaca_client
@@ -209,9 +209,40 @@ def get_bot_stats(bot_id: int, db: Session = Depends(get_db)):
 def run_bot_now(bot_id: int, db: Session = Depends(get_db)):
     """手動讓某個 Bot 立刻跑一次策略（測試用，休市時間也能跑）。"""
     bot = _get_bot_or_404(db, bot_id)
-    # 手動執行多半是為了測試，略過開市檢查，休市時段也能驗證流程
-    run_bot_once(bot, ignore_market_hours=True)
+    # 手動執行多半是為了測試，略過開市檢查，休市時段也能驗證流程。
+    # Phase 6 step-06：傳 bot.id（run_bot_once 內部會用 id 重查最新值）。
+    run_bot_once(bot.id, ignore_market_hours=True)
     return {"message": f"Bot {bot.name} 已執行一次"}
+
+
+@router.get("/{bot_id}/decisions")
+def get_bot_decisions(bot_id: int, limit: int = 50, db: Session = Depends(get_db)):
+    """
+    取得某個 Bot 最近的決策審計紀錄（Phase 6 step-08），依時間倒序、預設 50 筆。
+
+    這條軌跡回答「為何在某時點買 / 賣 / 不動」——含「沒成交但有決策」的時點
+    （觀望 / 續抱 / 休市跳過 / 購買力不足 / 熔斷），是自動跑真錢時的事後查驗依據。
+    """
+    _get_bot_or_404(db, bot_id)
+    rows = (
+        db.query(DecisionLog)
+        .filter(DecisionLog.bot_id == bot_id)
+        .order_by(DecisionLog.created_at.desc(), DecisionLog.id.desc())
+        .limit(max(1, min(limit, 500)))  # 夾在 1~500，防一次撈爆
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "symbol": r.symbol,
+            "signal": r.signal,
+            "reason": r.reason,
+            "price": r.price,
+            "action": r.action,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
 
 
 @router.post("/{bot_id}/start")
