@@ -19,6 +19,12 @@ numpy==2.4.6
 # --- 第二資料源（免費、無金鑰；OpenBB 底層也是用它） ---
 yfinance==1.4.1
 
+# --- 績效分析（Sharpe/Sortino/Calmar + HTML tear sheet；回測延伸指標用） ---
+quantstats==0.0.81
+
+# --- 技術指標庫（252 指標，免 ta-lib；新策略可選用，見 strategies/indicators.py） ---
+pandas-ta-classic==0.6.20
+
 # --- Web 框架（Phase 2 Web UI 會用到，先裝起來） ---
 fastapi==0.121.2
 uvicorn[standard]==0.40.0

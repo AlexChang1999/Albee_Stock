@@ -17,6 +17,7 @@ from backend.strategies.donchian import DonchianStrategy
 from backend.strategies.stochastic import StochasticStrategy
 from backend.strategies.momentum import MomentumStrategy
 from backend.strategies.williams_r import WilliamsRStrategy
+from backend.strategies.adx_trend import ADXTrendStrategy
 
 # 策略註冊表：代號 -> 類別
 # 之後新增策略，就在這裡多加一行對應即可。
@@ -29,6 +30,7 @@ STRATEGY_REGISTRY = {
     "stochastic": StochasticStrategy,
     "momentum": MomentumStrategy,
     "williams_r": WilliamsRStrategy,
+    "adx_trend": ADXTrendStrategy,
 }
 
 

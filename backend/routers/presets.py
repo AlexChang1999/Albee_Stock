@@ -15,13 +15,18 @@
 - 挑策略看 EV（expected_value），所以歷史列表預設依 EV 由高到低排。
 """
 
+import os
+import tempfile
+
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models import StrategyPreset, BacktestRun
 from backend.services.backtest_engine import run_backtest
+from backend.services.analytics import tearsheet_html
 
 router = APIRouter(tags=["Presets"])
 
@@ -230,6 +235,40 @@ def get_backtest_run(run_id: int, db: Session = Depends(get_db)):
         "claude_postmortem": run.claude_postmortem,
         "created_at": run.created_at.isoformat() if run.created_at else None,
     }
+
+
+@router.get("/backtest-runs/{run_id}/report", response_class=HTMLResponse)
+def get_backtest_run_report(run_id: int, db: Session = Depends(get_db)):
+    """
+    產這筆回測的 quantstats HTML 績效報表（資金曲線、回撤、月報酬表、各項比率）。
+    直接讀該筆 metrics 裡存好的 equity_curve，不必重跑回測、不連線。
+    前端可用 <a target="_blank"> 或開新視窗直接顯示這份 HTML。
+    """
+    run = db.query(BacktestRun).filter(BacktestRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="找不到這筆回測紀錄")
+
+    equity_curve = (run.metrics or {}).get("equity_curve")
+    if not equity_curve or len(equity_curve) < 2:
+        raise HTTPException(status_code=400, detail="這筆回測沒有足夠的資金曲線資料可產報表")
+
+    # quantstats 只能寫到檔案，故先寫到暫存檔再讀回來回傳，讀完即刪。
+    tmp_path = os.path.join(tempfile.gettempdir(), f"albee_report_{run_id}.html")
+    try:
+        tearsheet_html(
+            equity_curve,
+            tmp_path,
+            title=f"{run.symbol} / {run.strategy_key} 績效報表",
+        )
+        with open(tmp_path, "r", encoding="utf-8") as f:
+            html = f.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"產生報表失敗：{e}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    return HTMLResponse(content=html)
 
 
 @router.put("/backtest-runs/{run_id}/favorite")
