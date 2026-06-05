@@ -61,16 +61,21 @@ Albee_Stock/
 │   │   ├── backtest.py    # 回測 API
 │   │   ├── orders.py      # 交易紀錄 API
 │   │   ├── presets.py     # 策略方案 CRUD + 一鍵回測 + 回測歷史（依 EV 排序）
-│   │   └── chat.py        # 本機 LLM 思考助手（對話 + 兩段式事後檢討）
+│   │   ├── chat.py        # 本機 LLM 思考助手（對話 + 兩段式事後檢討）
+│   │   └── strategies.py  # 策略清單單一來源（GET /strategies，Phase 6 step-10）
 │   ├── models/            # SQLAlchemy 資料模型
 │   │   ├── bot.py         # Bot 模型
 │   │   ├── trade.py       # 交易紀錄模型
 │   │   ├── strategy_preset.py # 策略方案（參數組合）
-│   │   └── backtest_run.py    # 回測歷史（含 EV 指標 + 檢討摘要）
+│   │   ├── backtest_run.py    # 回測歷史（含 EV 指標 + 檢討摘要）
+│   │   ├── decision_log.py    # 決策審計軌跡（Phase 6 step-08，含沒成交但有決策的時點）
+│   │   └── portfolio_state.py # 組合權益峰值（Phase 6 step-09 回撤熔斷用，單列持久化）
 │   ├── services/          # 業務邏輯
 │   │   ├── alpaca_client.py   # Alpaca API 封裝（延遲初始化）
-│   │   ├── backtest_engine.py # 回測引擎（含期望值 EV）
+│   │   ├── backtest_engine.py # 回測引擎（含期望值 EV + 成本模型 + 隔日成交）
 │   │   ├── performance.py     # Bot 績效指標計算
+│   │   ├── capital.py         # 組合層資金/購買力守門（Phase 6 step-05，純函式 plan_capital）
+│   │   ├── circuit_breaker.py # 組合回撤熔斷（Phase 6 step-09，只擋進不擋出）
 │   │   ├── notifier.py        # 通知服務（LINE 等）
 │   │   └── explorations.py    # 探討/檢討檔案記憶（INDEX 路標 + 內容檔，防路徑穿越）
 │   ├── strategies/        # 交易策略模組（每個策略一個檔案）
@@ -82,9 +87,11 @@ Albee_Stock/
 │   │   ├── donchian.py        # 唐奇安通道（突破）
 │   │   ├── momentum.py        # 動量
 │   │   ├── stochastic.py      # KD 隨機指標
-│   │   └── williams_r.py      # 威廉指標 %R
+│   │   ├── williams_r.py      # 威廉指標 %R
+│   │   ├── adx_trend.py       # ADX 趨勢
+│   │   └── lookback.py        # 依策略參數推算回看天數（回測=實盤共用，Phase 6 step-01）
 │   └── bots/
-│       └── bot_manager.py # 管理所有 Bot 的啟停
+│       └── bot_manager.py # 管理所有 Bot 的啟停/執行/排程（Phase 6：每輪用 bot_id 重查最新設定）
 ├── explorations/         # 思考助手「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔，進 git）
 ├── frontend/              # React 前端（Vite，已模組化拆分）
 │   ├── .env.example          # 前端環境變數範本（VITE_API_URL）
@@ -122,7 +129,7 @@ Albee_Stock/
 | Phase 3 | 多 Bot 管理 + 更多策略 | ✅ 完成（Bot CRUD/啟停、績效指標、8 種策略、分頁式 UI、CI） |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成（風控欄位 + 止盈/止損/追蹤止損出場、追蹤止損最高價持久化、開市判斷、實盤雙閘安全閥、Alembic 遷移、監聽狀態可視化、Discord 通知） |
 | Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地：策略工作台 UI、Preset CRUD、EV 回測歷史、本機 Ollama 助手、explorations 檔案記憶；roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)） |
-| Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | 📋 規劃完成（[`docs/phase-6/`](docs/phase-6/README.md)） |
+| Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10，藍圖 [`docs/phase-6/`](docs/phase-6/README.md)） |
 | Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | 📋 構想藍圖（[`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)） |
 | Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | 📋 構想藍圖（[`docs/phase-8-strategy-evolution/`](docs/phase-8-strategy-evolution/README.md)） |
 | Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | 📋 構想藍圖（[`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)） |
@@ -194,6 +201,15 @@ cd frontend && npm run dev
 
 ## 已知注意事項（踩過的坑）
 
+- **「回測 = 實盤」鐵則（Phase 6 地基，最容易被破壞）**：回測看到的 EV 必須是實盤拿得到的
+  EV 的誠實估計。三件事必須一致、不可分岔：
+  - **同資料源 + 同回看長度**：實盤與回測都走 `market_data.get_bars(..., source=settings.DATA_SOURCE)`
+    + `strategies/lookback.required_lookback_days(...)`；**不要**在實盤端寫死 `alpaca_client.get_bars(days=60)`。
+  - **含成本 + 隔日成交**：回測走 `_simulate_from_signals`（手續費/滑價 + 訊號於次根開盤成交、
+    最後一根不成交）；**不要**用當根收盤零成本「偷看未來」報虛高 EV。
+  - **挑冠軍 / 設門檻一律看樣本外（OOS）**：`optimizer` 以 `oos_expected_value` 排名、
+    `automation`/`screener` 門檻比對 OOS；**不要**在整段歷史挑樣本內最佳（過擬合）。
+  - 自動下單系統的每筆決策都應落 `DecisionLog`（含沒成交的觀望/跳過），方便事後查驗。
 - **Alpaca 套件**：用 `alpaca-py`，不是舊的 `alpaca-trade-api`。
   - 交易：`from alpaca.trading.client import TradingClient`
   - 資料：`from alpaca.data.historical import StockHistoricalDataClient`

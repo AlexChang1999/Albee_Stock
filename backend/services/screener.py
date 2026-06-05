@@ -94,6 +94,32 @@ def parse_watchlist(raw: str) -> list[str]:
     return out
 
 
+def sentiment_score(sentiment) -> int:
+    """從一筆情緒（parse_sentiment 的格式 dict 或 None）安全取出分數。
+
+    None（沒跑情緒 / 被外送閘擋下）或格式不符 → 視為中性 0。
+    這個值只當「次要排序加權」用，主排序鍵永遠是 OOS EV（EV 為主、情緒為輔）。
+    """
+    if not isinstance(sentiment, dict):
+        return 0
+    s = sentiment.get("score")
+    return int(s) if isinstance(s, (int, float)) else 0
+
+
+def is_vetoed_by_sentiment(sentiment, *, min_score: float) -> bool:
+    """判斷一筆情緒是否構成「情緒否決」（Phase 6 step-07）。
+
+    規則：label == "bearish" 或 score < min_score → 否決。
+    sentiment 為 None（沒跑情緒）→ 視為中性、**不否決**（best-effort，離線不阻斷）。
+    """
+    if not isinstance(sentiment, dict):
+        return False
+    if sentiment.get("label") == "bearish":
+        return True
+    score = sentiment.get("score")
+    return isinstance(score, (int, float)) and score < min_score
+
+
 # ============================================================
 # 漏斗各層（會碰網路/LLM，靠 monkeypatch 測）
 # ============================================================
@@ -198,9 +224,14 @@ def screen_watchlist(
             "suggested_cash": initial_cash,
         })
 
-    # 依「樣本外 EV」由高到低排（與挑冠軍同一把尺）
+    # 排序鍵 =（樣本外 EV, 情緒分數）：EV 為主（與挑冠軍同一把尺），情緒當次要加權
+    # （Phase 6 step-07）。情緒不會把 OOS EV 更高的標的擠到更低 EV 標的後面（EV 永遠先比）。
     recommendations.sort(
-        key=lambda r: r["metrics"].get("oos_expected_value", float("-inf")), reverse=True
+        key=lambda r: (
+            r["metrics"].get("oos_expected_value", float("-inf")),
+            sentiment_score(r.get("sentiment")),
+        ),
+        reverse=True,
     )
 
     return {

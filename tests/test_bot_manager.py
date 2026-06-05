@@ -5,8 +5,13 @@ Bot 執行迴圈（出場監測）測試
 - 持倉中即使策略觀望(HOLD)，只要觸發止損就要賣出（這是舊版會漏掉的 bug）。
 - 持倉中沒觸發風控、策略也不賣 → 續抱，不重複下單。
 - 空手中策略買進訊號 → 進場。
+- 休市跳過。
+- 追蹤止損讀持久化最高價。
+- Phase 6 step-06：run_bot_once 收 bot_id、每輪重查最新值（改風控立即生效）；
+  Bot 被刪後再觸發 → 安全 no-op 並移除殭屍排程。
 
-用 monkeypatch 把 Alpaca 下單、資料抓取、DB 紀錄全部換成假的，
+用一顆臨時 SQLite 當測試 DB（monkeypatch bm.SessionLocal），run_bot_once 會從這顆 DB
+用 bot_id 重查 Bot；下單 / 查價 / 開市 / 通知 / 審計都 monkeypatch 成假的，
 所以這個測試「不連網、不碰真資料庫」，純驗證流程邏輯。
 
 執行方式（專案根目錄）：
@@ -26,9 +31,13 @@ except Exception:
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 import backend.bots.bot_manager as bm
 from backend.config import settings
+from backend.database import Base
+from backend.models import Bot
 from backend.strategies import Signal
 from backend.strategies.lookback import required_lookback_days
 
@@ -40,24 +49,35 @@ class FakePosition:
         self.qty = qty
 
 
-def _make_bot(**risk):
-    """造一個最小的 Bot-like 物件（不碰資料庫）。"""
-    return SimpleNamespace(
-        id=999,
-        name="測試Bot",
-        symbol="TEST",
-        strategy="ma_crossover",
-        params={},
+def _setup_db(tmp_path, monkeypatch):
+    """建臨時 SQLite 測試 DB，讓 run_bot_once 的「用 id 重查」走這顆 DB。"""
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+    monkeypatch.setattr(bm, "SessionLocal", TestSession)
+    return TestSession
+
+
+def _create_bot(TestSession, **risk) -> int:
+    """在測試 DB 建一筆真 Bot，回傳 id。"""
+    s = TestSession()
+    bot = Bot(
+        name="測試Bot", strategy="ma_crossover", symbol="TEST", params={},
         trade_amount=1000.0,
         take_profit_pct=risk.get("take_profit_pct"),
         stop_loss_pct=risk.get("stop_loss_pct"),
         trailing_stop_pct=risk.get("trailing_stop_pct"),
-        peak_price=risk.get("peak_price"),  # 持倉最高價（None=空手），改存資料庫後放在 Bot 上
+        peak_price=risk.get("peak_price"),
     )
+    s.add(bot)
+    s.commit()
+    bot_id = bot.id
+    s.close()
+    return bot_id
 
 
 def _patch_common(monkeypatch, position, price, orders):
-    """把下單、查持倉、查價、DB 紀錄、開市判斷都換成假的。"""
+    """把下單、查持倉、查價、DB 紀錄、開市判斷、組合層守門都換成假的。"""
     monkeypatch.setattr(bm.alpaca_client, "is_market_open", lambda: True)
     monkeypatch.setattr(bm.alpaca_client, "get_position", lambda s: position)
     monkeypatch.setattr(bm.alpaca_client, "get_latest_price", lambda s: price)
@@ -65,47 +85,53 @@ def _patch_common(monkeypatch, position, price, orders):
         bm.alpaca_client, "submit_market_order",
         lambda symbol, qty, side: orders.append((symbol, qty, side)) or "fake_order",
     )
-    # 避免寫真資料庫 / 真通知
+    # 避免寫真資料庫 / 真通知 / 真審計
     monkeypatch.setattr(bm, "_record_and_notify", lambda *a, **k: None)
+    monkeypatch.setattr(bm, "_record_decision", lambda *a, **k: None)
+    monkeypatch.setattr(bm, "_mark_checked", lambda bot: None)
     # 最高價持久化會碰資料庫，測試裡換成「只更新記憶體物件」的假版本
     monkeypatch.setattr(bm, "_persist_peak", lambda bot, peak: setattr(bot, "peak_price", peak))
-    # 記錄檢查時間也會碰資料庫，測試裡換成 no-op
-    monkeypatch.setattr(bm, "_mark_checked", lambda bot: None)
+    # 組合層守門預設放行（熔斷未觸發、購買力不限），個別測試要驗證守門時再覆寫
+    monkeypatch.setattr(bm, "check_breaker", lambda db=None: {"tripped": False})
+    monkeypatch.setattr(bm, "_available_buying_power", lambda: None)
 
 
-def test_stop_loss_sells_even_when_strategy_hold(monkeypatch):
+def test_stop_loss_sells_even_when_strategy_hold(tmp_path, monkeypatch):
     """持倉 + 止損觸發：就算策略觀望也要賣出，且根本不該去問策略。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
     # 若流程正確，止損先觸發就 return，不會呼叫策略 → 這裡設成一呼叫就爆，當作護欄
     monkeypatch.setattr(bm, "_run_strategy", lambda bot: (_ for _ in ()).throw(AssertionError("止損時不該再問策略")))
 
-    bm.run_bot_once(_make_bot(stop_loss_pct=0.05))
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
 
     assert len(orders) == 1, orders
     assert orders[0][2] == "sell", orders
     print("✅ 止損優先賣出（策略觀望也賣）測試通過")
 
 
-def test_holding_no_trigger_holds(monkeypatch):
+def test_holding_no_trigger_holds(tmp_path, monkeypatch):
     """持倉 + 風控未觸發 + 策略觀望 → 不下任何單（續抱）。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=101, orders=orders)
     monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
 
-    bm.run_bot_once(_make_bot(stop_loss_pct=0.05, take_profit_pct=0.10))
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05, take_profit_pct=0.10))
 
     assert orders == [], orders
     print("✅ 風控未觸發續抱測試通過")
 
 
-def test_flat_buy_on_signal(monkeypatch):
+def test_flat_buy_on_signal(tmp_path, monkeypatch):
     """空手 + 策略買進 → 進場買單，數量＝金額/價格。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, position=None, price=50, orders=orders)
     monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
 
-    bm.run_bot_once(_make_bot())
+    bm.run_bot_once(_create_bot(TestSession))
 
     assert len(orders) == 1, orders
     assert orders[0][2] == "buy", orders
@@ -113,48 +139,92 @@ def test_flat_buy_on_signal(monkeypatch):
     print("✅ 空手買進測試通過")
 
 
-def test_market_closed_skips(monkeypatch):
+def test_market_closed_skips(tmp_path, monkeypatch):
     """休市中：就算止損條件成立也不下單（整個流程直接跳過）。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
     monkeypatch.setattr(bm.alpaca_client, "is_market_open", lambda: False)  # 蓋掉成休市
 
-    bm.run_bot_once(_make_bot(stop_loss_pct=0.05))  # 預設遵守開市
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))  # 預設遵守開市
 
     assert orders == [], orders
     print("✅ 休市跳過測試通過")
 
 
-def test_trailing_stop_uses_persisted_peak(monkeypatch):
+def test_trailing_stop_uses_persisted_peak(tmp_path, monkeypatch):
     """追蹤止損改讀 Bot 上的最高價：peak=120、現價 116、回落 3% → 賣出。
 
     這顆 Bot 的 peak_price 預設是 120（模擬「資料庫存的、重啟後仍在的最高價」），
     證明追蹤止損是吃持久化的值、不是每次從進場價重算。
     """
+    TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     # 進場價 100、現價 116；若用進場價當基準不會觸發，用 peak=120 才會（120→116 跌 3.3%）
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=116, orders=orders)
     monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
 
-    bm.run_bot_once(_make_bot(trailing_stop_pct=0.03, peak_price=120))
+    bm.run_bot_once(_create_bot(TestSession, trailing_stop_pct=0.03, peak_price=120))
 
     assert len(orders) == 1, orders
     assert orders[0][2] == "sell", orders
     print("✅ 追蹤止損讀持久化最高價測試通過")
 
 
+def test_refetch_uses_fresh_risk(tmp_path, monkeypatch):
+    """Phase 6 step-06：run_bot_once 每輪用 id 重查，改了風控（DB）下一輪就用新值。
+
+    建 Bot 時沒有止損；之後直接改 DB 把 stop_loss_pct 設成 0.05，
+    再跑一次——check_exit 收到的門檻必須是新值 0.05（證明吃的是重查後的新鮮 Bot）。
+    """
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders = []
+    _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+
+    captured = {}
+
+    def fake_check_exit(**kwargs):
+        captured.update(kwargs)
+        return (True, "觸發止損")  # 回賣出，方便順帶確認有走出場
+
+    monkeypatch.setattr(bm, "check_exit", fake_check_exit)
+
+    bot_id = _create_bot(TestSession)  # 建立時 stop_loss_pct=None
+    # 模擬使用者用 PUT /bots/{id}/risk 改了止損（直接改 DB）
+    s = TestSession()
+    s.query(Bot).filter(Bot.id == bot_id).first().stop_loss_pct = 0.05
+    s.commit()
+    s.close()
+
+    bm.run_bot_once(bot_id)
+
+    assert captured.get("stop_loss_pct") == 0.05, captured  # 用的是重查後的新值
+    assert len(orders) == 1 and orders[0][2] == "sell", orders
+    print("✅ 每輪重查用新風控值測試通過")
+
+
+def test_deleted_bot_is_noop_and_removes_job(tmp_path, monkeypatch):
+    """Phase 6 step-06：對已刪除的 Bot 觸發一次 → 安全 no-op，且移除殭屍排程。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders = []
+    _patch_common(monkeypatch, position=None, price=50, orders=orders)
+
+    removed = []
+    monkeypatch.setattr(bm.bot_manager, "stop_bot", lambda bot_id: removed.append(bot_id))
+    # 若誤入主流程才會用到策略，這裡設成一被呼叫就爆當護欄
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (_ for _ in ()).throw(AssertionError("已刪 Bot 不該跑策略")))
+
+    bm.run_bot_once(99999)  # 不存在的 id
+
+    assert orders == [], orders
+    assert removed == [99999], removed
+    print("✅ 已刪 Bot 安全 no-op + 移除殭屍排程測試通過")
+
+
 def test_persist_peak_survives_restart(tmp_path, monkeypatch):
     """_persist_peak 真的寫進資料庫、重開 session（模擬重啟）後讀得回來。"""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from backend.database import Base
-    from backend.models import Bot
-
-    # 用一顆臨時 SQLite 檔當測試資料庫（不碰專案真 DB）
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
-    Base.metadata.create_all(engine)
-    TestSession = sessionmaker(bind=engine)
-    monkeypatch.setattr(bm, "SessionLocal", TestSession)  # 讓 _persist_peak 用測試 DB
+    TestSession = _setup_db(tmp_path, monkeypatch)
 
     # 先建一筆 Bot
     s = TestSession()
@@ -198,9 +268,8 @@ def test_run_strategy_uses_unified_data_path(monkeypatch):
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("實盤不該直接打 alpaca_client.get_bars")),
     )
 
-    bot = _make_bot()
-    bot.strategy = "ma_crossover"
-    bot.params = {"short_window": 5, "long_window": 120}
+    bot = SimpleNamespace(symbol="TEST", strategy="ma_crossover",
+                          params={"short_window": 5, "long_window": 120})
 
     bm._run_strategy(bot)
 
