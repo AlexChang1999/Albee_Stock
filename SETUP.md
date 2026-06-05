@@ -74,6 +74,9 @@ ALPACA_SECRET_KEY=你的_Secret金鑰
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
 ```
 
+> （選用）`DATA_SOURCE` 控制抓 K 線的資料源，回測與實盤共用同一設定：
+> `alpaca`（預設）或 `yfinance`（免費、無金鑰）。不填就用 `alpaca`。
+
 ### 4. 前端：安裝套件
 
 ```powershell

@@ -16,6 +16,7 @@ import time
 
 from fastapi import APIRouter, HTTPException
 
+from backend.config import settings
 from backend.services.screener import screen_watchlist
 
 router = APIRouter(tags=["Recommendations"])
@@ -29,7 +30,7 @@ _CACHE_TTL_SEC = 300  # 5 分鐘內視為新鮮
 def ai_recommendations(
     days: int = 365,
     initial_cash: float = 10000.0,
-    source: str = "alpaca",
+    source: str = settings.DATA_SOURCE,
     min_ev: float = 0.0,
     refresh: bool = False,
 ):

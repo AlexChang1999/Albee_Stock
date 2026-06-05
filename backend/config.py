@@ -42,6 +42,12 @@ class Settings:
     # 這是一道安全保險：避免不小心用到真錢。
     IS_PAPER: bool = "paper" in os.getenv("ALPACA_BASE_URL", "paper").lower()
 
+    # --- 全系統唯一資料源（Phase 6 step-01）---
+    # 抓 K 線的資料源，回測與實盤「共用同一個設定」，徹底消滅「回測用 A、實盤用 B」的分岔。
+    # 可選 "alpaca"（預設）或 "yfinance"（免費）。想整套切資料源只改這一個環境變數，
+    # 程式一行都不用動——這是「回測 = 實盤」鐵則的第一道（同源）。
+    DATA_SOURCE: str = os.getenv("DATA_SOURCE", "alpaca")
+
     # --- 實盤交易安全閥（第二道保險，預設關閉）---
     # 就算 ALPACA_BASE_URL 指到實盤(真錢)，沒有把這個明確設成 true，
     # 系統仍會「拒絕送出真錢單」。要動真錢必須同時：

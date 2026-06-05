@@ -156,7 +156,7 @@ def _layer2_sentiment(picks: list[dict]) -> list[dict]:
 def screen_watchlist(
     days: int = 365,
     initial_cash: float = 10000.0,
-    source: str = "alpaca",
+    source: str = settings.DATA_SOURCE,
     min_ev: float = 0.0,
 ) -> dict:
     """

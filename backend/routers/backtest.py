@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.config import settings
 from backend.database import get_db
 from backend.models import BacktestRun
 from backend.services.backtest_engine import run_backtest
@@ -28,7 +29,7 @@ class BacktestRequest(BaseModel):
     params: dict = {}
     days: int = 365  # 回測往前抓幾天
     initial_cash: float = 10000.0  # 初始資金
-    source: str = "alpaca"  # 資料源："alpaca"（預設）或 "yfinance"（免費）
+    source: str = settings.DATA_SOURCE  # 資料源：預設讀全系統設定 DATA_SOURCE，可覆寫
 
 
 class AutoBacktestRequest(BaseModel):
@@ -36,7 +37,7 @@ class AutoBacktestRequest(BaseModel):
     symbol: str
     days: int = 365
     initial_cash: float = 10000.0
-    source: str = "alpaca"  # 資料源：alpaca（預設）或 yfinance
+    source: str = settings.DATA_SOURCE  # 資料源：預設讀全系統設定 DATA_SOURCE，可覆寫
 
 
 @router.post("/backtest")
