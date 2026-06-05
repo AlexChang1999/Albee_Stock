@@ -42,3 +42,17 @@
 - `POST /auto-backtest` 回傳同時含 in-sample 與 OOS 指標；冠軍是 OOS EV 最高者。
 - 人工挑一個「in-sample EV 高但 OOS EV 低」的組合，確認它在排行榜落後。
 - 模式 B 的部署門檻現在卡的是 OOS EV，過擬合的策略過不了關。
+
+---
+
+## 實作備註（2026-06-05 完成）
+
+- `split_train_test` 放在 `optimizer.py`（消費端），純函式、好測。`run_auto_backtest` 對每組參數在
+  「整段 / 訓練段 / 測試段」各跑一次：整段保留完整 `trades`/`equity_curve` 供顯示與存檔；冠軍排序鍵改用
+  `oos_expected_value`（次鍵 `oos_total_return_pct`）。
+- metrics 結構採「**整段為主、OOS/IS 為附加欄位**」而非把頂層換成 OOS：因為 presets/前端/`backtest_runs`
+  都依賴整段 metrics 的既有欄位與 `trades`/`equity_curve`，換掉會大規模破壞。故新增 `oos_*` / `is_*` 欄位，
+  決策（screener 海選、automation 部署門檻）讀 `oos_*`，顯示沿用整段。
+- 門檻語意變更：`screener` 與 `automation.plan_deployments` 改讀 `oos_expected_value` / `oos_win_rate_pct`；
+  同一個 `AUTO_DEPLOY_EV_THRESHOLD` 數字現在卡的是 OOS EV（更難達到，符合預期）。對應假資料測試已改用 `oos_*`。
+- 成本（step-02）與隔日成交（step-03）在共用核心，OOS 的 train/test 子段回測自動同享，三重保守一致疊加。

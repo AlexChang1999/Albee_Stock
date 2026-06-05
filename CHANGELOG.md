@@ -34,6 +34,32 @@
   - 決策備註：「回看天數一致」採「同源 + 兩路皆 ≥ 策略所需」詮釋，**回測續用 365 天不縮短**
     （縮短會砸爛 EV 樣本數，違反「EV 誠實」）。完整理由見 `docs/phase-6/step-01-unify-data-path.md`「實作備註」。
 
+- **Phase 6 step-02 + step-03：回測誠實化（成本模型 + 隔日成交）**——修 P2（零成本）與 P3（偷看未來）。
+  - `config.py` + `.env.example` 新增 `BACKTEST_COMMISSION_BPS`（預設 0，Alpaca 免佣）、
+    `BACKTEST_SLIPPAGE_BPS`（預設 5 bps）。
+  - **成本與隔日成交都實作在回測「共用核心」`_simulate_from_signals`**（事件式與向量化兩路都呼叫它，
+    確保兩路結果仍一致、`test_vectorized_engine` 對拍續綠）：
+    - 成本：買進成交價 ×(1+滑價)、賣出 ×(1−滑價)，買賣再各扣手續費；新增回傳 `total_cost`。
+    - 隔日成交：訊號在第 i 根收盤算出，成交延到**第 i+1 根開盤價**（無 open 欄退回次根 close）；
+      **最後一根的訊號沒有次根 → 不成交**（誠實，不無中生有）。
+  - 成本參數沿 `_run_on_df` / `run_vectorized` / `run_backtest`（讀 config 預設，可顯式覆寫）一路帶入。
+  - 測試：新增 `tests/test_cost_model.py`（滑價/手續費手算、高頻成本較高）；重寫 `tests/test_backtest.py`
+    為隔日成交語意（買在次根開盤、最後一根不成交、零成本 total_cost=0）。
+  - ⚠️ **預期效果**：多數策略 EV 會下降（成本 + 隔日成交，雙重保守），這是**預期的誠實化、不是 bug**。
+
+- **Phase 6 step-04：樣本外（OOS）驗證——optimizer 以 OOS EV 排名 ★Phase 核心**——修 P1（樣本內過擬合）。
+  - `config.py` + `.env.example` 新增 `OOS_TEST_RATIO`（預設 0.3）。
+  - `optimizer.py` 新增純函式 `split_train_test`（時間序列切分，測試段在後、不洗牌）；
+    `run_auto_backtest` 對每組參數在「整段 / 訓練段 / 測試段」各跑一次，**冠軍排序鍵改用
+    `oos_expected_value`**（次鍵 OOS 總報酬）；metrics 新增 `oos_expected_value` / `oos_win_rate_pct` /
+    `oos_total_return_pct` / `is_expected_value`（樣本內保留供對照，看「掉多少」就知道過擬合多嚴重）。
+  - `screener.py` 海選門檻 / 排序改看 OOS EV；`automation.plan_deployments` 的 EV/勝率門檻**一律比對 OOS**；
+    `/auto-backtest` 排行榜摘要新增 `oos_*` / `is_*` / `total_cost`。
+  - ⚠️ **門檻語意變更**：同一個 `AUTO_DEPLOY_EV_THRESHOLD` 現在卡的是 **OOS EV**，比樣本內更難達到——
+    這是對的（過擬合的策略本來就該過不了關）。
+  - 測試：新增 `tests/test_oos.py`（split 切分/時序、冠軍依 OOS 排名、過擬合落差可見）；
+    `tests/test_automation.py` / `tests/test_screener.py` 的假資料改用 `oos_*` 欄位。
+
 ### 文件
 
 - 新增 **AI 實作護欄合約** `docs/ai-implementation-guardrails.md`：防止「未來 AI 自己 coding 時偏離原目標

@@ -40,3 +40,15 @@
 
 - 回測結果出現 `total_cost`，且開啟滑價後既有策略 EV 普遍下降（**預期的誠實化**，CHANGELOG 須註明數字會變）。
 - 一個原本「EV 微正」的高頻策略，加成本後若翻負，能正確顯示為負 EV（不再誤導部署）。
+
+---
+
+## 實作備註（2026-06-05 完成）
+
+- 成本**沒有**只改 `_run_on_df`，而是實作在回測「共用核心」`_simulate_from_signals`。原因：事件式
+  （`_run_on_df`）與向量化（`vectorized_engine.run_vectorized`）兩條路徑都呼叫這個核心，放這裡才能
+  保證兩路成本一致、`test_vectorized_engine` 對拍續綠。成本參數沿 `_run_on_df` / `run_vectorized` /
+  `run_backtest`（讀 config 預設、可覆寫）一路帶入。
+- 與 step-03 同屬一次 commit（兩者都改同一個核心函式，硬拆反而難 review）。
+- `total_cost` 是「直接摩擦成本」（成交當下的手續費 + 滑價），非「與零成本的權益差」（後者還含少買股數的
+  複利差，會更大）；當「成本侵蝕了多少」的指標看即可。

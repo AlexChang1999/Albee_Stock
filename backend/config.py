@@ -48,6 +48,20 @@ class Settings:
     # 程式一行都不用動——這是「回測 = 實盤」鐵則的第一道（同源）。
     DATA_SOURCE: str = os.getenv("DATA_SOURCE", "alpaca")
 
+    # --- 回測成本模型（Phase 6 step-02）---
+    # 讓回測吃到真實摩擦成本，EV 才誠實（沒成本的 EV 是行銷數字，不是可下注的數字）。
+    # 單位都是 basis point（bps，萬分之一）：5 bps = 0.05%。
+    #   - 手續費：Alpaca 美股免佣，預設 0；保留欄位讓未來換券商 / 標的能調。
+    #   - 滑價：市價單實際成交價會比看到的價差一點（含半個買賣價差），預設 5 bps 保守估。
+    # 買進成交價 ×(1+slippage)、賣出 ×(1−slippage)，買賣再各扣 commission。
+    BACKTEST_COMMISSION_BPS: float = float(os.getenv("BACKTEST_COMMISSION_BPS", "0"))
+    BACKTEST_SLIPPAGE_BPS: float = float(os.getenv("BACKTEST_SLIPPAGE_BPS", "5"))
+
+    # --- 樣本外驗證（Phase 6 step-04）---
+    # optimizer 海選挑冠軍時，把歷史切「訓練段 / 測試段」，冠軍看「測試段（樣本外 OOS）」的 EV，
+    # 不看樣本內——避免挑到「最會擬合過去雜訊」的參數。test_ratio = 測試段佔比（時間軸後段）。
+    OOS_TEST_RATIO: float = float(os.getenv("OOS_TEST_RATIO", "0.3"))
+
     # --- 實盤交易安全閥（第二道保險，預設關閉）---
     # 就算 ALPACA_BASE_URL 指到實盤(真錢)，沒有把這個明確設成 true，
     # 系統仍會「拒絕送出真錢單」。要動真錢必須同時：

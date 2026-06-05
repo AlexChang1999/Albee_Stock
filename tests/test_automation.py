@@ -28,12 +28,16 @@ from backend.services.automation import plan_deployments
 
 
 def _rec(symbol, ev, wr):
-    """造一筆假推薦。"""
+    """造一筆假推薦。
+
+    Phase 6 step-04 後，自動部署門檻一律比對「樣本外（OOS）」指標，
+    所以這裡的 ev / wr 放進 oos_* 欄位（門檻看的就是這組）。
+    """
     return {
         "symbol": symbol,
         "strategy_key": "rsi",
         "params": {"period": 14},
-        "metrics": {"expected_value": ev, "win_rate_pct": wr},
+        "metrics": {"oos_expected_value": ev, "oos_win_rate_pct": wr},
     }
 
 

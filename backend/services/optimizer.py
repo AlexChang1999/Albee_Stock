@@ -77,6 +77,31 @@ def _iter_param_combos(grid: dict):
         yield dict(zip(keys, values))
 
 
+def split_train_test(df, test_ratio: float = 0.3):
+    """
+    把歷史資料切成「訓練段 / 測試段」做樣本外驗證（Phase 6 step-04）。
+
+    ⚠️ 時間序列**不可洗牌**：測試段必須是時間軸的「後段」（用未見過的近期資料考驗參數），
+    否則就是偷看未來、過擬合照樣發生。切分點 = 前 (1−test_ratio) 當訓練、其餘當測試。
+
+    :param test_ratio: 測試段佔比（0~1），預設 0.3。
+    :return: (train_df, test_df)，皆已 reset_index 方便下游 iloc。
+    """
+    n = len(df)
+    split = int(n * (1 - test_ratio))
+    train = df.iloc[:split].reset_index(drop=True)
+    test = df.iloc[split:].reset_index(drop=True)
+    return train, test
+
+
+def _run_combo(strategy_key: str, params: dict, df, initial_cash: float,
+               commission_bps: float, slippage_bps: float) -> dict:
+    """跑單一「策略×參數」組合：有向量化版本走快路徑，否則退回事件式（結果一致）。"""
+    if is_vectorized(strategy_key):
+        return run_vectorized(strategy_key, params, df, initial_cash, commission_bps, slippage_bps)
+    return _run_on_df(get_strategy(strategy_key, params), df, initial_cash, commission_bps, slippage_bps)
+
+
 def _is_valid_combo(strategy_key: str, params: dict) -> bool:
     """
     過濾掉邏輯上不合理的參數組合（例如短均線 >= 長均線、快線 >= 慢線）。
@@ -107,38 +132,51 @@ def run_auto_backtest(
     """
     symbol = symbol.upper()
 
+    # 成本與樣本外切分比例都讀全系統 config（回測誠實化 step-02 / step-04）
+    commission_bps = settings.BACKTEST_COMMISSION_BPS
+    slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
+
     # 1) 資料只抓一次，之後所有組合共用（關鍵效能設計）
     df = market_data.get_bars(symbol, days=days, source=source)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
     data_points = len(df)
 
-    # 2) 逐策略、逐參數組合在同一份 df 上跑回測
+    # 樣本外切分：訓練段在前、測試段在後（不洗牌）。冠軍要看測試段（OOS）的 EV。
+    train_df, test_df = split_train_test(df, settings.OOS_TEST_RATIO)
+
+    # 2) 逐策略、逐參數組合：在「整段 / 訓練段 / 測試段」各跑一次
     results = []
     for strategy_key, grid in PARAM_GRIDS.items():
         for params in _iter_param_combos(grid):
             if not _is_valid_combo(strategy_key, params):
                 continue
-            # 有向量化版本就走快路徑（結果與事件式一致，見 test_vectorized_engine）；
-            # 沒有的策略自動退回事件式引擎，確保永不漏算。
-            if is_vectorized(strategy_key):
-                metrics = run_vectorized(strategy_key, params, df, initial_cash)
-            else:
-                metrics = _run_on_df(get_strategy(strategy_key, params), df, initial_cash)
-            # 補上識別資訊（_run_on_df 只回績效，不含這次是哪個策略）
+            # 整段：保留完整 trades / equity_curve 供顯示與存檔（顯示用，非挑冠軍依據）
+            metrics = _run_combo(strategy_key, params, df, initial_cash, commission_bps, slippage_bps)
+            # 訓練段（in-sample）與測試段（out-of-sample）各跑一次，挑冠軍只看 OOS
+            is_m = _run_combo(strategy_key, params, train_df, initial_cash, commission_bps, slippage_bps)
+            oos_m = _run_combo(strategy_key, params, test_df, initial_cash, commission_bps, slippage_bps)
+
+            # 補上識別資訊（_run_combo 只回績效，不含這次是哪個策略）
             metrics["symbol"] = symbol
             metrics["strategy"] = strategy_key
             metrics["days"] = days
             metrics["data_points"] = data_points
+            # ★樣本外指標（挑冠軍 / 設門檻一律看這組）＋樣本內對照（看「掉多少」就知道過擬合多嚴重）
+            metrics["is_expected_value"] = is_m["expected_value"]
+            metrics["oos_expected_value"] = oos_m["expected_value"]
+            metrics["oos_win_rate_pct"] = oos_m["win_rate_pct"]
+            metrics["oos_total_return_pct"] = oos_m["total_return_pct"]
+            metrics["oos_num_round_trips"] = oos_m["num_round_trips"]
             results.append({"strategy_key": strategy_key, "params": params, "metrics": metrics})
 
-    # 3) 依期望值 EV 由高到低排名（與專案其他「挑策略看 EV」一致）；
-    #    EV 相同時用「策略總報酬」當第二排序鍵，讓賺比較多的排前面。
+    # 3) ★依「樣本外 EV」由高到低排名（防過擬合的硬約束：不在整段歷史上挑最佳）；
+    #    OOS EV 相同時用「OOS 總報酬」當第二排序鍵。
     def _rank_key(r):
         m = r["metrics"]
-        ev = m.get("expected_value")
+        ev = m.get("oos_expected_value")
         ev = ev if isinstance(ev, (int, float)) else float("-inf")
-        ret = m.get("total_return_pct") or 0.0
+        ret = m.get("oos_total_return_pct") or 0.0
         return (ev, ret)
 
     results.sort(key=_rank_key, reverse=True)
