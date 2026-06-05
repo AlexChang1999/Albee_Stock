@@ -129,6 +129,24 @@ clone 後這些**不存在**，要靠上面步驟重建：
 
 ---
 
+## Claude Code 技能（plugin）自動安裝
+
+本專案把要用的 Claude Code plugin 設定寫在 `.claude/settings.json`（**有進 git**），
+所以在新電腦用 Claude Code 開啟本專案時，會**自動提示安裝**這些 plugin，按同意即可：
+
+| plugin | 用途 | 來源 marketplace |
+|--------|------|------------------|
+| `caveman` | 壓縮溝通模式（caveman/cavecrew/commit/review 全家） | GitHub `JuliusBrussee/caveman` |
+| `frontend-design` | 前端設計 skill（做 React UI 時用） | 官方 `claude-plugins-official` |
+
+另外 `.claude/skills/strategy-builder/`（把交易策略一條龍變成程式）是**專案內建 skill**，
+直接跟著 repo 走、不必安裝。
+
+> 機器專屬的個人設定（bgIsolation、個人 permissions）請放 `.claude/settings.local.json`
+> （**不進 git**），不要塞進共享的 `settings.json`。
+
+---
+
 ## 之後每次「換電腦繼續開發」的日常流程
 
 ```powershell
