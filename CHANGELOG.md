@@ -17,6 +17,15 @@
 
 ### 新增
 
+- 向量化回測引擎（N1 海選加速，零新依賴／vectorbt 因強降 pandas 改自寫）：optimizer 全自動
+  掃描改走 numpy/pandas 向量化訊號，**實測 42 組 × 500 根 K 棒從 64.9s → 0.375s（約 173×）**。
+  新增 `backend/services/vectorized_engine.py`（9 個策略各一個整段向量化訊號產生器 +
+  `run_vectorized`）。把 `backtest_engine` 的資金模擬與績效計算抽成共用核心
+  `_simulate_from_signals`，事件式 `_run_on_df` 與向量化引擎共用同一份 → 兩路徑結果保證一致。
+  optimizer 有向量化版本就走快路徑、沒有則自動退回事件式（永不漏算）。附
+  `tests/test_vectorized_engine.py` 對拍測試（每策略比對向量化 vs 事件式的 EV/報酬/回撤/
+  資金曲線完全一致）。Bot 即時交易仍走事件式 `generate_signal`，**不受影響**。
+
 - 延伸績效分析（導入 **quantstats**）：回測結果新增風險調整後指標（Sharpe / Sortino /
   Calmar / 年化波動 / CAGR）與一鍵 HTML 績效報表（資金曲線、回撤、月報酬表）。後端
   `backend/services/analytics.py`（純函式 `returns_from_equity`／`extended_metrics`／

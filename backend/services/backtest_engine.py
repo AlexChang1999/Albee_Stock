@@ -32,28 +32,35 @@ from backend.services.analytics import extended_metrics
 from backend.strategies import get_strategy, Signal
 
 
-def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
+def _simulate_from_signals(
+    signals: list, df: pd.DataFrame, initial_cash: float, reasons: list | None = None
+) -> dict:
     """
-    在一份 K 線資料上跑回測（純邏輯，不連線，方便測試）。
-    :param strategy: 策略實例
-    :param df: K 線資料（需有 close 欄，時間由舊到新）
-    :param initial_cash: 初始資金
-    """
-    cash = initial_cash # 目前現金
-    position = 0.0      # 目前持有股數
-    entry_price = 0.0   # 買進時的價格（算單筆盈虧用）
-    trades = []         # 交易紀錄
-    equity_curve = []   # 每日資產淨值（畫資金曲線用）
+    吃「每根 K 棒一個訊號」的序列，跑全進全出的資金模擬並算出全套績效。
 
-    for i in range(len(df)):
-        # 只給策略「到今天為止」的資料（避免偷看未來）
-        window = df.iloc[: i + 1]
-        row = df.iloc[i]
-        price = float(row["close"])
+    這是回測的「共用核心」：事件式引擎（_run_on_df）與向量化引擎
+    （services/vectorized_engine）都把各自算好的訊號序列丟進這裡，
+    確保「模擬規則 + 績效數學」只有一份、兩條路徑結果保證一致。
+
+    :param signals: 長度同 df 的訊號序列，每格是 Signal.BUY / SELL / HOLD
+    :param reasons: 對應每根的文字理由（選填，只為交易紀錄好看，不影響數字）
+    """
+    prices = df["close"].to_numpy(dtype=float)
+    has_ts = "timestamp" in df.columns
+    ts = df["timestamp"].astype(str).to_numpy() if has_ts else None
+
+    cash = initial_cash  # 目前現金
+    position = 0.0       # 目前持有股數
+    entry_price = 0.0    # 買進時的價格（算單筆盈虧用）
+    trades = []          # 交易紀錄
+    equity_curve = []    # 每日資產淨值（畫資金曲線用）
+
+    for i in range(len(prices)):
+        price = float(prices[i])
         # 日期（若有 timestamp 欄就取，只留日期部分）
-        date = str(row["timestamp"])[:10] if "timestamp" in df.columns else str(i)
-
-        signal, reason = strategy.generate_signal(window)
+        date = ts[i][:10] if has_ts else str(i)
+        signal = signals[i]
+        reason = reasons[i] if reasons is not None else ""
 
         if signal == Signal.BUY and position == 0 and cash > 0:
             # 全進：用所有現金買入
@@ -155,6 +162,22 @@ def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
         "trades": trades,
         "equity_curve": [round(e, 2) for e in equity_curve],
     }
+
+
+def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
+    """
+    在一份 K 線資料上跑回測（事件式：逐根呼叫策略 generate_signal，純邏輯、不連線）。
+
+    逐日往前走：第 i 根只看「到第 i 根為止」的資料產生訊號（不偷看未來），
+    再把整串訊號交給共用核心 _simulate_from_signals 做資金模擬與績效計算。
+    """
+    signals = []
+    reasons = []
+    for i in range(len(df)):
+        sig, reason = strategy.generate_signal(df.iloc[: i + 1])
+        signals.append(sig)
+        reasons.append(reason)
+    return _simulate_from_signals(signals, df, initial_cash, reasons=reasons)
 
 
 def run_backtest(
