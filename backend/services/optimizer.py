@@ -18,6 +18,7 @@ from itertools import product
 
 from backend.services import market_data
 from backend.services.backtest_engine import _run_on_df
+from backend.services.vectorized_engine import is_vectorized, run_vectorized
 from backend.strategies import get_strategy
 
 
@@ -117,8 +118,12 @@ def run_auto_backtest(
         for params in _iter_param_combos(grid):
             if not _is_valid_combo(strategy_key, params):
                 continue
-            strategy = get_strategy(strategy_key, params)
-            metrics = _run_on_df(strategy, df, initial_cash)
+            # 有向量化版本就走快路徑（結果與事件式一致，見 test_vectorized_engine）；
+            # 沒有的策略自動退回事件式引擎，確保永不漏算。
+            if is_vectorized(strategy_key):
+                metrics = run_vectorized(strategy_key, params, df, initial_cash)
+            else:
+                metrics = _run_on_df(get_strategy(strategy_key, params), df, initial_cash)
             # 補上識別資訊（_run_on_df 只回績效，不含這次是哪個策略）
             metrics["symbol"] = symbol
             metrics["strategy"] = strategy_key
