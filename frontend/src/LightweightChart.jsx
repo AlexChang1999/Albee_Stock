@@ -7,25 +7,34 @@
 //   K 線資料與水平線都由我們的程式控制，要畫哪條線就畫哪條。
 //
 // 用法：
-//   <LightweightChart symbol="AAPL" height={500} priceLines={[...]} />
+//   <LightweightChart symbol="AAPL" height={500} priceLines={[...]}
+//                     onPriceLineDrag={(botId, field, pct) => ...} />
 //
 // 資料來源：
 //   - 歷史蠟燭：後端 GET /bars/{symbol}（api.getBars）
 //   - 即時跳動：useLiveQuote(symbol)（WebSocket 推來最新價，更新最後一根 K 棒）
 //
-// priceLines（選填）：水位線陣列，每筆 { price, color, title, dashed }
-//   交由父元件（App）依 Bot 風控資料算好再傳進來，本元件只負責畫。
+// priceLines（選填）：水位線陣列，每筆 { price, color, title, dashed,
+//   editable?, botId?, field?, refPrice? }。交由父元件（App）依 Bot 風控資料算好。
+//
+// 拖曳（editable 線才有）：lightweight-charts 的水平線原生「不能拖」，
+//   所以我們在圖右側自己疊一個可拖的把手 DOM，對齊到線的 y 座標：
+//   - 用 series.priceToCoordinate(價) 把「價格」換成「畫面 y 像素」→ 擺把手
+//   - 拖動時用 series.coordinateToPrice(y) 反推新價格，即時移動線
+//   - 放開時把新價格換算成百分比，呼叫 onPriceLineDrag 通知父元件存回後端
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createChart, CandlestickSeries, LineStyle } from "lightweight-charts";
 
 import { api } from "./api";
 import { useLiveQuote } from "./hooks/useLiveQuote";
+import { priceToPct } from "./utils/priceLines";
 
 export default function LightweightChart({
   symbol = "AAPL",
   height = 500,
   priceLines = [],
+  onPriceLineDrag,
 }) {
   const containerRef = useRef(null); // 圖表掛載的 <div>
   const chartRef = useRef(null); // chart 實例
@@ -33,8 +42,23 @@ export default function LightweightChart({
   const lastBarRef = useRef(null); // 最後一根 K 棒（即時報價要更新它）
   const priceLineRefs = useRef([]); // 已畫上去的水位線物件，方便之後清掉
 
+  // 拖曳用：每條可編輯線對應的「線物件 + 中繼資料 + 目前價格」，順序與下面的
+  // editableLines 一致。把手 DOM、目前價格都用 ref 存，拖曳時直接改 DOM/物件，
+  // 不觸發 React 重繪（每幀重繪會很卡）。
+  const editableObjsRef = useRef([]); // [{ obj, meta }]
+  const currentPricesRef = useRef([]); // 每條可編輯線的目前價格（拖曳會即時改）
+  const handleNodesRef = useRef([]); // 每個把手的 DOM 節點
+  const draggingRef = useRef(null); // 正在拖第幾條（null = 沒在拖）
+  const rafRef = useRef(0);
+
   // 即時報價（WebSocket）。symbol 換了會自動重新訂閱。
   const quote = useLiveQuote(symbol);
+
+  // 只有可編輯（editable）的線才需要把手。用 useMemo 避免每次 render 重算。
+  const editableLines = useMemo(
+    () => (priceLines || []).filter((l) => l?.editable && l.price != null),
+    [priceLines]
+  );
 
   // ---------- 1. 建立圖表（只在掛載時做一次）----------
   useEffect(() => {
@@ -83,6 +107,7 @@ export default function LightweightChart({
       seriesRef.current = null;
       lastBarRef.current = null;
       priceLineRefs.current = [];
+      editableObjsRef.current = [];
     };
   }, [height]);
 
@@ -136,6 +161,7 @@ export default function LightweightChart({
     // 先清掉舊線
     priceLineRefs.current.forEach((line) => series.removePriceLine(line));
     priceLineRefs.current = [];
+    editableObjsRef.current = [];
 
     // 再依最新的 priceLines 畫上去
     (priceLines || []).forEach((pl) => {
@@ -149,8 +175,118 @@ export default function LightweightChart({
         title: pl.title || "",
       });
       priceLineRefs.current.push(line);
+      // 可編輯的線：記下線物件 + 中繼資料，順序與 editableLines 相同
+      if (pl.editable) editableObjsRef.current.push({ obj: line, meta: pl });
     });
-  }, [priceLines]);
 
-  return <div ref={containerRef} style={{ width: "100%", height }} />;
+    // 把手的目前價格重置成最新的線價格
+    currentPricesRef.current = editableLines.map((l) => l.price);
+  }, [priceLines, editableLines]);
+
+  // ---------- 5. 把手位置同步（rAF）----------
+  // 圖表平移/縮放/自動縮放時，價格對應的 y 像素會一直變。每幀把把手 DOM
+  // 對齊到線目前價格的 y 座標，讓把手「黏」在線上。沒有可編輯線就不跑。
+  useEffect(() => {
+    if (editableLines.length === 0) return;
+
+    const tick = () => {
+      const series = seriesRef.current;
+      if (series) {
+        currentPricesRef.current.forEach((price, i) => {
+          const node = handleNodesRef.current[i];
+          if (!node || price == null) return;
+          const y = series.priceToCoordinate(price);
+          if (y == null) {
+            node.style.display = "none"; // 線目前不在可見範圍內 → 藏把手
+          } else {
+            node.style.display = "flex";
+            node.style.top = `${y}px`;
+          }
+        });
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [editableLines.length]);
+
+  // ---------- 6. 拖曳把手 ----------
+  function handlePointerDown(index, e) {
+    e.preventDefault();
+    draggingRef.current = index;
+
+    const onMove = (ev) => {
+      const i = draggingRef.current;
+      const series = seriesRef.current;
+      const container = containerRef.current;
+      if (i == null || !series || !container) return;
+
+      const rect = container.getBoundingClientRect();
+      const y = ev.clientY - rect.top; // 滑鼠在圖內的 y 像素
+      const price = series.coordinateToPrice(y);
+      if (price == null || price <= 0) return;
+
+      currentPricesRef.current[i] = price;
+      // 即時移動那條線（rAF 會把把手跟著移到新位置）
+      editableObjsRef.current[i]?.obj?.applyOptions({ price });
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+
+      const i = draggingRef.current;
+      draggingRef.current = null;
+      if (i == null) return;
+
+      const meta = editableLines[i];
+      const newPrice = currentPricesRef.current[i];
+      // 反推百分比：止損/追蹤止盈都是「低於參考價的比例」= 1 − 新價/參考價
+      const pct = priceToPct(meta?.refPrice, newPrice);
+      if (pct != null && meta?.botId != null && onPriceLineDrag) {
+        onPriceLineDrag(meta.botId, meta.field, pct);
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  return (
+    <div style={{ position: "relative", width: "100%", height }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+
+      {/* 可拖曳把手：疊在圖右側，y 由 rAF 對齊到線；拖它即可調整止損/止盈 */}
+      {editableLines.map((line, i) => (
+        <div
+          key={`${line.botId}-${line.field}`}
+          ref={(el) => (handleNodesRef.current[i] = el)}
+          onPointerDown={(e) => handlePointerDown(i, e)}
+          title={`拖曳調整${line.title}`}
+          style={{
+            position: "absolute",
+            right: 56, // 避開右側價格軸
+            transform: "translateY(-50%)",
+            display: "none", // rAF 算出位置後才顯示
+            alignItems: "center",
+            gap: 4,
+            padding: "1px 6px",
+            fontSize: 11,
+            lineHeight: 1.6,
+            color: "#fff",
+            background: line.color || "#888",
+            borderRadius: 4,
+            cursor: "ns-resize",
+            userSelect: "none",
+            touchAction: "none",
+            zIndex: 3,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+          }}
+        >
+          ⇅ {line.title}
+        </div>
+      ))}
+    </div>
+  );
 }

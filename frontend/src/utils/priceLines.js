@@ -23,6 +23,7 @@ export function buildBotPriceLines(bot) {
   const entry = bot.avg_entry_price;
 
   // 1. 進場均價線（要有持倉、拿得到均價才畫）
+  //    進場線是「真實成交價」，不能用拖的改 → 不給 editable。
   if (entry != null) {
     lines.push({
       price: entry,
@@ -32,27 +33,50 @@ export function buildBotPriceLines(bot) {
     });
 
     // 2. 止損線：需要進場價 + 止損百分比
+    //    可拖：拖動後用 (1 − 價/進場價) 反推 stop_loss_pct，參考價是進場價。
     if (bot.stop_loss_pct != null) {
       lines.push({
         price: entry * (1 - bot.stop_loss_pct),
         color: COLOR_STOP,
         title: "止損",
         dashed: false,
+        editable: true,
+        botId: bot.id,
+        field: "stop_loss_pct",
+        refPrice: entry,
       });
     }
   }
 
   // 3. 追蹤止盈線：用持倉最高價回落一定比例（與進場價無關，所以獨立判斷）
+  //    可拖：參考價是持倉最高價 peak_price。
   if (bot.peak_price != null && bot.trailing_stop_pct != null) {
     lines.push({
       price: bot.peak_price * (1 - bot.trailing_stop_pct),
       color: COLOR_TRAIL,
       title: "追蹤止盈",
       dashed: false,
+      editable: true,
+      botId: bot.id,
+      field: "trailing_stop_pct",
+      refPrice: bot.peak_price,
     });
   }
 
   return lines;
+}
+
+// 把「拖曳後的新價格」反推回風控百分比（止損/追蹤止盈都是「低於參考價的比例」）。
+//   pct = 1 − 新價 / 參考價
+// 例：進場價 100、止損線拖到 92 → pct = 1 − 92/100 = 0.08（8%）。
+//
+// 回傳會夾在 (0, 1) 的安全範圍並四捨五入到小數第 4 位（= 0.01% 精度），
+// 與後端 update_bot_risk 的 0<x<1 驗證一致；拖出範圍回 null（呼叫端忽略不送）。
+export function priceToPct(refPrice, newPrice) {
+  if (!refPrice || refPrice <= 0 || newPrice == null) return null;
+  const pct = 1 - newPrice / refPrice;
+  if (!(pct > 0 && pct < 1)) return null;
+  return Math.round(pct * 10000) / 10000;
 }
 
 // 從一籃 Bot 裡挑出「正在跑某檔股票」的那一個（給圖表配對用）。
