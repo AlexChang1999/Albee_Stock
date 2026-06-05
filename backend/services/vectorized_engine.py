@@ -175,13 +175,22 @@ def is_vectorized(strategy_key: str) -> bool:
     return strategy_key in SIGNAL_BUILDERS
 
 
-def run_vectorized(strategy_key: str, params: dict, df: pd.DataFrame, initial_cash: float) -> dict:
+def run_vectorized(
+    strategy_key: str, params: dict, df: pd.DataFrame, initial_cash: float,
+    commission_bps: float = 0.0, slippage_bps: float = 0.0,
+) -> dict:
     """
     用向量化訊號跑回測，回傳與 _run_on_df 完全相同格式的績效 dict。
     呼叫前請先確認 is_vectorized(strategy_key) 為真。
+
+    成本參數（commission_bps / slippage_bps）原封轉交共用核心 _simulate_from_signals，
+    與事件式引擎吃同一套成本與隔日成交語意 → 兩路結果保證一致。
     """
     builder = SIGNAL_BUILDERS[strategy_key]
     buy, sell = builder(df, params or {})
     # buy 優先（與事件式「先判斷買、再判斷賣」一致）
     signals = np.where(buy, Signal.BUY, np.where(sell, Signal.SELL, Signal.HOLD))
-    return _simulate_from_signals(list(signals), df, initial_cash)
+    return _simulate_from_signals(
+        list(signals), df, initial_cash,
+        commission_bps=commission_bps, slippage_bps=slippage_bps,
+    )

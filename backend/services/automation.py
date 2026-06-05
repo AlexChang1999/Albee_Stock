@@ -34,9 +34,10 @@ def plan_deployments(
     active_count: int,
 ) -> list[dict]:
     """
-    從（已依 EV 排序的）推薦清單，挑出符合自動部署條件的。
+    從（已依 OOS EV 排序的）推薦清單，挑出符合自動部署條件的。
 
-    規則：EV > 門檻 且 勝率 >= 門檻；同一檔已有 Bot 不重複建；
+    規則：★樣本外 EV > 門檻 且 樣本外勝率 >= 門檻（Phase 6 step-04：門檻一律比對 OOS，
+         不看樣本內，過擬合的策略過不了關）；同一檔已有 Bot 不重複建；
          不超過名額上限（max_bots − 目前已啟用數）。
 
     :return: 該部署的推薦子清單（順序即部署順序）。
@@ -51,8 +52,8 @@ def plan_deployments(
         if not symbol or symbol in seen:
             continue
         m = rec.get("metrics") or {}
-        ev = m.get("expected_value")
-        wr = m.get("win_rate_pct")
+        ev = m.get("oos_expected_value")
+        wr = m.get("oos_win_rate_pct")
         if not isinstance(ev, (int, float)) or ev <= ev_threshold:
             continue
         if not isinstance(wr, (int, float)) or wr < winrate_threshold:
@@ -107,7 +108,7 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
 
         planned_summary = [
             {"symbol": r["symbol"], "strategy_key": r["strategy_key"],
-             "ev": (r.get("metrics") or {}).get("expected_value")}
+             "ev": (r.get("metrics") or {}).get("oos_expected_value")}
             for r in planned
         ]
 

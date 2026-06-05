@@ -27,13 +27,15 @@
 
 import pandas as pd
 
+from backend.config import settings
 from backend.services import market_data
 from backend.services.analytics import extended_metrics
 from backend.strategies import get_strategy, Signal
 
 
 def _simulate_from_signals(
-    signals: list, df: pd.DataFrame, initial_cash: float, reasons: list | None = None
+    signals: list, df: pd.DataFrame, initial_cash: float, reasons: list | None = None,
+    commission_bps: float = 0.0, slippage_bps: float = 0.0,
 ) -> dict:
     """
     吃「每根 K 棒一個訊號」的序列，跑全進全出的資金模擬並算出全套績效。
@@ -42,51 +44,85 @@ def _simulate_from_signals(
     （services/vectorized_engine）都把各自算好的訊號序列丟進這裡，
     確保「模擬規則 + 績效數學」只有一份、兩條路徑結果保證一致。
 
+    兩個「誠實化」語意（Phase 6 step-02 / step-03），預設關（成本=0），由上層帶 config 值進來：
+    - **隔日成交（step-03）**：訊號在第 i 根「收盤」算出，但實盤當下早已收盤，只能用
+      「下一根的開盤價」成交。故換手延到第 i+1 根，用 open[i+1]（無 open 欄退回 close[i+1]）。
+      最後一根有訊號卻沒有次根 → 不成交（誠實，不無中生有一筆）。
+    - **成本（step-02）**：買進成交價 ×(1+slippage)、賣出 ×(1−slippage)，買賣再各扣手續費；
+      成本反映進 profit / equity_curve，EV / profit_factor / expectancy 公式不動就自動變誠實。
+
     :param signals: 長度同 df 的訊號序列，每格是 Signal.BUY / SELL / HOLD
     :param reasons: 對應每根的文字理由（選填，只為交易紀錄好看，不影響數字）
+    :param commission_bps: 單邊手續費（basis point，萬分之一）
+    :param slippage_bps: 單邊滑價（basis point）
     """
     prices = df["close"].to_numpy(dtype=float)
+    # 成交價來源：隔日成交用「次根開盤價」；無 open 欄則退回次根收盤價
+    # （與向量化策略「缺 high/low 用 close 代替」的退化規則同精神）。
+    fill_src = df["open"].to_numpy(dtype=float) if "open" in df.columns else prices
     has_ts = "timestamp" in df.columns
     ts = df["timestamp"].astype(str).to_numpy() if has_ts else None
 
+    commission_rate = commission_bps / 1e4
+    slippage_rate = slippage_bps / 1e4
+
     cash = initial_cash  # 目前現金
     position = 0.0       # 目前持有股數
-    entry_price = 0.0    # 買進時的價格（算單筆盈虧用）
+    entry_price = 0.0    # 買進「有效成交價」（已含滑價，算單筆盈虧用）
     trades = []          # 交易紀錄
     equity_curve = []    # 每日資產淨值（畫資金曲線用）
+    total_cost = 0.0     # 本次回測累計摩擦成本（手續費 + 滑價）
+    pending = None       # 前一根 close 算出、待這一根「以成交價」換手的單：(side, reason)
 
     for i in range(len(prices)):
-        price = float(prices[i])
-        # 日期（若有 timestamp 欄就取，只留日期部分）
+        price = float(prices[i])      # 當根收盤價，用來估市值
         date = ts[i][:10] if has_ts else str(i)
+
+        # --- 1. 先成交「上一根決定的單」：用這一根的成交價（隔日成交語意）---
+        if pending is not None:
+            side, p_reason = pending
+            raw_fill = float(fill_src[i])
+            if side == "buy":
+                eff = raw_fill * (1 + slippage_rate)        # 滑價：買在較差(較高)價
+                notional = cash / (1 + commission_rate)      # 預留手續費後實際買股的金額
+                qty = notional / eff
+                commission = notional * commission_rate
+                total_cost += commission + qty * (eff - raw_fill)
+                position = qty
+                cash = 0.0
+                entry_price = eff
+                trades.append(
+                    {"date": date, "side": "buy", "price": round(eff, 2),
+                     "qty": round(qty, 4), "reason": p_reason}
+                )
+            else:  # sell：全出
+                eff = raw_fill * (1 - slippage_rate)        # 滑價：賣在較差(較低)價
+                gross = position * eff
+                commission = gross * commission_rate
+                proceeds = gross - commission
+                profit = proceeds - position * entry_price   # entry_price 已含買入成本
+                total_cost += commission + position * (raw_fill - eff)
+                cash += proceeds
+                trades.append(
+                    {"date": date, "side": "sell", "price": round(eff, 2),
+                     "qty": round(position, 4), "reason": p_reason,
+                     "profit": round(profit, 2)}
+                )
+                position = 0.0
+                entry_price = 0.0
+            pending = None
+
+        # --- 2. 記錄當根收盤後的總資產 ---
+        equity_curve.append(cash + position * price)
+
+        # --- 3. 依當根 close 的訊號，決定「下一根」要不要換手（隔日成交）---
         signal = signals[i]
         reason = reasons[i] if reasons is not None else ""
-
         if signal == Signal.BUY and position == 0 and cash > 0:
-            # 全進：用所有現金買入
-            qty = cash / price
-            position = qty
-            cash = 0.0
-            entry_price = price
-            trades.append(
-                {"date": date, "side": "buy", "price": round(price, 2),
-                 "qty": round(qty, 4), "reason": reason}
-            )
+            pending = ("buy", reason)
         elif signal == Signal.SELL and position > 0:
-            # 全出：賣掉所有持倉
-            proceeds = position * price
-            profit = (price - entry_price) * position
-            cash += proceeds
-            trades.append(
-                {"date": date, "side": "sell", "price": round(price, 2),
-                 "qty": round(position, 4), "reason": reason,
-                 "profit": round(profit, 2)}
-            )
-            position = 0.0
-            entry_price = 0.0
-
-        # 今天結束時的總資產 = 現金 + 持股市值
-        equity_curve.append(cash + position * price)
+            pending = ("sell", reason)
+        # 迴圈結束後 pending 仍有值 = 最後一根的訊號沒有次根可成交 → 誠實地不成交
 
     # --- 計算各項績效 ---
     final_equity = equity_curve[-1] if equity_curve else initial_cash
@@ -159,17 +195,22 @@ def _simulate_from_signals(
         "expected_value": round(expected_value, 2),
         "expectancy_pct": round(expectancy, 2),
         "profit_factor": round(profit_factor, 2) if profit_factor is not None else None,
+        "total_cost": round(total_cost, 2),  # 本次回測累計摩擦成本（手續費 + 滑價）
         "trades": trades,
         "equity_curve": [round(e, 2) for e in equity_curve],
     }
 
 
-def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
+def _run_on_df(
+    strategy, df: pd.DataFrame, initial_cash: float,
+    commission_bps: float = 0.0, slippage_bps: float = 0.0,
+) -> dict:
     """
     在一份 K 線資料上跑回測（事件式：逐根呼叫策略 generate_signal，純邏輯、不連線）。
 
     逐日往前走：第 i 根只看「到第 i 根為止」的資料產生訊號（不偷看未來），
-    再把整串訊號交給共用核心 _simulate_from_signals 做資金模擬與績效計算。
+    再把整串訊號交給共用核心 _simulate_from_signals 做資金模擬與績效計算
+    （含成本模型與隔日成交，見該函式說明）。
     """
     signals = []
     reasons = []
@@ -177,7 +218,10 @@ def _run_on_df(strategy, df: pd.DataFrame, initial_cash: float) -> dict:
         sig, reason = strategy.generate_signal(df.iloc[: i + 1])
         signals.append(sig)
         reasons.append(reason)
-    return _simulate_from_signals(signals, df, initial_cash, reasons=reasons)
+    return _simulate_from_signals(
+        signals, df, initial_cash, reasons=reasons,
+        commission_bps=commission_bps, slippage_bps=slippage_bps,
+    )
 
 
 def run_backtest(
@@ -187,6 +231,8 @@ def run_backtest(
     days: int = 365,
     initial_cash: float = 10000.0,
     source: str = "alpaca",
+    commission_bps: float | None = None,
+    slippage_bps: float | None = None,
 ) -> dict:
     """
     對某檔股票跑回測（會連資料源抓歷史資料）。
@@ -196,13 +242,24 @@ def run_backtest(
     :param days: 回測往前抓幾天的資料
     :param initial_cash: 初始資金
     :param source: 資料源，"alpaca"（預設）或 "yfinance"
+    :param commission_bps: 單邊手續費（bps）；None＝讀 config 預設
+    :param slippage_bps: 單邊滑價（bps）；None＝讀 config 預設
     """
+    # 成本預設讀全系統 config，呼叫端可顯式覆寫（含 0 = 關成本對照用）
+    if commission_bps is None:
+        commission_bps = settings.BACKTEST_COMMISSION_BPS
+    if slippage_bps is None:
+        slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
+
     df = market_data.get_bars(symbol, days=days, source=source)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
 
     strategy = get_strategy(strategy_name, params or {})
-    result = _run_on_df(strategy, df, initial_cash)
+    result = _run_on_df(
+        strategy, df, initial_cash,
+        commission_bps=commission_bps, slippage_bps=slippage_bps,
+    )
 
     # 補上這次回測的基本資訊
     result["symbol"] = symbol

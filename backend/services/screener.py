@@ -184,7 +184,8 @@ def screen_watchlist(
         best = scan.get("best")
         if not best:
             continue
-        ev = (best.get("metrics") or {}).get("expected_value")
+        # ★海選門檻看「樣本外 EV」（防過擬合，Phase 6 step-04），不看整段歷史的樣本內 EV
+        ev = (best.get("metrics") or {}).get("oos_expected_value")
         if not isinstance(ev, (int, float)) or ev <= min_ev:
             continue
         recommendations.append({
@@ -197,9 +198,9 @@ def screen_watchlist(
             "suggested_cash": initial_cash,
         })
 
-    # 依 EV 由高到低排
+    # 依「樣本外 EV」由高到低排（與挑冠軍同一把尺）
     recommendations.sort(
-        key=lambda r: r["metrics"].get("expected_value", float("-inf")), reverse=True
+        key=lambda r: r["metrics"].get("oos_expected_value", float("-inf")), reverse=True
     )
 
     return {

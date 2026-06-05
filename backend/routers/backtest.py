@@ -76,6 +76,12 @@ def _entry_summary(entry: dict) -> dict:
         "buy_and_hold_pct": m.get("buy_and_hold_pct"),
         "max_drawdown_pct": m.get("max_drawdown_pct"),
         "num_round_trips": m.get("num_round_trips"),
+        "total_cost": m.get("total_cost"),
+        # ★樣本外指標（挑冠軍依據）＋樣本內對照（看過擬合落差）
+        "oos_expected_value": m.get("oos_expected_value"),
+        "oos_win_rate_pct": m.get("oos_win_rate_pct"),
+        "oos_total_return_pct": m.get("oos_total_return_pct"),
+        "is_expected_value": m.get("is_expected_value"),
     }
 
 

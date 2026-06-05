@@ -95,12 +95,13 @@ def test_recommendations_endpoint(monkeypatch):
         screener, "_layer2_sentiment",
         lambda picks: [{**p, "sentiment": None} for p in picks],
     )
-    # 第三層：假回測，AAPL EV 正、TSLA EV 負（應被濾掉）
+    # 第三層：假回測，AAPL OOS EV 正、TSLA OOS EV 負（應被濾掉）
+    # Phase 6 step-04：海選看「樣本外 EV」，故 EV 放 oos_expected_value
     def fake_scan(symbol, days, initial_cash, source):
         ev = 50.0 if symbol == "AAPL" else -10.0
         return {"best": {
             "strategy_key": "rsi", "params": {"period": 14},
-            "metrics": {"expected_value": ev, "win_rate_pct": 60},
+            "metrics": {"oos_expected_value": ev, "oos_win_rate_pct": 60},
         }}
     monkeypatch.setattr(screener, "run_auto_backtest", fake_scan)
     # 清快取避免吃到舊結果
@@ -132,7 +133,7 @@ if __name__ == "__main__":
     screener._layer2_sentiment = lambda picks: [{**p, "sentiment": None} for p in picks]
     screener.run_auto_backtest = lambda symbol, days, initial_cash, source: {
         "best": {"strategy_key": "rsi", "params": {"period": 14},
-                 "metrics": {"expected_value": 50.0 if symbol == "AAPL" else -10.0, "win_rate_pct": 60}}
+                 "metrics": {"oos_expected_value": 50.0 if symbol == "AAPL" else -10.0, "oos_win_rate_pct": 60}}
     }
     rec_router._CACHE.clear()
     try:
