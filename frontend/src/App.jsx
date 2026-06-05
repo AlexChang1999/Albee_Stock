@@ -144,6 +144,20 @@ function App() {
     }
   }
 
+  // 圖表上拖曳止損 / 追蹤止盈水位線 → 換算成的百分比存回後端
+  async function handlePriceLineDrag(botId, field, pct) {
+    setError("");
+    setMessage("");
+    try {
+      await api.updateBotRisk(botId, { [field]: pct });
+      const label = field === "stop_loss_pct" ? "止損" : "追蹤止盈";
+      setMessage(`已更新${label}為 ${(pct * 100).toFixed(2)}%`);
+      reload(); // 重抓 Bot，水位線回到最新資料
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   // 執行回測
   async function handleBacktest() {
     setError("");
@@ -357,7 +371,7 @@ function App() {
             >
               {chartView === "grid" ? (
                 // ----- 2x2 網格：每格自帶代號輸入與水位線 -----
-                <ChartGrid bots={bots} />
+                <ChartGrid bots={bots} onPriceLineDrag={handlePriceLineDrag} />
               ) : (
                 // ----- 單一大圖 -----
                 <Box>
@@ -396,6 +410,7 @@ function App() {
                       symbol={chartSymbol}
                       height="100%"
                       priceLines={chartPriceLines}
+                      onPriceLineDrag={handlePriceLineDrag}
                     />
                   </Box>
                   <Typography variant="caption" color="text.secondary">

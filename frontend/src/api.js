@@ -53,6 +53,10 @@ export const api = {
   updateBot: (id, data) =>
     request(`/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 
+  // 只更新風控水位線（圖表拖曳止損/止盈線即時連動）。只送有改的欄位。
+  updateBotRisk: (id, risk) =>
+    request(`/bots/${id}/risk`, { method: "PUT", body: JSON.stringify(risk) }),
+
   // 刪除 Bot
   deleteBot: (id) => request(`/bots/${id}`, { method: "DELETE" }),
 

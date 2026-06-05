@@ -24,7 +24,6 @@ import {
   MenuItem,
   Button,
   IconButton,
-  Divider,
   Stack,
   Chip,
   Alert,
@@ -53,14 +52,16 @@ export default function StrategyWorkbench() {
   });
   const [collapsed, setCollapsed] = useState(false);
 
-  // 寬度變動就記到 localStorage
+  // 拖曳把手：面板在右側，往左拖（clientX 變小）= 變寬
+  // widthRef 讓拖曳的 mousemove 拿得到「最新寬度」而不必把 width 進相依陣列。
+  const widthRef = useRef(width);
+
+  // 寬度變動：記到 localStorage + 同步進 ref（在 effect 裡寫 ref，避免 render 期間動 ref）
   useEffect(() => {
+    widthRef.current = width;
     localStorage.setItem(WIDTH_KEY, String(width));
   }, [width]);
 
-  // 拖曳把手：面板在右側，往左拖（clientX 變小）= 變寬
-  const widthRef = useRef(width);
-  widthRef.current = width;
   const startResize = useCallback((e) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -115,10 +116,15 @@ export default function StrategyWorkbench() {
     }
   }, [favOnly]);
 
+  // 掛載 / favOnly 改變時抓資料。loadPresets/loadRuns 都是 async，setState 在 await
+  // 之後才跑（非同步），不會造成 cascading render；lint 規則看不穿 async 故誤報，
+  // 這裡明確關掉那一行。
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPresets();
   }, [loadPresets]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadRuns();
   }, [loadRuns]);
 

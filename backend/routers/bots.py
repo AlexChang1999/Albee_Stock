@@ -42,6 +42,18 @@ class BotCreate(BaseModel):
     check_interval_sec: int = 60             # 監測頻率（秒）
 
 
+class RiskUpdate(BaseModel):
+    """
+    只更新風控水位線用（給圖表「拖曳水位線」即時連動後端）。
+
+    三個欄位都「選填」：沒帶的欄位不動、帶了才改（用 exclude_unset 判斷）。
+    這樣前端拖哪條線就只送那一個百分比，不必把整個 Bot 重送一次。
+    """
+    take_profit_pct: float | None = None
+    stop_loss_pct: float | None = None
+    trailing_stop_pct: float | None = None
+
+
 # ---------- 內部小工具 ----------
 def _avg_entry_price(symbol: str) -> float | None:
     """
@@ -116,6 +128,35 @@ def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(bot)
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
+
+
+@router.put("/{bot_id}/risk")
+def update_bot_risk(bot_id: int, payload: RiskUpdate, db: Session = Depends(get_db)):
+    """
+    只更新風控百分比（止盈/止損/追蹤止損），給圖表「拖曳水位線」用。
+
+    只改「有帶進來」的欄位（exclude_unset）；百分比若有值須落在 0~1（0% < x < 100%），
+    防止拖過頭把止損設成負數或大於 1 的離譜值。帶 null 代表關閉該機制。
+    """
+    bot = _get_bot_or_404(db, bot_id)
+    changes = payload.model_dump(exclude_unset=True)
+
+    for field, value in changes.items():
+        if value is not None and not (0 < value < 1):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} 必須介於 0 與 1 之間（例：0.05 = 5%），收到 {value}",
+            )
+        setattr(bot, field, value)
+
+    db.commit()
+    db.refresh(bot)
+    return {
+        "id": bot.id,
+        "take_profit_pct": bot.take_profit_pct,
+        "stop_loss_pct": bot.stop_loss_pct,
+        "trailing_stop_pct": bot.trailing_stop_pct,
+    }
 
 
 @router.delete("/{bot_id}")

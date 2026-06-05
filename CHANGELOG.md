@@ -17,6 +17,23 @@
 
 ### 新增
 
+- 圖表水位線「拖曳即改風控」（藍圖 Phase 1 未來擴充項落地）：在 K 線圖上直接拖曳
+  止損 / 追蹤止盈水位線，放開即把新價格換算成百分比存回後端 Bot。進場均價線是真實
+  成交價、不可拖。後端新增 `PUT /bots/{id}/risk`（`backend/routers/bots.py` 的
+  `RiskUpdate` + `update_bot_risk`）：用 `exclude_unset` 只改「有帶」的欄位（拖一條
+  線不會洗掉其他風控）、百分比驗證 0<x<1、帶 null 可關閉該機制。前端
+  `LightweightChart.jsx` 對 editable 線疊可拖把手（`priceToCoordinate`/`coordinateToPrice`
+  換算、rAF 讓把手黏在線上）、`utils/priceLines.js` 新增純函式 `priceToPct` 與線的
+  拖曳中繼資料（botId/field/refPrice）、`api.js` 加 `updateBotRisk`，`App.jsx` 與
+  `ChartGrid.jsx` 接上 `onPriceLineDrag`。附 `tests/test_bot_risk.py` 4 測試、
+  `priceLines.test.jsx` 新增 6 測試。後端 97 綠、前端 37 綠。
+
+### 移除
+
+- 清除死碼：刪除已無人引用的 `frontend/src/TradingViewChart.jsx`（已被原生
+  `LightweightChart` 取代）與 `frontend/src/components/CreateBotForm.jsx`（Dashboard
+  改版後不再手填建 Bot）。
+
 - 改版 Phase 4：全自動護欄 / 模式 B 自動部署（藍圖見 `docs/redesign/phase-4-automation.md`）。「自動駕駛」：
   盤前排程跑 AI 海選，對 EV + 勝率**同時**超標的策略無人工確認自動建 Bot。層層設防：
   - 後端 `backend/services/automation.py`：純函式 `plan_deployments`（EV/勝率雙門檻 + 同標的去重 +
