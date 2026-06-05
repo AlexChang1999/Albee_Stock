@@ -477,7 +477,22 @@ export default function StrategyWorkbench() {
                 <Chip size="small" label={`總報酬 ${btResult.total_return_pct}%`} />
                 <Chip size="small" label={`回撤 ${btResult.max_drawdown_pct}%`} />
                 <Chip size="small" label={`買賣 ${btResult.num_round_trips} 筆`} />
+                {/* quantstats 風險調整後指標（有算出才顯示） */}
+                {btResult.extended?.sharpe != null && (
+                  <Chip size="small" label={`Sharpe ${btResult.extended.sharpe}`} />
+                )}
+                {btResult.extended?.sortino != null && (
+                  <Chip size="small" label={`Sortino ${btResult.extended.sortino}`} />
+                )}
               </Stack>
+              {btResult.run_id && (
+                <Button
+                  size="small"
+                  onClick={() => window.open(api.reportUrl(btResult.run_id), "_blank")}
+                >
+                  📊 開啟完整績效報表
+                </Button>
+              )}
               {btResult.expected_value < 0 && (
                 <Alert severity="warning" sx={{ mt: 1 }}>
                   EV 為負（長期不賺）。建議到下方歷史按「檢討」請 Claude 分析錯在哪。
@@ -528,6 +543,14 @@ export default function StrategyWorkbench() {
                   <Tooltip title="收藏為好策略">
                     <IconButton size="small" onClick={() => toggleFavoriteRun(run)}>
                       {run.is_good ? "★" : "☆"}
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="開啟績效報表">
+                    <IconButton
+                      size="small"
+                      onClick={() => window.open(api.reportUrl(run.id), "_blank")}
+                    >
+                      📊
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="總結這次錯在哪">

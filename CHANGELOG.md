@@ -17,6 +17,21 @@
 
 ### 新增
 
+- 延伸績效分析（導入 **quantstats**）：回測結果新增風險調整後指標（Sharpe / Sortino /
+  Calmar / 年化波動 / CAGR）與一鍵 HTML 績效報表（資金曲線、回撤、月報酬表）。後端
+  `backend/services/analytics.py`（純函式 `returns_from_equity`／`extended_metrics`／
+  `tearsheet_html`，全 try/except 防爆、quantstats 缺失或極短序列回 None 不崩）、在
+  `backtest_engine.run_backtest` 單筆回測結果附 `extended`（**不**進 optimizer 海選迴圈，
+  不拖慢掃描）、新端點 `GET /backtest-runs/{id}/report` 從已存的 `equity_curve` 產報表。
+  前端 `StrategyWorkbench` 結果卡顯示 Sharpe/Sortino + 「開啟完整績效報表」、EV 歷史每列
+  加 📊 報表按鈕；`api.reportUrl(id)`。附 `tests/test_analytics.py` 4 測。
+
+- 新策略 **ADX 趨勢**（導入 **pandas-ta-classic**）：用 ADX 趨勢強度 + DI 方向判多空，
+  ADX 低（盤整）不追。`backend/strategies/adx_trend.py` + `backend/strategies/indicators.py`
+  （pandas-ta-classic 薄封裝，缺 high/low 自動退回 close 防呆），註冊進策略表、加入
+  `optimizer.py` 掃描網格與前端策略清單。pandas-ta-classic 為「可選用指標庫」，現有 8 策略
+  不動。附 `tests/test_strategies.py` 4 測（上升/下降/資料不足/盤整）。
+
 - 圖表水位線「拖曳即改風控」（藍圖 Phase 1 未來擴充項落地）：在 K 線圖上直接拖曳
   止損 / 追蹤止盈水位線，放開即把新價格換算成百分比存回後端 Bot。進場均價線是真實
   成交價、不可拖。後端新增 `PUT /bots/{id}/risk`（`backend/routers/bots.py` 的

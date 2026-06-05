@@ -15,4 +15,5 @@ export const STRATEGIES = [
   { value: "stochastic", label: "KD 隨機指標" },
   { value: "momentum", label: "動量" },
   { value: "williams_r", label: "威廉指標" },
+  { value: "adx_trend", label: "ADX 趨勢" },
 ];

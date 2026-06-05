@@ -32,6 +32,7 @@ from backend.strategies.bollinger import BollingerStrategy
 from backend.strategies.donchian import DonchianStrategy
 from backend.strategies.stochastic import StochasticStrategy
 from backend.strategies.momentum import MomentumStrategy
+from backend.strategies.adx_trend import ADXTrendStrategy
 from backend.strategies.base import Signal
 
 # 用小參數 short=2, long=3，方便精確構造交叉情境
@@ -193,6 +194,45 @@ def test_momentum_down_should_sell():
     print(f"✅ 動量殺跌測試通過：{reason}")
 
 
+# ============================================================
+# ADX 趨勢策略測試（用 pandas-ta-classic）
+# ============================================================
+def test_adx_uptrend_should_buy():
+    """穩定上升 → ADX 走強、+DI 在上 → 應該 buy。"""
+    df = pd.DataFrame({"close": list(range(50, 100))})  # 50 筆穩定上升
+    strategy = ADXTrendStrategy({"period": 14, "adx_threshold": 20})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.BUY, f"預期 buy，實際 {signal}（{reason}）"
+    print(f"✅ ADX 上升趨勢測試通過：{reason}")
+
+
+def test_adx_downtrend_should_sell():
+    """穩定下降 → ADX 走強、−DI 在上 → 應該 sell。"""
+    df = pd.DataFrame({"close": list(range(100, 50, -1))})  # 50 筆穩定下降
+    strategy = ADXTrendStrategy({"period": 14, "adx_threshold": 20})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.SELL, f"預期 sell，實際 {signal}（{reason}）"
+    print(f"✅ ADX 下降趨勢測試通過：{reason}")
+
+
+def test_adx_not_enough_data_should_hold():
+    """資料不足（< 2×period）→ 觀望。"""
+    df = pd.DataFrame({"close": list(range(50, 60))})  # 只有 10 筆
+    strategy = ADXTrendStrategy({"period": 14})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.HOLD, f"預期 hold，實際 {signal}（{reason}）"
+    print(f"✅ ADX 資料不足測試通過：{reason}")
+
+
+def test_adx_flat_should_hold():
+    """價格平穩、無趨勢（ADX 低）→ 觀望。"""
+    df = pd.DataFrame({"close": [100] * 50})
+    strategy = ADXTrendStrategy({"period": 14, "adx_threshold": 20})
+    signal, reason = strategy.generate_signal(df)
+    assert signal == Signal.HOLD, f"預期 hold，實際 {signal}（{reason}）"
+    print(f"✅ ADX 盤整測試通過：{reason}")
+
+
 if __name__ == "__main__":
     # 直接用 python 執行時，把所有測試都跑一遍
     # 均線交叉
@@ -217,4 +257,9 @@ if __name__ == "__main__":
     # 動量
     test_momentum_up_should_buy()
     test_momentum_down_should_sell()
+    # ADX 趨勢
+    test_adx_uptrend_should_buy()
+    test_adx_downtrend_should_sell()
+    test_adx_not_enough_data_should_hold()
+    test_adx_flat_should_hold()
     print("\n🎉 全部策略測試通過！")
