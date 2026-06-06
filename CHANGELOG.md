@@ -17,6 +17,21 @@
 
 ### 新增
 
+- **Phase 7 step-07：★防過擬合驗證框架（橫跨全部的鐵律）**——藍圖 [`docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md`](docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md)。
+  - 新增純函式 `backend/services/validation.py`：
+    - `walk_forward_splits` / `walk_forward`：滾動前進驗證。每個 fold 只在「測試段」子 df 上跑含成本
+      `_run_on_df`（與正式回測同路徑、與 optimizer OOS 語意一致），回每個 fold 的 OOS 績效。
+    - `purged_kfold_splits`：清洗式 K-Fold（López de Prado），測試塊前後各清掉 embargo 根，
+      防時序交界洩漏未來（給未來的學習式模型用）。
+    - `is_layer_worth_it(baseline_oos, candidate_oos)`：判定「加這層」有沒有在 OOS 上贏過「不加」——
+      內建最小提升門檻 + fold 數檢查，**worth=True 才准上線**。心態：用來「殺掉沒用的層」，不是美化績效。
+  - `config.py` 新增 `VALIDATION_TRAIN_WINDOW`/`TEST_WINDOW`/`STEP`/`KFOLD`/`EMBARGO`/`MIN_IMPROVEMENT`/`MIN_FOLDS`
+    （視窗單位為 K 棒數）。
+  - 規範意義：step-02/03/05 的學習式版本、step-03 的對照表，上線前都應先過 `is_layer_worth_it`；
+    加不了分的層就砍（CHANGELOG 記「試過、無效、砍掉」也是成果）。step-04 凱利的 W/R 也應吃 walk-forward 的 OOS 統計。
+  - 測試：新增 `tests/test_validation.py`（滾動切分正確、purged 無洩漏、`is_layer_worth_it` 能判死
+    「in-sample 漂亮、OOS 崩」的假層、fold 不足不採信）。`pytest tests/ -q` → 201 passed（乾淨 DB）。
+
 - **Phase 7 step-01~03：自適應市場狀態（區塊 2：狀態→選策略）**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
   - **step-01 市場狀態特徵工程**：新增純函式 `backend/services/regime_features.py`：`compute_features(df)`
     回 6 個可解釋特徵（`volume_ratio` 重用 `screener`、`return_5d/20d`、`volatility_20d` 年化、

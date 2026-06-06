@@ -184,6 +184,26 @@ class Settings:
     REGIME_MAP_DAYS: int = int(os.getenv("REGIME_MAP_DAYS", "365"))
 
     # ========================================================
+    # 防過擬合驗證框架（Phase 7 step-07，橫跨全部的鐵律）
+    # ========================================================
+    # 讓「狀態分類 / 自適應選策略 / meta-labeling」等加上去的層，都必須在真正的樣本外
+    # 證明自己有加分，否則砍掉。視窗單位都是「K 棒數（bars）」，不是日曆天。
+    #   - TRAIN_WINDOW：每個 fold 之前要保留多少根當訓練 / 暖機（滾動前進的步距基準）。
+    #   - TEST_WINDOW：每個 fold 的樣本外測試長度。
+    #   - STEP：視窗每次往前滾幾根（= TEST_WINDOW 則 fold 不重疊）。
+    VALIDATION_TRAIN_WINDOW: int = int(os.getenv("VALIDATION_TRAIN_WINDOW", "180"))
+    VALIDATION_TEST_WINDOW: int = int(os.getenv("VALIDATION_TEST_WINDOW", "60"))
+    VALIDATION_STEP: int = int(os.getenv("VALIDATION_STEP", "60"))
+    # purged K-Fold（給學習式模型用）：折數 + embargo（測試段前後各清掉幾根，防交界洩漏未來）。
+    VALIDATION_KFOLD: int = int(os.getenv("VALIDATION_KFOLD", "5"))
+    VALIDATION_EMBARGO: int = int(os.getenv("VALIDATION_EMBARGO", "5"))
+    # 「這層值不值得上線」判定：候選的 OOS EV 平均需贏 baseline 至少這麼多（金額），
+    # 且至少要有這麼多個 fold 才採信（樣本太少不算數）。門檻預設 0＝只要不比 baseline 差就算數，
+    # 但仍要求 fold 數達標；想更嚴格就把門檻調正。
+    VALIDATION_MIN_IMPROVEMENT: float = float(os.getenv("VALIDATION_MIN_IMPROVEMENT", "0"))
+    VALIDATION_MIN_FOLDS: int = int(os.getenv("VALIDATION_MIN_FOLDS", "3"))
+
+    # ========================================================
     # 即時報價推送（改版子軌：AI 終端機改版，非主線 Phase 6）
     # ========================================================
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。
