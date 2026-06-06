@@ -255,13 +255,52 @@ def _run_strategy(bot: Bot):
     - 資料源用 `settings.DATA_SOURCE`（全系統唯一設定），不再鎖死 Alpaca。
     - 回看天數用 `required_lookback_days` 依策略參數推算，不再寫死 60
       （否則長均線等策略資料不夠、靜默失準）。
+
+    Phase 7 step-03：bot.adaptive 開啟時走「自適應選策略」——
+    先算當下市場狀態，查「狀態→最佳策略對照表」挑策略；無可信策略時保守觀望。
     """
+    if getattr(bot, "adaptive", False):
+        return _run_adaptive_strategy(bot)
+
     days = required_lookback_days(bot.strategy, bot.params or {})
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
     strategy = get_strategy(bot.strategy, bot.params or {})
     return strategy.generate_signal(df)
+
+
+def _run_adaptive_strategy(bot: Bot):
+    """自適應模式（Phase 7 step-03）：依當下市場狀態挑策略再產生訊號。
+
+    1. 抓一段夠長的 K 線（與對照表建立時同窗口，特徵才一致）。
+    2. 算當下特徵 → 查該標的的「狀態→最佳策略對照表」（快取）。
+    3. 該狀態有可信策略 → 用它產生訊號；無（fallback）→ 保守觀望。
+    對照表計算或查詢失敗都不可中斷交易主流程，故 best-effort 退回觀望。
+    """
+    # 延遲 import 避免載入順序問題（selector 會用到 backtest_engine 等較重的相依）
+    from backend.services.regime_features import compute_features
+    from backend.services.strategy_selector import get_regime_strategy_map, select_strategy
+
+    days = settings.REGIME_MAP_DAYS
+    df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
+    if df.empty:
+        return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
+
+    try:
+        regime_map = get_regime_strategy_map(bot.symbol)
+    except Exception as e:
+        return Signal.HOLD, f"自適應：對照表建立失敗（{e}），保守觀望"
+
+    features = compute_features(df)
+    pick = select_strategy(features, regime_map)
+    if pick["fallback"] or not pick["strategy"]:
+        return Signal.HOLD, f"自適應：{pick['regime']} 狀態無可信策略，保守觀望"
+
+    strategy = get_strategy(pick["strategy"], pick["params"])
+    signal, reason = strategy.generate_signal(df)
+    # 把「這輪是哪個狀態挑了哪個策略」帶進原因，方便決策審計事後查驗
+    return signal, f"[自適應 {pick['regime']}→{pick['strategy']}] {reason}"
 
 
 def _record_and_notify(bot, side, qty, price, order, reason) -> None:

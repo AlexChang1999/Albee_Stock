@@ -164,6 +164,26 @@ class Settings:
     PORTFOLIO_MAX_DRAWDOWN_PCT: float = float(os.getenv("PORTFOLIO_MAX_DRAWDOWN_PCT", "20"))
 
     # ========================================================
+    # 市場狀態分類器（Phase 7 step-02 / step-03）
+    # ========================================================
+    # 把 regime_features 的數字特徵，用「規則式決策樹（路線 A，純 if-else）」分成幾種
+    # 有名字的市場狀態。閾值放這裡（好調、好測），不寫死在程式裡。
+    #   - HIGH_VOL：近 20 日年化波動 ≥ 此值 → 高波動（混亂，優先別追）。0.50 = 50%。
+    #   - VOLUME_SPIKE + FLAT_RETURN：量比 ≥ VOLUME_SPIKE 且 |近5日報酬| ≤ FLAT_RETURN
+    #     → 爆量滯漲（量價背離，你舉的「量大卻沒漲幅」）。
+    #   - ADX_TREND：趨勢強度(ADX) ≥ 此值 → 趨勢盤；都不符就歸「盤整」。
+    REGIME_HIGH_VOL_THRESHOLD: float = float(os.getenv("REGIME_HIGH_VOL_THRESHOLD", "0.50"))
+    REGIME_VOLUME_SPIKE: float = float(os.getenv("REGIME_VOLUME_SPIKE", "2.0"))
+    REGIME_FLAT_RETURN: float = float(os.getenv("REGIME_FLAT_RETURN", "0.02"))
+    REGIME_ADX_TREND: float = float(os.getenv("REGIME_ADX_TREND", "25.0"))
+    # step-03 自適應選策略：某狀態的子樣本交易筆數 < 此門檻，就不信任該狀態的統計，
+    # 退回保守預設（不亂下注）。切子樣本後筆數會驟減，這道門檻防「12 筆勝率 75% 是運氣」。
+    REGIME_MIN_SAMPLE: int = int(os.getenv("REGIME_MIN_SAMPLE", "10"))
+    # step-03 對照表 / 自適應實盤的回看窗口（天）。實盤抓這麼多天算特徵 + 挑策略，
+    # 與對照表建立時同窗口，特徵才一致（呼應「回測 = 實盤」鐵則）。
+    REGIME_MAP_DAYS: int = int(os.getenv("REGIME_MAP_DAYS", "365"))
+
+    # ========================================================
     # 即時報價推送（改版子軌：AI 終端機改版，非主線 Phase 6）
     # ========================================================
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。

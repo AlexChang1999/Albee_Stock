@@ -60,6 +60,11 @@ class Bot(Base):
     # 為何存進資料庫而非記憶體：後端重啟後追蹤止損才不會把最高價歸零、保護中斷一段時間。
     peak_price = Column(Float, nullable=True)
 
+    # 自適應模式（Phase 7 step-03）：開啟時不固定用 strategy 欄位的策略，
+    # 而是每輪先算當下「市場狀態」，查「狀態→最佳策略對照表」挑策略。
+    # 預設關（False）＝沿用固定策略，向後相容。狀態無可信策略時保守觀望（不亂下注）。
+    adaptive = Column(Boolean, nullable=False, default=False)
+
     # Bot 是否啟用中
     is_active = Column(Boolean, default=False)
 

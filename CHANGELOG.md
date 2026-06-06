@@ -15,6 +15,32 @@
 
 ## [未發布]
 
+### 新增
+
+- **Phase 7 step-01~03：自適應市場狀態（區塊 2：狀態→選策略）**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
+  - **step-01 市場狀態特徵工程**：新增純函式 `backend/services/regime_features.py`：`compute_features(df)`
+    回 6 個可解釋特徵（`volume_ratio` 重用 `screener`、`return_5d/20d`、`volatility_20d` 年化、
+    `trend_strength` 重用 `indicators.adx_components`、`atr_pct`、`range_position` 唐奇安%）。
+    純 pandas、無 ML、無未來函數（只用截至最後一根的資料，與回測 walk-forward 同紀律）。
+  - **step-02 狀態分類器（路線 A 規則式決策樹）**：新增 `backend/services/regime.py`：`classify_regime(features)`
+    用 if-else 閾值分 4 種狀態（`trending`/`ranging`/`high_volume_stall`/`high_volatility`，核心特徵全缺回 `unknown`）。
+    閾值放 `config.py`（`REGIME_HIGH_VOL_THRESHOLD`/`REGIME_VOLUME_SPIKE`/`REGIME_FLAT_RETURN`/`REGIME_ADX_TREND`）。
+    可解釋、零過擬合；學習式路線 B 未做（沒有 step-07 驗證框架前不碰）。
+  - **step-03 狀態→策略自適應選擇**：新增 `backend/services/strategy_selector.py`：
+    `build_regime_strategy_map(symbol)` 在 **OOS 測試段**（`optimizer.split_train_test`）對每個策略跑含成本回測，
+    把每筆 round-trip 盈虧歸到「進場當時的狀態」，每狀態挑「筆數 ≥ `REGIME_MIN_SAMPLE` 且 EV>0」中 EV 最高者；
+    無人達標 → 該狀態回 `None`（保守觀望）。`select_strategy(features, map)` 線上查表；
+    `get_regime_strategy_map` 記憶體快取。
+  - Bot 新增 `adaptive` 布林欄（預設 False，向後相容）+ Alembic 遷移 `e5f6a7b8c9d0`。
+    `bot_manager._run_strategy`：`adaptive` 開啟時走新增的 `_run_adaptive_strategy`——算當下狀態 → 查表挑策略 →
+    產生訊號；無可信策略時 `HOLD` 觀望，原因帶 `[自適應 狀態→策略]` 供決策審計查驗。
+    `config.py` 新增 `REGIME_MIN_SAMPLE` / `REGIME_MAP_DAYS`。
+  - **誠實聲明**：本步只落地「機制」，**未宣稱已證明有效**。自適應是否真在 OOS 上贏過「單一最佳策略」
+    須靠 Phase 7 step-07 驗證框架判定，贏不過就該砍掉這層（不要 vibe slop）。故預設關、且狀態無可信策略時保守觀望。
+  - 測試：新增 `tests/test_regime_features.py`（特徵算對 + 無未來函數）、`tests/test_regime.py`（各狀態分類）、
+    `tests/test_strategy_selector.py`（盈虧歸因 + 查表/退回 + build map 端到端 monkeypatch 不連網）。
+    `pytest tests/ -q` → 193 passed（4 failed 為未追蹤孤兒檔 `test_trading_mode.py`，測一個不存在的 per-bot `mode` 功能，非本次變更）。
+
 ### 變更
 
 - **Phase 6 step-01：統一資料路徑（實盤 = 回測）**——修 P4「實盤與回測資料源/回看長度分岔」。
