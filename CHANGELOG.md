@@ -15,6 +15,24 @@
 
 ## [未發布]
 
+### 變更
+
+- **層驗證誠實修法：adaptive / kelly 給「公平的樣本外測試」（非調參騙綠）**——遵守 step-07 鐵律
+  「框架是用來砍沒用的層、不是美化績效」，只修方法論瑕疵、不為了過而調門檻。
+  - **kelly 測試原本根本沒跑到（`folds=0`）**：舊版在同一段 60 根測試窗上「同時估 W/R 又複利」，
+    既偷看未來（in-sample 凱利）又因湊不到 `KELLY_MIN_ROUND_TRIPS` 而每 fold 全 skip。
+    改成分離訓練/測試＋**擴張窗**估比例：在「測試段之前的全段」估凱利比例（嚴格 OOS、不偷看），
+    把固定比例與凱利比例套到測試段已實現報酬流複利比終值。測試段只需 ≥1 筆 round-trip。
+    結果：`folds 0→2`、凱利略勝基準（+0.0011），但仍 < `VALIDATION_MIN_FOLDS=3`
+    → **無法認證**（資料太薄，需更多標的/更長歷史，不靠調參湊綠）。
+  - **adaptive 無可信狀態時 fallback 改為 best-fixed 而非 HOLD**：meta-strategy 在沒把握的狀態
+    不該坐現金白丟基準 edge，應退回「整體最佳固定策略」當地板（`AdaptiveMappedStrategy`
+    新增 `fallback_key`）。如此 candidate 只在「有把握更好」的狀態才偏離 baseline，驗純粹狀態切換增益。
+    結果：OOS 由 **−159.8 改善到 −115.2**（candidate 28.6→73.3），但**仍輸基準**
+    → 維持預設關（`bot.adaptive=False`），fallback 設計改善保留。
+  - 結論：兩層皆未以誠實手段轉綠——這正是 step-07 框架照設計運作（殺弱層，不美化）。
+    meta 仍為唯一 OOS 加分層（+27.8 / 444 folds）。
+
 ### 新增
 
 - **工作流視覺化文件**——新增 `docs/workflow-diagrams.md`，用 Mermaid 畫 4 張圖整理系統思緒：
