@@ -17,6 +17,16 @@
 
 ### 新增
 
+- **工作流視覺化文件**——新增 `docs/workflow-diagrams.md`，用 Mermaid 畫 4 張圖整理系統思緒：
+  ① 高層全景（研究/實盤/驗證三軌 + 共用底座）、② 即時/自動交易決策流水線（照
+  `bot_manager.run_bot_once` 實際順序，含 Phase 6/7 各閘與 SKIP 出口；標明 Kelly/事件閘僅
+  `automation` 自動部署流）、③ 回測/EV 流水線（OOS EV 排名）、④ Phase 7 層驗證流（各層
+  worth 判決）。純文件，不動程式碼。
+- **文件同步至最新狀態**——`README.md` 進度表補 Phase 7（✅）+ Phase 8/9（藍圖）、策略數 8→9（補 ADX 趨勢）、
+  新增 Phase 7 落地說明 + 工作流圖連結；`CLAUDE.md` 專案結構補 Phase 7 services
+  （regime_features/regime/strategy_selector/sizing/meta_label/event_risk/validation/layer_validation）、
+  `scripts/validate_layers.py`、`docs/workflow-diagrams.md`。
+
 - **Phase 7 收尾：層驗證 harness（用 step-07 實測 step-03~06 各層有沒有加分）**——把 step-07 的
   `walk_forward` / `is_layer_worth_it` 真的接到後面幾層，做誠實的 baseline-vs-candidate 樣本外比較。
   - 新增 `backend/services/layer_validation.py`：用「包裝策略」(`MetaFilteredStrategy` /

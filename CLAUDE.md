@@ -50,7 +50,11 @@ Albee_Stock/
 │   ├── env.py             # 接專案 config 的 DATABASE_URL + model metadata
 │   └── versions/          # 每次 schema 變更一個遷移檔
 ├── docs/
-│   └── skill-guidelines.md    # 撰寫 Skill 的守則
+│   ├── skill-guidelines.md    # 撰寫 Skill 的守則
+│   ├── workflow-diagrams.md   # 系統工作流圖（Mermaid：全景/決策流水線/回測EV/層驗證）
+│   └── how-to-add-strategy.md # 新增策略 runbook
+├── scripts/
+│   └── validate_layers.py     # 層驗證 CLI（Phase 7：跑 watchlist 印各層 verdict 表）
 ├── backend/
 │   ├── main.py            # FastAPI 入口（建 app + CORS + 掛 router；基本端點 / 與 /account）
 │   ├── config.py          # 設定管理（讀 .env）
@@ -77,7 +81,15 @@ Albee_Stock/
 │   │   ├── capital.py         # 組合層資金/購買力守門（Phase 6 step-05，純函式 plan_capital）
 │   │   ├── circuit_breaker.py # 組合回撤熔斷（Phase 6 step-09，只擋進不擋出）
 │   │   ├── notifier.py        # 通知服務（LINE 等）
-│   │   └── explorations.py    # 探討/檢討檔案記憶（INDEX 路標 + 內容檔，防路徑穿越）
+│   │   ├── explorations.py    # 探討/檢討檔案記憶（INDEX 路標 + 內容檔，防路徑穿越）
+│   │   ├── regime_features.py # 市場狀態特徵（Phase 7 step-01）
+│   │   ├── regime.py          # 狀態分類（Phase 7 step-02）
+│   │   ├── strategy_selector.py # 狀態→策略對照表 + 選策略（Phase 7 step-03，含 build_map_from_df）
+│   │   ├── sizing.py          # 分數凱利部位（Phase 7 step-04）
+│   │   ├── meta_label.py      # meta-labeling 二級過濾（Phase 7 step-05）
+│   │   ├── event_risk.py      # 事件風險閘（Phase 7 step-06，只煞車不猜方向）
+│   │   ├── validation.py      # 防過擬合框架（Phase 7 step-07：walk-forward/purged k-fold/層閘）
+│   │   └── layer_validation.py # 層驗證 harness（baseline-vs-candidate 樣本外比較各層加分）
 │   ├── strategies/        # 交易策略模組（每個策略一個檔案）
 │   │   ├── base.py        # 策略基底類別
 │   │   ├── ma_crossover.py    # 均線交叉

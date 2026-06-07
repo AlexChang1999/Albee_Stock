@@ -26,8 +26,11 @@
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成 |
 | Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地） |
 | Phase 6 | 可信度地基（回測 EV ≈ 實盤 EV：成本/隔日/OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10） |
+| Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07） |
+| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | 📋 構想藍圖 |
+| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | 📋 構想藍圖 |
 
-**已完成**：專案骨架、**8 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標）、
+**已完成**：專案骨架、**9 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標／ADX 趨勢）、
 Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）、walk-forward 回測引擎、
 **風控出場**（止盈/止損/追蹤止損，最高價持久化）、**開市判斷**、**實盤雙閘安全閥**、
 **監聽狀態可視化**（最後檢查時間/持倉峰值）、Alembic 遷移、分頁式 React 前端（模組化）、
@@ -50,7 +53,21 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **決策審計軌跡**：`DecisionLog` 留下每個時點「為何買/賣/不動」（含沒成交的觀望/跳過）
 - **排程每輪重查 Bot**：改風控/參數對執行中的 Bot 立即生效，不必重啟
 
-**規劃中**：見 roadmap 後段（自動套用最優參數、批次掃描、更多策略）。
+**Phase 7 已落地**（自適應市場狀態，藍圖：[`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)）——
+讓系統先認市場「現在是什麼狀態」再決定怎麼打，並用防過擬合框架誠實檢查每層加分值不值得留：
+- **狀態辨識 → 選策略**（step-01~03）：`regime_features` 算特徵 → `regime.classify_regime` 分類 →
+  `strategy_selector` 依「狀態→策略對照表」選當下最適策略
+- **分數凱利部位**（step-04，`sizing`）：用 OOS 勝率/賠率算凱利分數，控制部位大小（僅自動部署流）
+- **meta-labeling 二級過濾**（step-05，`meta_label`）：BUY 訊號再過一層信心閘，不足則降為 HOLD
+- **事件風險閘**（step-06，`event_risk`）：事件期只當風險煞車（不猜方向）
+- **防過擬合驗證框架**（step-07 + 收尾 harness）：`validation` 的 walk-forward / purged k-fold +
+  `layer_validation` 對每層做 baseline-vs-candidate 樣本外比較，`is_layer_worth_it` 誠實判決去留
+  （實測：meta ✅ 過、adaptive ❌、kelly ❌、event ⚪ 不可驗證——機制就位，加分待續調）
+
+> 系統工作流全貌見 [`docs/workflow-diagrams.md`](docs/workflow-diagrams.md)（Mermaid 畫的 4 張圖：
+> 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
+
+**規劃中**：見各 phase 藍圖（Phase 8 策略知識庫 + 組合進化、Phase 9 專業前端工作站）。
 
 ## 安裝與設定
 
@@ -159,7 +176,9 @@ Albee_Stock/
 │   ├── routers/             # API 路由（bots / backtest / orders / presets / chat / automation / strategies …）
 │   ├── models/              # 資料模型（Bot、TradeLog、StrategyPreset、BacktestRun、DecisionLog、PortfolioState）
 │   ├── services/            # Alpaca 封裝、回測引擎、optimizer、screener、自動部署、資金守門 capital、
-│   │                        #   回撤熔斷 circuit_breaker、績效、風控、通知、LLM、探討檔案記憶
+│   │                        #   回撤熔斷 circuit_breaker、績效、風控、通知、LLM、探討檔案記憶；
+│   │                        #   Phase 7：regime_features/regime/strategy_selector/meta_label/
+│   │                        #   sizing(凱利)/event_risk/validation/layer_validation
 │   ├── strategies/          # 9 種交易策略 + 註冊表 + 顯示名（list_strategies 單一來源）
 │   └── bots/                # Bot 管理器（執行 + 排程；每輪用 bot_id 重查最新設定）
 ├── frontend/                # React 前端（Vite，模組化）
@@ -172,7 +191,8 @@ Albee_Stock/
 ├── explorations/            # 思考助手的「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔）
 ├── alembic/                 # 資料庫遷移
 ├── tests/                   # 後端單元測試（pytest）
-├── docs/                    # 專案文件（skill 守則、roadmap、驗收清單…）
+├── docs/                    # 專案文件（skill 守則、roadmap、phase 藍圖、workflow-diagrams 工作流圖…）
+├── scripts/                 # 輔助腳本（validate_layers.py 層驗證 CLI…）
 ├── .github/workflows/       # GitHub Actions CI
 ├── setup.bat / start_*.bat  # 一鍵安裝/啟動
 ├── requirements.txt
