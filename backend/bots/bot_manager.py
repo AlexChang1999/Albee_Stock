@@ -281,6 +281,7 @@ def _run_adaptive_strategy(bot: Bot):
     # 延遲 import 避免載入順序問題（selector 會用到 backtest_engine 等較重的相依）
     from backend.services.regime_features import compute_features
     from backend.services.strategy_selector import get_regime_strategy_map, select_strategy
+    from backend.services.meta_label import should_take
 
     days = settings.REGIME_MAP_DAYS
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
@@ -299,6 +300,18 @@ def _run_adaptive_strategy(bot: Bot):
 
     strategy = get_strategy(pick["strategy"], pick["params"])
     signal, reason = strategy.generate_signal(df)
+
+    # Phase 7 step-05：二級過濾（meta-labeling）只把關「進場」。一級給了 BUY，再問二級
+    # 「這次該不該下注、信心多高」；信心不足 → 縮回觀望（出場 SELL 不受此門檻影響）。
+    if signal == Signal.BUY:
+        take, conf = should_take(signal, features, pick["regime"])
+        if not take:
+            return Signal.HOLD, (
+                f"[自適應 {pick['regime']}→{pick['strategy']}] 二級過濾否決進場"
+                f"（信心 {conf:.2f} < 門檻），保守觀望"
+            )
+        reason = f"二級信心 {conf:.2f}｜{reason}"
+
     # 把「這輪是哪個狀態挑了哪個策略」帶進原因，方便決策審計事後查驗
     return signal, f"[自適應 {pick['regime']}→{pick['strategy']}] {reason}"
 

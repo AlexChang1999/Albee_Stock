@@ -17,6 +17,28 @@
 
 ### 新增
 
+- **Phase 7 step-04~06：分數凱利部位 + meta-labeling 二級過濾 + 事件驅動風險閘**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
+  - **step-04 分數凱利部位（區塊 3：可投多少量）**：新增純函式 `backend/services/sizing.py`：
+    - `kelly_fraction(win_rate, avg_win, avg_loss)`：算 `f* = W − (1−W)/R`，乘分數凱利係數、再用硬上限夾住；
+      負期望（f*≤0）或缺賠率原料 → 回 0（不下注）。三重保守：用 OOS 的 W/R + 分數凱利 + 上限。
+    - `kelly_trade_amount(...)`：把回測 OOS metrics 換成「該配多少現金」；**OOS 回合數不足 → 回 0**（W/R 不可信）。
+    - `optimizer` 補上 `oos_avg_win` / `oos_avg_loss`（凱利的賠率原料，一律用樣本外、含成本的誠實值）。
+    - 接線：`automation` 自動部署改用凱利算每檔 `trade_amount`（仍受 Phase 6 step-05 每檔配資上限約束；只會縮不會超）。
+    - `config.py` 新增 `KELLY_FRACTION`(0.25)/`KELLY_MAX_FRACTION`(0.2)/`KELLY_MIN_ROUND_TRIPS`(10)。
+  - **step-05 meta-labeling 二級過濾（規則式起步，零過擬合）**：新增純函式 `backend/services/meta_label.py`：
+    - `should_take(signal, features, regime)`：一級給方向、二級決定「該不該下注 + 信心」。只過濾**進場（BUY）**；
+      高波動/爆量滯漲/未知狀態的 BUY 否決，趨勢盤放行；`meta_confidence` 用 step-01 特徵微調（趨勢加分、過熱扣分）。
+    - 接線：`bot_manager` 自適應路徑在一級 BUY 後跑二級，信心不足 → 縮回觀望（信心寫進原因供決策審計）。
+    - `config.py` 新增 `META_LABEL_ENABLED`(true)/`META_MIN_CONFIDENCE`(0.5)。學習式 meta 列為進階，**必經 step-07 purged CV** 才上。
+  - **step-06 事件驅動風險閘（情緒當煞車、不當油門）**：新增純函式 `backend/services/event_risk.py`：
+    - `assess_event_risk(sentiment)`：重大負面 → 不開新倉（`size_factor=0`）；偏弱未達否決 → 縮部位；中性/正向 → 照常。
+      **明確不猜方向**（bullish 高分不放大部位，factor 上限 1.0）；best-effort（無情緒/連不上不阻斷）。重用既有情緒管線。
+    - 接線：`automation` 部署時用 `size_factor` 縮放凱利部位（與既有 `apply_sentiment` 否決閘分工，不重造）。
+    - `config.py` 新增 `EVENT_RISK_ENABLED`(true)/`EVENT_RISK_CAUTION_SCORE`(0)/`EVENT_RISK_SIZE_FACTOR`(0.5)。
+  - 誠實聲明：這三層都只是「機制就位」；是否真的在 OOS 加分，須用 step-07 `is_layer_worth_it` 驗證，加不了分就砍。
+  - 測試：新增 `tests/test_sizing.py`(6) / `tests/test_meta_label.py`(5) / `tests/test_event_risk.py`(6)。
+    `pytest tests/ -q` → **218 passed**（乾淨 DB）。
+
 - **Phase 7 step-07：★防過擬合驗證框架（橫跨全部的鐵律）**——藍圖 [`docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md`](docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md)。
   - 新增純函式 `backend/services/validation.py`：
     - `walk_forward_splits` / `walk_forward`：滾動前進驗證。每個 fold 只在「測試段」子 df 上跑含成本

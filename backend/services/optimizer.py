@@ -168,6 +168,9 @@ def run_auto_backtest(
             metrics["oos_win_rate_pct"] = oos_m["win_rate_pct"]
             metrics["oos_total_return_pct"] = oos_m["total_return_pct"]
             metrics["oos_num_round_trips"] = oos_m["num_round_trips"]
+            # OOS 平均賺 / 賠（Phase 7 step-04 分數凱利的賠率原料；一律用樣本外、含成本的誠實值）
+            metrics["oos_avg_win"] = oos_m["avg_win"]
+            metrics["oos_avg_loss"] = oos_m["avg_loss"]
             results.append({"strategy_key": strategy_key, "params": params, "metrics": metrics})
 
     # 3) ★依「樣本外 EV」由高到低排名（防過擬合的硬約束：不在整段歷史上挑最佳）；

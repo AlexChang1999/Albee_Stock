@@ -204,6 +204,41 @@ class Settings:
     VALIDATION_MIN_FOLDS: int = int(os.getenv("VALIDATION_MIN_FOLDS", "3"))
 
     # ========================================================
+    # 分數凱利部位（Phase 7 step-04）
+    # ========================================================
+    # 用「OOS 勝率 + OOS 賠率」算該下注本金的多少 %，取代寫死的固定 trade_amount。
+    # 凱利對輸入估計極敏感，所以三重保守：用 OOS 數字、只取分數凱利、再用硬上限夾住。
+    #   - KELLY_FRACTION：分數凱利係數（只取 f* 的這個比例；0.25 = ¼ 凱利，實務常用）。
+    #   - KELLY_MAX_FRACTION：單檔部位硬上限（占可用資金比例），防估計偏高導致暴衝。
+    #   - KELLY_MIN_ROUND_TRIPS：OOS 完整買賣回合數低於此值 → W/R 不可信，回 0（不下注）。
+    KELLY_FRACTION: float = float(os.getenv("KELLY_FRACTION", "0.25"))
+    KELLY_MAX_FRACTION: float = float(os.getenv("KELLY_MAX_FRACTION", "0.2"))
+    KELLY_MIN_ROUND_TRIPS: int = int(os.getenv("KELLY_MIN_ROUND_TRIPS", "10"))
+
+    # ========================================================
+    # meta-labeling 二級過濾（Phase 7 step-05）
+    # ========================================================
+    # 一級模型（策略 + step-03 選擇器）決定「方向」；二級（這層）只決定「這次該不該下注」。
+    # 起步用規則式（零過擬合、可解釋）：用 step-02 狀態 + step-01 特徵過濾低品質進場訊號。
+    #   - META_LABEL_ENABLED：總開關（預設開）。關掉 = 完全退回純一級訊號（向後相容）。
+    #   - META_MIN_CONFIDENCE：二級信心低於此值 → 否決該進場訊號（不下注）。
+    META_LABEL_ENABLED: bool = os.getenv("META_LABEL_ENABLED", "true").lower() in ("1", "true", "yes")
+    META_MIN_CONFIDENCE: float = float(os.getenv("META_MIN_CONFIDENCE", "0.5"))
+
+    # ========================================================
+    # 事件驅動風險閘（Phase 7 step-06，情緒當煞車、不當油門）
+    # ========================================================
+    # 重大負面情緒/事件 → 降風險（不開新倉 / 縮部位），**不據此猜方向重壓**。
+    # bearish / 分數低於 SENTIMENT_MIN_SCORE 仍由情緒閘（step-07/Phase6 step-07）直接否決；
+    # 這裡補「不到否決、但偏謹慎」的中間帶：縮小部位而非全砍。best-effort，連不上不阻斷。
+    #   - EVENT_RISK_ENABLED：總開關（預設開）。關掉 = 不縮部位（向後相容）。
+    #   - EVENT_RISK_CAUTION_SCORE：情緒分數低於此值（但未達否決）→ 進謹慎帶、縮部位。
+    #   - EVENT_RISK_SIZE_FACTOR：謹慎帶的部位縮放係數（0.5 = 砍半）。
+    EVENT_RISK_ENABLED: bool = os.getenv("EVENT_RISK_ENABLED", "true").lower() in ("1", "true", "yes")
+    EVENT_RISK_CAUTION_SCORE: float = float(os.getenv("EVENT_RISK_CAUTION_SCORE", "0"))
+    EVENT_RISK_SIZE_FACTOR: float = float(os.getenv("EVENT_RISK_SIZE_FACTOR", "0.5"))
+
+    # ========================================================
     # 即時報價推送（改版子軌：AI 終端機改版，非主線 Phase 6）
     # ========================================================
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。

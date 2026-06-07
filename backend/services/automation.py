@@ -22,7 +22,9 @@ from backend.models import Bot
 from backend.services import screener
 from backend.services.capital import plan_capital
 from backend.services.circuit_breaker import check_breaker
+from backend.services.event_risk import assess_event_risk
 from backend.services.notifier import notify
+from backend.services.sizing import kelly_trade_amount
 from backend.bots.bot_manager import bot_manager
 
 
@@ -193,12 +195,34 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
         # 5) 實際建 Bot + 掛排程（全程 Paper；下單仍受實盤雙閘把關）
         deployed = []
         for rec in approved:
+            m = rec.get("metrics") or {}
+            # Phase 7 step-04：分數凱利依「OOS 勝率 + OOS 賠率」算部位（樣本不足/負期望 → 0）。
+            #   查不到帳戶現金（離線）→ 退回固定配資當基數，行為仍保守。
+            base_cash = available_cash if available_cash is not None else settings.AUTO_DEPLOY_CASH_PER_BOT
+            amount = kelly_trade_amount(
+                base_cash,
+                m.get("oos_win_rate_pct") or 0.0,
+                m.get("oos_avg_win") or 0.0,
+                m.get("oos_avg_loss") or 0.0,
+                m.get("oos_num_round_trips") or 0,
+            )
+            # Phase 7 step-06：事件/情緒風險閘——重大負面不開新倉、偏弱縮部位（不猜方向）。
+            risk = assess_event_risk(rec.get("sentiment"))
+            amount *= risk["size_factor"]
+            # 仍受 Phase 6 step-05 既有「每檔配資上限」約束：凱利只會縮、不會超過固定天花板。
+            amount = min(amount, settings.AUTO_DEPLOY_CASH_PER_BOT)
+            if amount <= 0:
+                rejected.append({
+                    "symbol": rec["symbol"], "strategy_key": rec["strategy_key"],
+                    "reason": f"凱利/風險閘判定不下注（{risk['reason']}）",
+                })
+                continue
             bot = Bot(
                 name=f"AUTO-{rec['symbol']}-{rec['strategy_key']}",
                 strategy=rec["strategy_key"],
                 symbol=rec["symbol"],
                 params=rec.get("params") or {},
-                trade_amount=settings.AUTO_DEPLOY_CASH_PER_BOT,
+                trade_amount=round(amount, 2),
                 is_active=True,
             )
             db.add(bot)
