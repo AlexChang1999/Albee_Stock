@@ -103,9 +103,6 @@ def build_regime_strategy_map(
     """
     symbol = symbol.upper()
     src = source or settings.DATA_SOURCE
-    commission_bps = settings.BACKTEST_COMMISSION_BPS
-    slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
-    min_sample = settings.REGIME_MIN_SAMPLE
 
     df = market_data.get_bars(symbol, days=days, source=src)
     if df.empty:
@@ -115,14 +112,35 @@ def build_regime_strategy_map(
     _, test_df = split_train_test(df, settings.OOS_TEST_RATIO)
     test_df = test_df.reset_index(drop=True)
 
-    regimes = _label_regimes(test_df)
-    resolve = _bar_index_resolver(test_df)
+    result = build_map_from_df(test_df, initial_cash=initial_cash)
+    result["symbol"] = symbol
+    return result
+
+
+def build_map_from_df(df, initial_cash: float = 10000.0) -> dict:
+    """
+    在「一段已備好的 K 線」上建狀態→最佳策略對照表（純計算，不抓資料、不再切分）。
+
+    從 build_regime_strategy_map 抽出的核心：呼叫端負責決定要在哪一段建（如整段的 OOS 測試段、
+    或 walk-forward 每個 fold 的訓練段），本函式只做「貼狀態 + 跑各策略 + 歸因 + 挑冠軍」。
+    含成本回測（手續費/滑價/隔日成交），EV 才誠實。
+
+    :param df: 要建表的 K 線段（呼叫端應已 reset_index）。
+    :return: {"oos_bars", "min_sample", "regimes": {狀態: 冠軍 dict 或 None}, "stats": 完整明細}
+             （不含 symbol；build_regime_strategy_map 會補上）。
+    """
+    commission_bps = settings.BACKTEST_COMMISSION_BPS
+    slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
+    min_sample = settings.REGIME_MIN_SAMPLE
+
+    regimes = _label_regimes(df)
+    resolve = _bar_index_resolver(df)
 
     # stats[regime][strategy] = {ev, win_rate_pct, n}
     stats: dict[str, dict[str, dict]] = {}
     for strategy_key in STRATEGY_REGISTRY:
         result = _run_on_df(
-            get_strategy(strategy_key, {}), test_df, initial_cash,
+            get_strategy(strategy_key, {}), df, initial_cash,
             commission_bps=commission_bps, slippage_bps=slippage_bps,
         )
         by_regime = _profits_by_regime(result["trades"], regimes, resolve)
@@ -158,8 +176,7 @@ def build_regime_strategy_map(
         }
 
     return {
-        "symbol": symbol,
-        "oos_bars": len(test_df),
+        "oos_bars": len(df),
         "min_sample": min_sample,
         "regimes": regime_map,
         "stats": stats,

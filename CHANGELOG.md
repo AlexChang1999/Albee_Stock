@@ -17,6 +17,26 @@
 
 ### 新增
 
+- **Phase 7 收尾：層驗證 harness（用 step-07 實測 step-03~06 各層有沒有加分）**——把 step-07 的
+  `walk_forward` / `is_layer_worth_it` 真的接到後面幾層，做誠實的 baseline-vs-candidate 樣本外比較。
+  - 新增 `backend/services/layer_validation.py`：用「包裝策略」(`MetaFilteredStrategy` /
+    `AdaptiveMappedStrategy`) 把層塞進既有含成本回測路徑（`_run_on_df`，不動 sim）；
+    `validate_meta_layer` / `validate_adaptive_layer` / `validate_kelly_layer` / `validate_layers`
+    （跨檔池化）。step-04 凱利比「終值報酬」（凱利是部位大小、不改單筆 EV）；
+    step-06 誠實標記「無 point-in-time 情緒→不可 OOS 驗證，僅當風險煞車」（不產生假數字）。
+  - 新增 `scripts/validate_layers.py`：一鍵跑 watchlist（預設 yfinance）印各層 verdict 表。
+  - 小重構 `strategy_selector.py`：抽出 `build_map_from_df`（讓 walk-forward 每個 fold 用訓練段建對照表，
+    對外行為不變、既有測試全綠）。
+  - 新增 `tests/test_layer_validation.py`（9 測；合成資料 + monkeypatch，不連網）。`pytest tests/ -q` → **227 passed**。
+  - **★實測結論（AAPL/MSFT/NVDA/SPY/QQQ, yfinance）**：
+    - **step-05 meta-labeling：worth=True（OOS EV +33, 219 folds）→ 有加分，留。**
+    - **step-03 adaptive-selection：worth=False（OOS EV −151, 45 folds）→ 自適應輸給「訓練段最佳固定策略」，該降級/砍。**
+      （呼應 step-03 文件警告：選策略層是過擬合重災區；預設本就關 `bot.adaptive=False`。）
+    - step-04 kelly-sizing：fold 不足（60 根測試窗湊不到 ≥10 回合）→ 此窗格下無法判定，需更長測試窗再驗。
+    - step-06 event-risk：不可 OOS 驗證（無 PIT 資料）→ 維持風險煞車定位。
+    - 註：本次只產生證據與結論，**未自動刪任何層**；adaptive 的降級/移除另開獨立提案。
+  - 新增操作指南 `docs/how-to-add-strategy.md`（新增策略的 6 個落地點 + 怎麼用 + 怎麼驗 OOS）。
+
 - **Phase 7 step-04~06：分數凱利部位 + meta-labeling 二級過濾 + 事件驅動風險閘**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
   - **step-04 分數凱利部位（區塊 3：可投多少量）**：新增純函式 `backend/services/sizing.py`：
     - `kelly_fraction(win_rate, avg_win, avg_loss)`：算 `f* = W − (1−W)/R`，乘分數凱利係數、再用硬上限夾住；
