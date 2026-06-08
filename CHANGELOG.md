@@ -17,6 +17,14 @@
 
 ### 變更
 
+- **依層驗證結論接線：meta-labeling 收回固定策略線上路徑（其餘層不動）**——跑 `scripts/validate_layers.py`
+  （10 檔 watchlist、walk-forward）後依「沒加分就砍」鐵律調整：
+  - **唯一在 OOS 加分的是 meta-labeling**（folds=444、Δ=+27.8），但原本只接在 `adaptive` 路徑內，
+    而 adaptive 證明有害（folds=90、Δ=−115）且預設關 → meta 在普通 Bot 線上等於死碼。
+    把 `should_take` 二級過濾接進 `bot_manager._run_strategy` 的 BUY 路徑（閘 `META_LABEL_ENABLED`），
+    流程與 `layer_validation.MetaFilteredStrategy` 一致，線上行為＝樣本外驗證量到的那條。
+  - **adaptive 維持關**（`bot.adaptive` 預設 False，無 bot 開啟）；kelly folds 不足（2<3）不認證、擱置；
+    event-risk 為風險煞車、不可 OOS 驗證，照舊。
 - **層驗證誠實修法：adaptive / kelly 給「公平的樣本外測試」（非調參騙綠）**——遵守 step-07 鐵律
   「框架是用來砍沒用的層、不是美化績效」，只修方法論瑕疵、不為了過而調門檻。
   - **kelly 測試原本根本沒跑到（`folds=0`）**：舊版在同一段 60 根測試窗上「同時估 W/R 又複利」，

@@ -258,6 +258,11 @@ def _run_strategy(bot: Bot):
 
     Phase 7 step-03：bot.adaptive 開啟時走「自適應選策略」——
     先算當下市場狀態，查「狀態→最佳策略對照表」挑策略；無可信策略時保守觀望。
+
+    Phase 7 step-05（層驗證收尾）：固定策略路徑的 BUY 也過 meta 二級過濾。
+    層驗證證明只有 meta-labeling 在樣本外加分（adaptive 反而 −115、已維持關），
+    且驗證的 baseline 正是「固定策略訊號 + should_take」這條路徑，故把它收回線上。
+    閘由 `settings.META_LABEL_ENABLED` 控（關掉 = 純一級訊號，向後相容）。
     """
     if getattr(bot, "adaptive", False):
         return _run_adaptive_strategy(bot)
@@ -267,7 +272,23 @@ def _run_strategy(bot: Bot):
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
     strategy = get_strategy(bot.strategy, bot.params or {})
-    return strategy.generate_signal(df)
+    signal, reason = strategy.generate_signal(df)
+
+    # meta 二級過濾：只把關進場（BUY）。流程與 layer_validation.MetaFilteredStrategy
+    # 一致，線上行為才等於樣本外驗證量到的那條（+27.8 OOS EV）。SELL/HOLD 不受影響。
+    if signal == Signal.BUY:
+        from backend.services.regime_features import compute_features
+        from backend.services.regime import classify_regime
+        from backend.services.meta_label import should_take
+
+        features = compute_features(df)
+        regime = classify_regime(features)
+        take, conf = should_take(signal, features, regime)
+        if not take:
+            return Signal.HOLD, f"[meta {regime}] 二級過濾否決進場（信心 {conf:.2f} < 門檻）"
+        reason = f"二級信心 {conf:.2f}｜{reason}"
+
+    return signal, reason
 
 
 def _run_adaptive_strategy(bot: Bot):
