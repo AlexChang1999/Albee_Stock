@@ -123,6 +123,9 @@ class Settings:
     AUTO_DEPLOY_CASH_PER_BOT: float = float(os.getenv("AUTO_DEPLOY_CASH_PER_BOT", "1000"))
     # 盤前掃描的本機時刻（24 小時制的「時」）。美股盤前、開盤前跑一次。
     AUTO_DEPLOY_HOUR: int = int(os.getenv("AUTO_DEPLOY_HOUR", "8"))
+    # 常駐機會探勘間隔（分鐘）：盤中每隔幾分鐘跑一次海選、更新機會清單（Phase 10 step-02）。
+    # 0 = 關掉常駐掃描。只當「首次建規則列」的種子預設，之後以 DB 的 scan_interval_min 為準。
+    SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
 
     # ========================================================
     # 回測成本模型（Phase 6 step-02）

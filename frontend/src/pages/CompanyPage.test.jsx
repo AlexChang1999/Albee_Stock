@@ -33,6 +33,9 @@ const OVERVIEW = {
   decisions: [
     { id: 1, bot_id: 1, symbol: "AAPL", signal: "buy", reason: "黃金交叉", price: 190, action: "bought" },
   ],
+  opportunities: [
+    { id: 1, symbol: "NVDA", strategy_key: "macd", oos_expected_value: 320, oos_win_rate_pct: 62, status: "new" },
+  ],
 };
 
 function renderPage() {
@@ -57,6 +60,8 @@ describe("CompanyPage", () => {
     expect(screen.getByText("策略主管")).toBeInTheDocument();
     expect(screen.getByText("回測主管")).toBeInTheDocument();
     expect(screen.getByText("決策審計")).toBeInTheDocument();
+    expect(screen.getByText("常駐探勘")).toBeInTheDocument();
+    expect(screen.getByText(/NVDA · macd/)).toBeInTheDocument(); // 機會清單候選
   });
 
   it("離線時顯示帳戶不可得提示、自動化顯示開啟", async () => {

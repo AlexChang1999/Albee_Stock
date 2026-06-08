@@ -37,6 +37,27 @@
 
 ### 新增
 
+- **Phase 10 step-02：常駐探勘 + 機會清單持久化（好策略不漏掉）**——把海選從「手動觸發」
+  補成**盤中週期自動跑 + 排名候選存 DB**，名額滿時不再把第 6~N 名直接丟掉、關掉 app 也留著。
+  - 新增 `opportunities` 表（`backend/models/opportunity.py`：symbol/strategy_key/params/
+    `oos_expected_value`/`oos_win_rate_pct`/sentiment/scanned_at/status）；`automation_config`
+    加 `scan_interval_min` 欄位（盤中探勘間隔，分；0=關），走 **Alembic 遷移**
+    `b8c9d0e1f2a3`（建表 + `batch_alter_table` 加欄、既有規則列 server_default 回填 30）。
+  - 新增 `services/opportunity_scan.py`：純函式 `screener_results_to_rows`（映射 + 依 OOS EV 排序）
+    與 `upsert_opportunities`（同 symbol+strategy 更新不重複、保留既有 status），及排程入口
+    `run_opportunity_scan`——**先過盤中閘**（重用 `alpaca_client.is_market_open()`，收盤跳過不空轉
+    回測；查不到開市狀態時 best-effort 照跑），**重用既有 `screener.screen_watchlist`**，把候選
+    upsert 進表，對「新發現且超過提醒門檻（OOS EV ≥ `ev_threshold`）」者 `notify` 一次後翻 `seen`
+    去抖。`bot_manager` 加 `schedule_opportunity_scan(interval)` 週期 job（0=移除），`main.py`
+    啟動時依規則掛上。
+  - 新增唯讀 `GET /opportunities`（依 OOS EV 排序，可選 limit/status）；戰情頁聚合加「機會清單」
+    部門卡；`PUT /automation` 開放編輯 `scan_interval_min`（改值即時重掛週期 job，不必重啟）、
+    前端 `AutomationPanel` 加「探勘間隔」欄位。
+  - 紀律：候選 EV/勝率**一律存樣本外（OOS）**、提醒門檻比對 OOS（Phase 6 step-04）；週期 job
+    **只收集 + 排名 + 持久化**，不自動建 Bot、不上真錢（部署是 step-06 人工核准）。測試：
+    `tests/test_opportunity.py`（純函式/upsert 冪等與 status 流轉/盤中閘與去抖提醒/端點往返）、
+    前端 `CompanyPage.test.jsx`+`AutomationPanel.test.jsx` 補對應斷言。
+
 - **Phase 10 step-01：戰情室聚合 + 公司戰情頁（看得到的 AI 公司）**——新增唯讀聚合端點
   `GET /company/overview`（`backend/routers/company.py`），把既有讀取點（帳戶 best-effort /
   Bot 艦隊啟用數 / 自動化規則與名額 / 風控熔斷 / 最近決策審計）組成一包，**純呈現、不自算 EV、

@@ -89,7 +89,14 @@ export default function CompanyPage() {
     return <Typography color="text.secondary">載入中…</Typography>;
   }
 
-  const { account, bots, automation, circuit_breaker: breaker, decisions } = data;
+  const {
+    account,
+    bots,
+    automation,
+    circuit_breaker: breaker,
+    decisions,
+    opportunities = [],
+  } = data;
 
   return (
     <Box>
@@ -219,6 +226,35 @@ export default function CompanyPage() {
                 {decisions.slice(0, 3).map((d) => (
                   <Typography key={d.id} variant="caption" color="text.secondary">
                     {d.symbol}：{d.action}（{d.reason}）
+                  </Typography>
+                ))}
+              </Stack>
+            )}
+          </DeptCard>
+        </Grid>
+
+        {/* 常駐探勘：機會清單（依 OOS EV 排名的候選，好策略不漏掉） */}
+        <Grid item xs={12} sm={6} md={4}>
+          <DeptCard
+            title="常駐探勘"
+            role="機會清單 · 盤中持續收，好策略不漏掉"
+            chip={
+              <Chip
+                size="small"
+                label={`${opportunities.length} 個候選`}
+                color={opportunities.length > 0 ? "success" : "default"}
+              />
+            }
+          >
+            {opportunities.length === 0 ? (
+              <Typography variant="caption" color="text.secondary">
+                尚無候選（盤中掃描累積中）。
+              </Typography>
+            ) : (
+              <Stack spacing={0.5}>
+                {opportunities.slice(0, 5).map((o) => (
+                  <Typography key={o.id} variant="caption" color="text.secondary">
+                    {o.symbol} · {o.strategy_key}　OOS EV {o.oos_expected_value ?? "—"}
                   </Typography>
                 ))}
               </Stack>

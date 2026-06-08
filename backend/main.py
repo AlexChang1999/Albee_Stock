@@ -27,7 +27,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities
 
 
 def _resume_active_bots() -> None:
@@ -61,7 +61,10 @@ async def lifespan(app: FastAPI):
     _db = SessionLocal()
     try:
         from backend.services.automation_config import get_config
-        bot_manager.schedule_auto_deploy(get_config(_db).scan_hour)
+        _cfg = get_config(_db)
+        bot_manager.schedule_auto_deploy(_cfg.scan_hour)
+        # Phase 10 step-02：掛上常駐機會探勘的週期 job（盤中每 N 分鐘；0=關，內部會跳過）
+        bot_manager.schedule_opportunity_scan(_cfg.scan_interval_min)
     finally:
         _db.close()
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")
@@ -139,3 +142,4 @@ app.include_router(strategies.router)
 app.include_router(knowledge.router)
 app.include_router(explorations.router)
 app.include_router(company.router)
+app.include_router(opportunities.router)

@@ -189,4 +189,8 @@ export const api = {
 
   // ===== Phase 10：公司戰情（各部門現況聚合，唯讀）=====
   getCompanyOverview: () => request("/company/overview"),
+
+  // 機會清單：常駐探勘持久化的候選，依 OOS EV 由高到低（可選 limit / status）
+  getOpportunities: ({ limit = 50, status } = {}) =>
+    request(`/opportunities?limit=${limit}${status ? `&status=${status}` : ""}`),
 };

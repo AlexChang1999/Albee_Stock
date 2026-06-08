@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import Bot, DecisionLog
+from backend.models import Bot, DecisionLog, Opportunity
 from backend.services.alpaca_client import alpaca_client
 from backend.services.automation_config import get_config
 from backend.services.circuit_breaker import check_breaker
@@ -69,6 +69,7 @@ def company_overview(decisions_limit: int = 10, db: Session = Depends(get_db)):
         "max_bots": cfg.max_bots,
         "cash_per_bot": cfg.cash_per_bot,
         "scan_hour": cfg.scan_hour,
+        "scan_interval_min": cfg.scan_interval_min,
     }
 
     # --- 風控熔斷（best-effort，內部離線會回 None 不丟錯）---
@@ -95,10 +96,30 @@ def company_overview(decisions_limit: int = 10, db: Session = Depends(get_db)):
         for r in rows
     ]
 
+    # --- 機會清單（常駐探勘候選，依 OOS EV 取前幾名；step-02）---
+    opp_rows = (
+        db.query(Opportunity)
+        .order_by(Opportunity.oos_expected_value.desc())
+        .limit(5)
+        .all()
+    )
+    opportunities = [
+        {
+            "id": o.id,
+            "symbol": o.symbol,
+            "strategy_key": o.strategy_key,
+            "oos_expected_value": o.oos_expected_value,
+            "oos_win_rate_pct": o.oos_win_rate_pct,
+            "status": o.status,
+        }
+        for o in opp_rows
+    ]
+
     return {
         "account": _account_best_effort(),
         "bots": {"total": len(bots), "active": active_count, "list": bot_list},
         "automation": automation,
         "circuit_breaker": breaker,
         "decisions": decisions,
+        "opportunities": opportunities,
     }

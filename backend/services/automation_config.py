@@ -20,6 +20,7 @@ EDITABLE_FIELDS = (
     "max_bots",
     "cash_per_bot",
     "scan_hour",
+    "scan_interval_min",
 )
 
 
@@ -40,6 +41,7 @@ def get_config(db) -> AutomationConfig:
             max_bots=settings.AUTO_DEPLOY_MAX_BOTS,
             cash_per_bot=settings.AUTO_DEPLOY_CASH_PER_BOT,
             scan_hour=settings.AUTO_DEPLOY_HOUR,
+            scan_interval_min=settings.SCAN_INTERVAL_MIN,
         )
         db.add(cfg)
         db.commit()
@@ -60,6 +62,11 @@ def _validate(field: str, value):
         v = int(value)
         if v < 1:
             raise ValueError("max_bots 至少為 1")
+        return v
+    if field == "scan_interval_min":
+        v = int(value)
+        if v < 0:
+            raise ValueError("scan_interval_min 不能為負數（0 = 關掉常駐掃描）")
         return v
     if field == "winrate_threshold":
         v = float(value)

@@ -21,6 +21,7 @@ const RULES = {
   max_bots: 5,
   cash_per_bot: 1000,
   scan_hour: 9,
+  scan_interval_min: 30,
   active_bots: 2,
   slots_left: 3,
 };
@@ -38,6 +39,7 @@ describe("AutomationPanel", () => {
     expect(await screen.findByText("150")).toBeInTheDocument(); // EV 門檻
     expect(screen.getByText("55%")).toBeInTheDocument(); // 勝率門檻（不再 ×100）
     expect(screen.getByText("2 / 5")).toBeInTheDocument(); // 名額
+    expect(screen.getByText("30 分")).toBeInTheDocument(); // 探勘間隔
     expect(screen.getByText("已關閉")).toBeInTheDocument(); // 總開關狀態
     expect(api.getAutomation).toHaveBeenCalled();
   });
