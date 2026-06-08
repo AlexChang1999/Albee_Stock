@@ -96,6 +96,17 @@ def test_run_dry_run(monkeypatch):
     POST /automation/run?force=true&dry_run=true：
     用假海選餵兩檔，只有過雙門檻的應出現在 planned，且不寫 DB（dry_run）。
     """
+    # 規則改吃 DB 後，門檻來自 automation_config；這裡 stub 成固定預設值，
+    # 讓本測試不受 dev DB 既有規則列（可能被別的測試改過）影響，維持確定性。
+    class _Cfg:
+        enabled = True
+        ev_threshold = 150.0
+        winrate_threshold = 55.0
+        max_bots = 5
+        cash_per_bot = 1000.0
+        scan_hour = 8
+
+    monkeypatch.setattr(automation, "get_config", lambda db: _Cfg())
     monkeypatch.setattr(
         automation.screener, "screen_watchlist",
         lambda **kwargs: {"recommendations": [

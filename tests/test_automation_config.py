@@ -23,13 +23,15 @@ except Exception:
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from contextlib import contextmanager
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from fastapi.testclient import TestClient
 
-from backend.database import Base
+from backend.database import Base, get_db
 from backend.config import settings
 from backend.models import AutomationConfig
 from backend.services.automation_config import get_config, update_config
@@ -39,6 +41,37 @@ def _session(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'autocfg.db'}")
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)()
+
+
+@contextmanager
+def _isolated_client(tmp_path):
+    """
+    開一個 TestClient，但把 get_db 依賴覆寫成「臨時 SQLite」——這樣 API 測試的
+    PUT 不會寫到真正的 dev DB（albee_stock.db），避免污染其他測試（如 test_automation
+    的 dry_run 靠預設門檻）。lifespan 仍走真 DB 但只排程、無副作用。
+    """
+    from backend.main import app
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'app_autocfg.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    def _override():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = _override
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 # ---------- 1. get_config（load-or-seed） ----------
@@ -90,14 +123,13 @@ def test_update_validation_rejects_bad_values(tmp_path):
 
 
 # ---------- 3. API ----------
-def test_put_automation_roundtrip(monkeypatch):
-    """PUT /automation 改值 → GET 看到新值（同一份 app DB）。"""
+def test_put_automation_roundtrip(monkeypatch, tmp_path):
+    """PUT /automation 改值 → GET 看到新值（同一份隔離 app DB，不碰 dev DB）。"""
     import backend.bots.bot_manager as bm
     called = {"hour": None}
     monkeypatch.setattr(bm.bot_manager, "schedule_auto_deploy",
                         lambda hour: called.__setitem__("hour", hour))
-    from backend.main import app
-    with TestClient(app) as client:
+    with _isolated_client(tmp_path) as client:
         resp = client.put("/automation", json={"ev_threshold": 321.0, "scan_hour": 9})
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -109,10 +141,9 @@ def test_put_automation_roundtrip(monkeypatch):
         assert got["ev_threshold"] == 321.0 and got["scan_hour"] == 9, got
 
 
-def test_put_automation_validation_400():
+def test_put_automation_validation_400(tmp_path):
     """不合法值 → 400。"""
-    from backend.main import app
-    with TestClient(app) as client:
+    with _isolated_client(tmp_path) as client:
         resp = client.put("/automation", json={"scan_hour": 99})
         assert resp.status_code == 400, resp.text
 
