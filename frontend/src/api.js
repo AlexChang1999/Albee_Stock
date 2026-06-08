@@ -210,4 +210,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+
+  // ===== Phase 10 step-03：因子數值表（蒐集員主管報表，唯讀）=====
+  // 因子快照清單：依觀測時點由新到舊（可選 symbol / limit）
+  getFactors: ({ symbol, limit = 100 } = {}) =>
+    request(`/factors?limit=${limit}${symbol ? `&symbol=${symbol}` : ""}`),
+  // CSV 匯出「完整網址」（回 CSV 不是 JSON，給 <a href> 下載用，不走 request()）
+  factorsCsvUrl: (symbol) =>
+    `${BASE_URL}/factors/export.csv${symbol ? `?symbol=${symbol}` : ""}`,
 };

@@ -13,13 +13,25 @@
   收盤就跳過、不空轉回測；只對「新發現且超過提醒門檻」的候選 notify 一次，發完翻 seen 去抖。
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from backend.config import settings
 from backend.database import SessionLocal
-from backend.models import Opportunity
-from backend.services import screener, notifier
+from backend.models import Opportunity, FactorSnapshot
+from backend.services import screener, notifier, market_data, regime_features, regime
 from backend.services.alpaca_client import alpaca_client
 from backend.services.automation_config import get_config
+
+# 因子的 7 個鍵（與 regime_features.compute_features / FactorSnapshot 欄位同名）
+_FACTOR_KEYS = (
+    "volume_ratio",
+    "return_5d",
+    "return_20d",
+    "volatility_20d",
+    "trend_strength",
+    "atr_pct",
+    "range_position",
+)
 
 
 def screener_results_to_rows(recommendations: list[dict]) -> list[dict]:
@@ -91,6 +103,63 @@ def upsert_opportunities(db, rows: list[dict]) -> dict:
     return {"inserted": inserted, "updated": updated}
 
 
+def features_to_snapshot_row(symbol: str, features: dict, regime_label: str, as_of: datetime) -> dict:
+    """
+    把 compute_features 的結果 + regime 標籤組成 FactorSnapshot 的欄位 dict。純函式、好單測。
+
+    只挑 7 個已知因子鍵（缺值帶 None），不重算、不自創公式——因子的真實來源是
+    regime_features.compute_features。
+    """
+    row = {"symbol": symbol, "as_of": as_of, "regime": regime_label}
+    for key in _FACTOR_KEYS:
+        row[key] = features.get(key)
+    return row
+
+
+def collect_factor_snapshots(db, *, as_of: datetime | None = None) -> int:
+    """
+    對 watchlist 每檔抓 K 線、算因子、落一筆 FactorSnapshot（Phase 10 step-03）。
+
+    - 走**同一條正規資料路徑** market_data.get_bars(..., source=settings.DATA_SOURCE)，
+      無 look-ahead（compute_features 只用截至最後一根的資料）。
+    - 因子是觀測佐證、不是交易訊號——這裡只「落表」，不下單、不建 Bot。
+    - best-effort：單檔抓失敗不影響其他檔。
+    - 落表後依 settings.FACTOR_RETENTION_DAYS 修剪過舊快照（0=不修剪）。
+    :return: 這輪寫入的筆數。
+    """
+    as_of = as_of or datetime.now()
+    symbols = screener.parse_watchlist(settings.SCREENER_WATCHLIST)
+    written = 0
+    for sym in symbols:
+        try:
+            df = market_data.get_bars(sym, days=60, source=settings.DATA_SOURCE)
+        except Exception:
+            continue  # 單檔抓失敗略過
+        features = regime_features.compute_features(df)
+        regime_label = regime.classify_regime(features)
+        row = features_to_snapshot_row(sym, features, regime_label, as_of)
+        db.add(FactorSnapshot(**row))
+        written += 1
+    db.commit()
+    _prune_factor_snapshots(db, as_of=as_of)
+    return written
+
+
+def _prune_factor_snapshots(db, *, as_of: datetime) -> int:
+    """修剪超過保留天數的舊因子快照，避免 DB 無上限膨脹（0=不修剪）。回傳刪除筆數。"""
+    days = settings.FACTOR_RETENTION_DAYS
+    if not days or days <= 0:
+        return 0
+    cutoff = as_of - timedelta(days=days)
+    deleted = (
+        db.query(FactorSnapshot)
+        .filter(FactorSnapshot.as_of < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted
+
+
 def _market_open_best_effort() -> bool:
     """
     是否盤中？查不到開市狀態（離線 / 無金鑰）時 best-effort 回 True——
@@ -118,6 +187,13 @@ def run_opportunity_scan() -> None:
         result = screener.screen_watchlist()
         rows = screener_results_to_rows(result.get("recommendations", []))
         upsert_opportunities(db, rows)
+
+        # 順手把 watchlist 各檔的市場狀態因子落表（蒐集員主管的報表，step-03）。
+        # best-effort：因子落表失敗不影響機會清單收集與提醒。
+        try:
+            collect_factor_snapshots(db)
+        except Exception:
+            pass
 
         # 新發現且超過提醒門檻（OOS EV）的候選 → 提醒一次後翻 seen（去抖，不重複洗頻）
         threshold = get_config(db).ev_threshold

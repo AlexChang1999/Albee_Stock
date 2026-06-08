@@ -134,6 +134,16 @@ def _patch_scan(monkeypatch, tmp_path, *, market_open, recs):
 
     monkeypatch.setattr(opportunity_scan.screener, "screen_watchlist", _fake_screen)
 
+    # step-03：run_opportunity_scan 會順手對 watchlist 各檔抓 K 線落因子表。
+    # 這裡把 watchlist 縮成兩檔 + 餵假 K 線，讓掃描測試完全離線（不真的連網）。
+    import pandas as pd
+    monkeypatch.setattr(opportunity_scan.settings, "SCREENER_WATCHLIST", "AAPL,TSLA")
+    _df = pd.DataFrame({
+        "open": [100.0] * 30, "high": [101.0] * 30, "low": [99.0] * 30,
+        "close": [100.0 + i for i in range(30)], "volume": [1000 + i for i in range(30)],
+    })
+    monkeypatch.setattr(opportunity_scan.market_data, "get_bars", lambda sym, days=60, source="alpaca": _df)
+
     notes = []
     monkeypatch.setattr(opportunity_scan.notifier, "notify", lambda msg: notes.append(msg))
     return TestingSession, called, notes

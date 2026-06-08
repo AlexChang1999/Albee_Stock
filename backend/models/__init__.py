@@ -14,6 +14,7 @@ from backend.models.portfolio_state import PortfolioState
 from backend.models.strategy_knowledge import StrategyKnowledge
 from backend.models.automation_config import AutomationConfig
 from backend.models.opportunity import Opportunity
+from backend.models.factor_snapshot import FactorSnapshot
 
 __all__ = [
     "Bot",
@@ -25,4 +26,5 @@ __all__ = [
     "StrategyKnowledge",
     "AutomationConfig",
     "Opportunity",
+    "FactorSnapshot",
 ]

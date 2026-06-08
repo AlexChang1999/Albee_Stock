@@ -109,6 +109,10 @@ class Settings:
     # 第一層最多放幾檔進第二層（控制 LLM 呼叫次數，建議 5~10）。
     SCREENER_TOP_N: int = int(os.getenv("SCREENER_TOP_N", "8"))
 
+    # 因子數值表（Phase 10 step-03）保留天數：常駐掃描每輪順手把 watchlist 各檔因子落表，
+    # 超過此天數的舊快照會被修剪，避免 DB 無上限膨脹。0 = 不修剪（保留全部）。
+    FACTOR_RETENTION_DAYS: int = int(os.getenv("FACTOR_RETENTION_DAYS", "90"))
+
     # ========================================================
     # 全自動護欄 / 模式 B 自動部署（改版 Phase 4）
     # ========================================================

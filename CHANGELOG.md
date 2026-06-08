@@ -37,6 +37,39 @@
 
 ### 新增
 
+- **Phase 10 step-07：開機常駐化（Windows 自啟，純 ops 零交易邏輯改動）**——補「電腦開機就一直跑」：
+  新增 `scripts\register_autostart.bat`（用 `schtasks /SC ONLOGON` 註冊「登入時自動啟動」工作
+  `AlbeeStockBackend`，觸發既有根目錄 `start_backend.bat`）+ `scripts\unregister_autostart.bat`
+  （移除工作）+ 運維手冊 `docs/phase-10-ai-company/ops-autostart.md`（安裝/驗收 checklist/常見操作/
+  排查/界線）。後端起來後由既有 `main.py` `lifespan` 自動接回啟用中 Bot + 盤前自動部署 cron +
+  常駐機會掃描（step-02），**無程式碼變更**。提醒：常駐跑的仍是 Paper，真錢仍受實盤雙閘 +
+  董事會核准（step-06）把關；不做系統服務/NSSM、不在開機腳本塞交易邏輯。
+
+- **Phase 10 step-03：因子數值表 + 報表（蒐集員主管）**——把市場狀態因子（regime_features 的
+  7 個因子 + regime 標籤）落成**可查、可匯出**的數值表 + 一頁報表。**因子是觀測佐證、給人和
+  回測看的報表，不是新的交易訊號**（不自動下單）。
+  - 新增 `factor_snapshots` 表（`backend/models/factor_snapshot.py`：symbol/as_of + 7 因子欄
+    〔volume_ratio/return_5d/return_20d/volatility_20d/trend_strength/atr_pct/range_position〕
+    + regime），走 **Alembic 遷移** `d0e1f2a3b4c5`。新增 `settings.FACTOR_RETENTION_DAYS`
+    （預設 90，0=不修剪）控保留天數，避免 DB 膨脹。
+  - `services/opportunity_scan.py` 加純函式 `features_to_snapshot_row`（映射 7 因子鍵、缺值帶
+    None，不重算第二套公式）與 `collect_factor_snapshots`（對 watchlist 各檔走**同一條正規資料
+    路徑** `market_data.get_bars(..., source=settings.DATA_SOURCE)` →
+    `regime_features.compute_features` → `regime.classify_regime` → 落一筆，並依保留天數修剪）；
+    `run_opportunity_scan` 在 upsert 機會後**順手呼叫**（best-effort 包 try，因子落表失敗不影響
+    機會收集與提醒）。無 look-ahead（compute_features 只用截至最後一根的資料）。
+  - 新增 `backend/routers/factors.py`：唯讀 `GET /factors`（依 as_of 由新到舊，可選 symbol/limit）
+    與 **本專案第一個 CSV 端點** `GET /factors/export.csv`（`StreamingResponse` + `csv`，表頭與
+    欄位順序固定）。`main.py` 掛上 `factors.router`。
+  - 前端新增 `pages/FactorsPage.jsx`（沿用既有表格頁風格：symbol 篩選 + 表格 + 匯出鈕，
+    regime 中文標籤），sidebar 加「因子報表」+ 路由；`api.js` 加 `getFactors` / `factorsCsvUrl`。
+    顏色吃 `theme`/`NEON`、不寫死 hex。
+  - 取捨說明：因 `screener` 內部抓完 bars 即丟、不外傳，因子落表是**同一條正規資料路徑的獨立一抓**
+    （非 screener 那次）；watchlist 小、日線、成本低，故未為「抓一次共用」而改動 screener（避免
+    範圍蔓延）。保留天數用 `config` 設定而非 `automation_config` DB 欄位（少一張表/前端欄位，夠用）。
+    測試：`tests/test_factor_snapshot.py`（純函式映射/落表值＝直接算的值/保留天數修剪/端點往返/CSV
+    表頭）、前端 `FactorsPage.test.jsx`；並更新 `tests/test_opportunity.py` 讓掃描測試離線餵假 K 線。
+
 - **Phase 10 step-06：董事會核准頁（Bot 進真錢，人在迴路）**——補「老闆一頁核准 + AI 主動提醒」：
   系統偵測「某 Bot Paper 表現達標、建議上真錢」→ 提議 → 使用者一頁**核准 / 退回**。
   - `bots` 表加三欄（`backend/models/bot.py`：`promotion_status`〔paper/proposed_live/

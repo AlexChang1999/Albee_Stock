@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: "/", label: "監控中心", end: true },
   { to: "/company", label: "公司戰情" },
   { to: "/promotions", label: "董事會核准" },
+  { to: "/factors", label: "因子報表" },
   { to: "/trades", label: "交易紀錄" },
   { to: "/backtest-runs", label: "回測歷史" },
   { to: "/presets", label: "策略方案" },
