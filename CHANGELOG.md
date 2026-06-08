@@ -17,6 +17,18 @@
 
 ### 新增
 
+- **Phase 9 step-01 導覽重構（Tabs→sidebar+路由）+ Dashboard 瘦身**——把原本「上方 4 個 Tabs +
+  右側折疊工作台」改成「左側 sidebar 導覽 + react-router 多頁面」的專業終端機外殼。
+  - 引入 `react-router-dom`；新增 `components/SidebarLayout.jsx`（常駐外殼：Header + 側欄導覽
+    + `<Outlet context>`，沿用 `theme.js` NEON 深藍色票，不另立配色）。
+  - `App.jsx` 改成路由根（`BrowserRouter`/`Routes`）；狀態與 handler 仍集中在 App，經
+    `<Outlet context>` 分配給各頁；既有四塊搬成路由頁（`pages/DashboardPage`/`AiExplorePage`/
+    `ChartsPage`/`FundamentalsPage`），**行為不變**、圖表仍 lazy 分包。
+  - **Dashboard 瘦身**：監控中心只留 AccountCard + AI 燈號 + BotList；AutoBacktestPanel /
+    BacktestPanel / TradesTable 移出儀表板，暫放 `pages/BacktestToolsPage`（step-02/03 接手拆分）。
+  - 測試：`SidebarLayout.test.jsx`（導覽項目/Outlet/實盤警告）；前端 Vitest 全綠（40 passed）、
+    `npm run build` 通過。
+
 - **Phase 8 step-01~06 策略知識庫 + 組合進化（人在迴路閉環）**——把「蒐集策略 → 整合組合 →
   自動驗證 → 排序 → 人在迴路策展」串成閉環，強依賴 Phase 6（誠實 OOS）與 Phase 7 step-07（防過擬合）。
   - **step-01 知識庫資料模型**：新增 `StrategyKnowledge`（理論/場景/使用時機/驗證狀態機
