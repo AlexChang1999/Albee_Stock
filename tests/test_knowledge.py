@@ -189,10 +189,80 @@ def test_reject_writes_reason(monkeypatch):
         _delete(kid)
 
 
+# ========== Phase 8 改善：step-02 propose 端點 + composite 寫入把關 + reject 冪等 ==========
+def test_propose_writes_candidates(monkeypatch):
+    """POST /knowledge/propose：mock LLM 回兩組參數 → 寫成兩筆 candidate。"""
+    monkeypatch.setattr(llm, "cloud_blocked", lambda: False)
+    monkeypatch.setattr(llm, "get_client", lambda: object())
+    monkeypatch.setattr(
+        kr.strategy_generator, "propose_params",
+        lambda client, strategy_key, scenario, n: [{"period": 14}, {"period": 21}],
+    )
+
+    r = client.post("/knowledge/propose",
+                    json={"strategy_key": "rsi", "scenario": "震盪盤", "n": 2})
+    assert r.status_code == 200, r.text
+    created = r.json()["created"]
+    assert len(created) == 2
+    assert all(k["status"] == "candidate" for k in created)
+    try:
+        for k in created:
+            assert k["strategy_key"] == "rsi"
+    finally:
+        for k in created:
+            _delete(k["id"])
+
+
+def test_propose_composite_blocked():
+    """組合策略不支援 LLM 草擬 → 400（請手動建立）。"""
+    r = client.post("/knowledge/propose",
+                    json={"strategy_key": "composite", "scenario": "x", "n": 1})
+    assert r.status_code == 400
+
+
+def test_create_composite_invalid_params_400():
+    """建 composite 帶非法子鍵 → 寫入前被擋（400），不進庫。"""
+    r = client.post("/knowledge", json={
+        "name": "壞組合",
+        "strategy_key": "composite",
+        "params": {"method": "vote", "members": [{"strategy_key": "不存在"}]},
+    })
+    assert r.status_code == 400, r.text
+
+
+def test_create_composite_valid_ok():
+    """建合法 composite → 200，可正常進庫。"""
+    r = client.post("/knowledge", json={
+        "name": "好組合",
+        "strategy_key": "composite",
+        "params": {
+            "method": "vote",
+            "members": [{"strategy_key": "rsi"}, {"strategy_key": "donchian"}],
+        },
+    })
+    assert r.status_code == 200, r.text
+    kid = r.json()["id"]
+    _delete(kid)
+
+
+def test_reject_idempotent(monkeypatch):
+    """已 rejected 的再 reject → 400（冪等，不重複寫 explorations）。"""
+    monkeypatch.setattr(settings, "EXPLORATIONS_DIR", str(Path(__file__).parent / "_tmp_expl_idem"))
+    r = client.post("/knowledge", json={"name": "重退", "strategy_key": "rsi"})
+    kid = r.json()["id"]
+    try:
+        r = client.post(f"/knowledge/{kid}/reject", json={"reason": "第一次"})
+        assert r.status_code == 200, r.text
+        r = client.post(f"/knowledge/{kid}/reject", json={"reason": "第二次"})
+        assert r.status_code == 400, "已 rejected 不該能重複退回"
+    finally:
+        _delete(kid)
+
+
 if __name__ == "__main__":
     test_knowledge_crud_and_status()
     test_get_missing_404()
     test_invalid_status_400()
     test_ranking_sorted_by_oos_ev()
-    print("（usage_note / promote / reject 需 pytest monkeypatch，請用 pytest 執行）")
+    print("（usage_note / promote / reject / propose 需 pytest monkeypatch，請用 pytest 執行）")
     print("\n🎉 知識庫 API 測試通過！")

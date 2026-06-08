@@ -109,6 +109,25 @@
     `pytest tests/ -q` 全綠（249 passed）。`composite` 為事件式聚合器，於 `test_vectorized_engine`
     的「全策略向量化」不變式中明確豁免。
 
+### 修正
+
+- **Phase 8 加固：組合策略防呆 + 寫入把關，杜絕「爛組合進庫、實盤 Bot 崩」**——
+  - `strategies/composite.py` 新增純函式 `validate_composite_params`：method 須為
+    vote/weighted/regime_switch；members 須非空且子策略代號皆為既有策略、**禁巢狀 composite**
+    （防無限遞迴）；regime_switch 須帶非空且合法的 `regime_strategies` 對照表。
+  - `CompositeStrategy._sub_signal` 加執行期安全網：子策略建立/出訊號失敗時降級為觀望（HOLD），
+    **不往上拋例外**——避免單一壞子策略弄崩整個 `bot_manager` 實盤迴圈。
+  - `routers/knowledge.py`：`POST/PUT /knowledge` 對 `strategy_key=="composite"` 在**寫入前**
+    驗參數（不合法回 400）；`POST /knowledge/propose` 擋下 composite（無 LLM 參數 schema，請手動建立）。
+- **驗證管線資料不足時給明確錯誤**——`services/evolution.py` 的 `validate_candidate` 若
+  walk-forward 湊不出任何 fold（資料太短）改丟明確 `ValueError`（含所需/實際根數），
+  router 轉 400；使用者分得清「資料太短」與「策略真的不加分」，不再靜默判 rejected。
+- **`POST /knowledge/{id}/reject` 冪等**——已 rejected 的再退回回 400，避免重複寫 explorations 記憶。
+- **`GET /knowledge` 與 `/knowledge/ranking` 加可選 `limit`/`offset` 分頁**（預設全取，向後相容）。
+- 測試：`test_composite` 補 `validate_composite_params` 正/反例（空 members／非法子鍵／巢狀／
+  錯 method／regime_switch 缺表）與子策略安全網；`test_knowledge` 補 `/propose` 端點、composite
+  寫入把關（合法 200／非法 400）、reject 冪等。
+
 ### 變更
 
 - **依層驗證結論接線：meta-labeling 收回固定策略線上路徑（其餘層不動）**——跑 `scripts/validate_layers.py`

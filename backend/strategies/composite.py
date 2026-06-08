@@ -23,6 +23,61 @@ params 結構（存進 StrategyKnowledge.params）：
 
 from backend.strategies.base import BaseStrategy, Signal
 
+# 允許的聚合方式（驗證用單一來源）
+_METHODS = {"vote", "weighted", "regime_switch"}
+
+
+def validate_composite_params(params: dict) -> None:
+    """
+    驗證組合策略參數結構（給「寫入知識庫前」的把關用；不合法就拋 ValueError、訊息白話）。
+
+    為何要在「存進去前」驗，而不是等執行時：爛組合若被存進庫，等到實盤 Bot 跑才爆，
+    難追、又會弄崩整個 Bot。在 API 寫入閘擋下，爛組合根本進不了庫。
+
+    規則：
+    - method 必須是 vote / weighted / regime_switch。
+    - members 必須是非空清單，每筆是 dict 且 strategy_key 為既有策略；
+      子策略不可又是 composite（禁巢狀，避免無限遞迴）。
+    - regime_switch 時，regime_strategies 必須是非空 dict，且值都是既有策略代號。
+
+    :raises ValueError: 任何一條不符
+    """
+    # 延遲匯入避免循環依賴（strategies/__init__ 會匯入本模組）
+    from backend.strategies import STRATEGY_REGISTRY
+
+    if not isinstance(params, dict):
+        raise ValueError("組合策略參數必須是物件（dict）")
+
+    method = params.get("method", "vote")
+    if method not in _METHODS:
+        raise ValueError(f"method 必須是 {sorted(_METHODS)}，收到：{method!r}")
+
+    members = params.get("members")
+    if not isinstance(members, list) or not members:
+        raise ValueError("members 必須是非空清單，至少要有一個子策略")
+
+    for i, m in enumerate(members):
+        if not isinstance(m, dict):
+            raise ValueError(f"members[{i}] 必須是物件（dict）")
+        key = m.get("strategy_key")
+        if key not in STRATEGY_REGISTRY:
+            raise ValueError(
+                f"members[{i}] 的 strategy_key 無效：{key!r}，"
+                f"只能用既有策略：{list(STRATEGY_REGISTRY.keys())}"
+            )
+        if key == "composite":
+            raise ValueError(f"members[{i}] 不可巢狀使用 composite（避免無限遞迴）")
+
+    if method == "regime_switch":
+        rs = params.get("regime_strategies")
+        if not isinstance(rs, dict) or not rs:
+            raise ValueError("method=regime_switch 時，regime_strategies 必須是非空對照表")
+        for regime, key in rs.items():
+            if key not in STRATEGY_REGISTRY:
+                raise ValueError(
+                    f"regime_strategies[{regime!r}] 的策略代號無效：{key!r}"
+                )
+
 
 def aggregate_signals(signals: list, method: str = "vote", weights: list | None = None) -> str:
     """
@@ -73,12 +128,20 @@ class CompositeStrategy(BaseStrategy):
         self.regime_strategies = p.get("regime_strategies", {}) or {}
 
     def _sub_signal(self, strategy_key: str, sub_params: dict, df) -> tuple[str, str]:
-        """取某個子策略對同一份 df 的訊號（透過既有 get_strategy，不重寫指標）。"""
+        """取某個子策略對同一份 df 的訊號（透過既有 get_strategy，不重寫指標）。
+
+        子策略代號非法或內部出錯時，回保守 HOLD 而非往上拋例外——避免一個壞子策略
+        把整個 Bot（bot_manager 實盤迴圈）弄崩。寫入前已有 validate_composite_params 把關，
+        這層只是執行期的安全網。
+        """
         # 延遲匯入避免循環依賴（__init__ 會匯入本模組）
         from backend.strategies import get_strategy
 
-        sub = get_strategy(strategy_key, sub_params or {})
-        return sub.generate_signal(df)
+        try:
+            sub = get_strategy(strategy_key, sub_params or {})
+            return sub.generate_signal(df)
+        except Exception as e:  # noqa: BLE001 — 任何子策略錯誤都降級為觀望，不拖垮整組
+            return Signal.HOLD, f"子策略 {strategy_key} 失效：{e}"
 
     def generate_signal(self, df) -> tuple[str, str]:
         """聚合子策略訊號；無子策略時保守觀望。"""

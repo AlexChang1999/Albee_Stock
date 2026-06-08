@@ -23,6 +23,7 @@ from backend.models import StrategyKnowledge
 from backend.services import explorations, llm, strategy_generator
 from backend.services.evolution import validate_candidate
 from backend.services.strategy_selector import build_regime_strategy_map
+from backend.strategies.composite import validate_composite_params
 
 router = APIRouter(tags=["Knowledge"])
 
@@ -105,6 +106,15 @@ def _ev_of(k: StrategyKnowledge) -> float:
     return ev if isinstance(ev, (int, float)) else float("-inf")
 
 
+def _check_composite_or_400(strategy_key: str, params: dict) -> None:
+    """若是組合策略，寫入前先驗參數結構；不合法回 400（爛組合不進庫、不炸實盤 Bot）。"""
+    if strategy_key == "composite":
+        try:
+            validate_composite_params(params or {})
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"組合策略參數不合法：{e}")
+
+
 def _llm_client_or_400():
     """建 LLM client，沿用 llm 模組的外送安全閥；缺設定 / 被擋 → 400。"""
     if llm.cloud_blocked():
@@ -116,26 +126,44 @@ def _llm_client_or_400():
 
 
 # ========== step-01：基本 CRUD ==========
+def _paginate(rows: list, limit: int | None, offset: int) -> list:
+    """共用分頁切片：offset 起跳、limit 取幾筆（limit=None 代表全取）。資料量小，Python 端切即可。"""
+    offset = max(0, offset)
+    if limit is None:
+        return rows[offset:]
+    return rows[offset: offset + max(0, limit)]
+
+
 @router.get("/knowledge")
-def list_knowledge(status: str | None = None, db: Session = Depends(get_db)):
-    """列出知識（可選 status 篩選），新到舊。"""
+def list_knowledge(
+    status: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """列出知識（可選 status 篩選），新到舊。可選 limit / offset 分頁（預設全取）。"""
     q = db.query(StrategyKnowledge)
     if status:
         q = q.filter(StrategyKnowledge.status == status)
     rows = q.order_by(StrategyKnowledge.created_at.desc()).all()
-    return [_dict(k) for k in rows]
+    return [_dict(k) for k in _paginate(rows, limit, offset)]
 
 
 @router.get("/knowledge/ranking")
-def rank_knowledge(status: str = "validated", db: Session = Depends(get_db)):
+def rank_knowledge(
+    status: str = "validated",
+    limit: int | None = None,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
     """
     策略庫排行（step-05）：依 OOS EV（oos_metrics.expected_value）由高到低排序。
-    預設只看已通過驗證（validated）的；可改篩 curated 等。
+    預設只看已通過驗證（validated）的；可改篩 curated 等。可選 limit / offset 分頁（預設全取）。
     （SQLite 對 JSON 欄位排序不便，與 presets 一致改在 Python 端排，資料量小無虞。）
     """
     rows = db.query(StrategyKnowledge).filter(StrategyKnowledge.status == status).all()
     rows.sort(key=_ev_of, reverse=True)
-    return [_dict(k) for k in rows]
+    return [_dict(k) for k in _paginate(rows, limit, offset)]
 
 
 @router.get("/knowledge/{kid}")
@@ -149,6 +177,7 @@ def create_knowledge(payload: KnowledgeIn, db: Session = Depends(get_db)):
     """新增一筆知識（手動建立）。"""
     if payload.status not in _STATUSES:
         raise HTTPException(status_code=400, detail=f"status 必須是 {_STATUSES}")
+    _check_composite_or_400(payload.strategy_key, payload.params)
     k = StrategyKnowledge(
         name=payload.name,
         strategy_key=payload.strategy_key,
@@ -170,6 +199,7 @@ def update_knowledge(kid: int, payload: KnowledgeIn, db: Session = Depends(get_d
     """編輯一筆知識。"""
     if payload.status not in _STATUSES:
         raise HTTPException(status_code=400, detail=f"status 必須是 {_STATUSES}")
+    _check_composite_or_400(payload.strategy_key, payload.params)
     k = _get_or_404(db, kid)
     k.name = payload.name
     k.strategy_key = payload.strategy_key
@@ -201,6 +231,13 @@ def propose_knowledge(payload: ProposeIn, db: Session = Depends(get_db)):
     請 LLM 依場景草擬幾組候選參數，每組寫成一筆 status=candidate 的知識。
     **只草擬、不回測、不部署**；非法策略鍵被擋（400）。
     """
+    # 組合策略沒有可由 LLM 草擬的「參數 schema」（它的參數是子策略清單 + 聚合方式），
+    # 應由人手動建立（POST /knowledge）。在此擋下，避免 LLM 亂湊出無效組合。
+    if payload.strategy_key == "composite":
+        raise HTTPException(
+            status_code=400,
+            detail="組合策略（composite）請用 POST /knowledge 手動建立，不支援 LLM 草擬。",
+        )
     client = _llm_client_or_400()
     try:
         param_sets = strategy_generator.propose_params(
@@ -320,6 +357,9 @@ def promote_knowledge(kid: int, db: Session = Depends(get_db)):
 def reject_knowledge(kid: int, payload: RejectIn, db: Session = Depends(get_db)):
     """退回某筆（→ rejected，附理由）；理由寫進 explorations 記憶。"""
     k = _get_or_404(db, kid)
+    if k.status == "rejected":
+        # 已是 rejected 就不重做（冪等）：避免重複寫一筆 explorations 記憶
+        raise HTTPException(status_code=400, detail="這筆已是 rejected，無需重複退回")
     k.status = "rejected"
     db.commit()
     db.refresh(k)

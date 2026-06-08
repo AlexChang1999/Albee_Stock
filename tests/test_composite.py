@@ -24,10 +24,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import math
 
 import pandas as pd
+import pytest
 
 from backend.strategies import get_strategy
 from backend.strategies.base import Signal
-from backend.strategies.composite import aggregate_signals
+from backend.strategies.composite import aggregate_signals, validate_composite_params
 from backend.services.backtest_engine import _run_on_df
 
 
@@ -120,6 +121,67 @@ def test_composite_regime_switch():
     assert "regime=" in reason
 
 
+# ========== Phase 8 改善：參數驗證 + 子策略安全網 ==========
+def test_validate_composite_ok():
+    """合法組合（vote / regime_switch）不拋例外。"""
+    validate_composite_params({
+        "method": "vote",
+        "members": [{"strategy_key": "rsi"}, {"strategy_key": "donchian"}],
+    })
+    validate_composite_params({
+        "method": "regime_switch",
+        "members": [{"strategy_key": "rsi"}],
+        "regime_strategies": {"ranging": "rsi"},
+    })
+
+
+def test_validate_composite_empty_members():
+    """members 空 → 擋下。"""
+    with pytest.raises(ValueError):
+        validate_composite_params({"method": "vote", "members": []})
+
+
+def test_validate_composite_bad_sub_key():
+    """子策略代號不在註冊表 → 擋下。"""
+    with pytest.raises(ValueError):
+        validate_composite_params({"method": "vote", "members": [{"strategy_key": "不存在"}]})
+
+
+def test_validate_composite_no_nesting():
+    """子策略不可又是 composite（防無限遞迴）→ 擋下。"""
+    with pytest.raises(ValueError):
+        validate_composite_params({"method": "vote", "members": [{"strategy_key": "composite"}]})
+
+
+def test_validate_composite_bad_method():
+    """method 非三選一 → 擋下。"""
+    with pytest.raises(ValueError):
+        validate_composite_params({"method": "stacking", "members": [{"strategy_key": "rsi"}]})
+
+
+def test_validate_composite_regime_switch_needs_map():
+    """regime_switch 缺 regime_strategies 對照表 → 擋下。"""
+    with pytest.raises(ValueError):
+        validate_composite_params({"method": "regime_switch", "members": [{"strategy_key": "rsi"}]})
+
+
+def test_sub_signal_invalid_key_holds_not_raises():
+    """執行期安全網：子策略代號非法時，generate_signal 回 HOLD 而非拋例外（不拖垮 Bot）。"""
+    # vote 路徑：唯一子策略失效 → 該票降級 HOLD → 聚合後保守 HOLD（重點：不拋例外）
+    vote = get_strategy("composite", {
+        "method": "vote",
+        "members": [{"strategy_key": "根本沒這策略", "params": {}}],
+    })
+    sig, reason = vote.generate_signal(_osc_df())
+    assert sig == Signal.HOLD
+    assert isinstance(reason, str) and reason
+
+    # 直接呼叫 _sub_signal：失效子策略應回 (HOLD, 含「失效」說明)，不拋例外
+    sub_sig, sub_reason = vote._sub_signal("根本沒這策略", {}, _osc_df())
+    assert sub_sig == Signal.HOLD
+    assert "失效" in sub_reason
+
+
 if __name__ == "__main__":
     test_aggregate_vote_majority()
     test_aggregate_tie_and_all_hold()
@@ -128,4 +190,11 @@ if __name__ == "__main__":
     test_composite_empty_members_holds()
     test_composite_runs_in_backtest()
     test_composite_regime_switch()
+    test_validate_composite_ok()
+    test_validate_composite_empty_members()
+    test_validate_composite_bad_sub_key()
+    test_validate_composite_no_nesting()
+    test_validate_composite_bad_method()
+    test_validate_composite_regime_switch_needs_map()
+    test_sub_signal_invalid_key_holds_not_raises()
     print("\n🎉 全部 composite 測試通過！")

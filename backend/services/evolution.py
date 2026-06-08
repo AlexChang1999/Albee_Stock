@@ -61,6 +61,14 @@ def validate_candidate(
 
     # 2) 滾動前進（walk-forward）：每個 fold 的樣本外 EV
     folds = validation.walk_forward(df, strategy_key, params, initial_cash=initial_cash)
+    if not folds:
+        # 資料太短湊不出任何完整 fold：明確告知（而非靜默判 rejected，
+        # 否則使用者分不清「資料太短」與「策略真的爛」）。
+        need = settings.VALIDATION_TRAIN_WINDOW + settings.VALIDATION_TEST_WINDOW
+        raise ValueError(
+            f"資料太短，湊不出 walk-forward fold（至少需 {need} 根，"
+            f"{symbol.upper()} 實際只有 {len(df)} 根）。請拉長 days 或換資料較長的標的。"
+        )
     candidate_oos = [f["expected_value"] for f in folds]
     # 基準 = 不交易（每 fold EV = 0）；候選需在 OOS 上贏過「不出手」
     baseline_oos = [0.0] * len(folds)
