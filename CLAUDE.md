@@ -228,6 +228,10 @@ cd frontend && npm run dev
 - **Windows 主控台編碼**：預設 cp950 印 emoji/中文會崩潰。
   已在 `backend/config.py` 開頭用 `sys.stdout.reconfigure(encoding="utf-8")` 修正；
   獨立腳本（如 test_connection.py）需自行加同樣修正。
+- **前端顏色一律吃主題、別寫死 hex（深藍主題的隱形陷阱）**：全站走 `theme.js` 的深藍主題
+  （`palette` 與 `NEON` 色票）。元件顏色要用 `color="text.primary"`/`"text.secondary"` 或
+  `theme`/`NEON` 變數，**不要寫死淺色 hex**——換深底後寫死的深色文字（如 `#1a2238`）會貼在
+  深藍面板上隱形。`Stat.jsx` 就踩過這坑（已改吃主題色）。新元件比照既有深底元件取色。
 - **API 金鑰格式**：有效的 Paper 金鑰開頭是 `PK`（約 20 碼），Secret 約 40 碼。
   太短的金鑰會得到 `unauthorized.`。
 - **資料庫 schema 變更走 Alembic，別再手動 `ALTER TABLE`**：
