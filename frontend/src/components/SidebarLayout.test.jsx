@@ -21,10 +21,11 @@ describe("SidebarLayout", () => {
   it("列出所有導覽項目", () => {
     renderShell();
     expect(screen.getByText("監控中心")).toBeInTheDocument();
+    expect(screen.getByText("交易紀錄")).toBeInTheDocument();
     expect(screen.getByText("AI 探勘")).toBeInTheDocument();
     expect(screen.getByText("K 線圖")).toBeInTheDocument();
     expect(screen.getByText("基本面")).toBeInTheDocument();
-    expect(screen.getByText("回測 / 交易")).toBeInTheDocument();
+    expect(screen.getByText("回測工具")).toBeInTheDocument();
   });
 
   it("把 Outlet 內容渲染出來", () => {

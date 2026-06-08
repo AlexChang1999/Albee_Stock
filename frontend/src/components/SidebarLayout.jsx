@@ -24,10 +24,11 @@ import { NEON } from "../theme";
 // 灰底（依賴前面 phase）頁面在對應 step 落地時再逐一加進來。
 const NAV_ITEMS = [
   { to: "/", label: "監控中心", end: true },
+  { to: "/trades", label: "交易紀錄" },
   { to: "/ai-explore", label: "AI 探勘" },
   { to: "/charts", label: "K 線圖" },
   { to: "/fundamentals", label: "基本面" },
-  { to: "/backtest", label: "回測 / 交易" },
+  { to: "/backtest", label: "回測工具" },
 ];
 
 // 單一導覽連結：用 NavLink 的 isActive 切換高亮樣式。

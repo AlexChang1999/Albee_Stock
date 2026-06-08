@@ -17,6 +17,12 @@
 
 ### 新增
 
+- **Phase 9 step-02 交易紀錄頁（/trades）+ 篩選**——把暫放回測工具頁的 TradesTable 升級成
+  獨立頁，上方加篩選列（依 Bot / 標的 / 買賣別 / 日期區間）。篩選為前端純函式
+  `utils/filterTrades.js`（不改後端 /trades 端點），抽純函式好測。新增 sidebar「交易紀錄」項。
+  測試：`filterTrades.test.jsx`（各維度/交集/空集/非陣列）+ `TradesPage.test.jsx`（渲染/篩選/清除）；
+  Vitest 全綠（52 passed）、`npm run build` 通過。
+
 - **Phase 9 step-01 導覽重構（Tabs→sidebar+路由）+ Dashboard 瘦身**——把原本「上方 4 個 Tabs +
   右側折疊工作台」改成「左側 sidebar 導覽 + react-router 多頁面」的專業終端機外殼。
   - 引入 `react-router-dom`；新增 `components/SidebarLayout.jsx`（常駐外殼：Header + 側欄導覽
