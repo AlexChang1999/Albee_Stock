@@ -17,6 +17,14 @@
 
 ### 新增
 
+- **Phase 9 step-08 思考助手改全站抽屜 + 拆除 StrategyWorkbench**——右側策略工作台的內容前面步驟
+  已分別搬到 `/presets`、`/backtest-runs`，這步收尾：把「思考助手聊天」改成全站可開的抽屜
+  `components/AssistantDrawer.jsx`（右下浮動鈕開關，沿用 `api.sendChat`/`api.postmortem`，
+  含填回測 ID 做事後檢討），掛在 `SidebarLayout`。確認三功能各有家後，**整支刪除**
+  `StrategyWorkbench.jsx`（不留註解死碼）；全站 grep 無殘留 import。助手後端契約不變（仍只思考，
+  不下單/不跑回測）。測試：`AssistantDrawer.test.jsx`（開抽屜/聊天/檢討）；Vitest 全綠（68 passed）、
+  build 通過。**Phase 9（step-01~08）完成。**
+
 - **Phase 9 step-07 進化實驗室（/evolution）+ 策略知識庫（/library）**——把 Phase 8 的
   「策略知識庫 + 組合進化」呈現成兩頁。
   - `api.js` 加 knowledge 全套（`getKnowledge`/`getKnowledgeRanking`/`getKnowledgeItem`/

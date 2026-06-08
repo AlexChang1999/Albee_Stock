@@ -36,7 +36,6 @@ import EvolutionPage from "./pages/EvolutionPage";
 // 常駐元件（外殼與彈窗）
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
-import StrategyWorkbench from "./components/StrategyWorkbench";
 import { buildBotPriceLines, findBotForSymbol } from "./utils/priceLines";
 
 // 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
@@ -273,7 +272,6 @@ function App() {
                 message={message}
                 loadError={loadError}
                 context={outletContext}
-                workbench={<StrategyWorkbench />}
               />
             }
           >

@@ -18,6 +18,7 @@
 import { Box, Container, Alert, LinearProgress, Typography } from "@mui/material";
 import { NavLink, Outlet } from "react-router-dom";
 import Header from "./Header";
+import AssistantDrawer from "./AssistantDrawer";
 import { NEON } from "../theme";
 
 // 導覽項目：依 Phase 9 README 壹節資訊架構。
@@ -77,7 +78,6 @@ export default function SidebarLayout({
   message,
   loadError,
   context,
-  workbench,
 }) {
   return (
     <>
@@ -153,9 +153,10 @@ export default function SidebarLayout({
           <Outlet context={context} />
         </Container>
 
-        {/* 右側策略工作台（step-08 會改成抽屜並移除） */}
-        {workbench}
       </Box>
+
+      {/* 全站思考助手抽屜（右下浮動鈕開關，取代原右側策略工作台） */}
+      <AssistantDrawer />
     </>
   );
 }
