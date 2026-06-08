@@ -24,7 +24,7 @@
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成 |
 | Phase 3 | 多 Bot 管理 + 更多策略（8 種） | ✅ 完成 |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成 |
-| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 核心已落地（剩選配項） |
+| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | ✅ 完成（含選配：一鍵轉 Bot + 主動提醒；tool_calls 顯示因架構改記憶注入已棄做） |
 | Phase 6 | 可信度地基（回測 EV ≈ 實盤 EV：成本/隔日/OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10） |
 | Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07） |
 | Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06） |
@@ -91,9 +91,11 @@ Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
 > 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
 
 **後續 / 未竟（非阻塞，未承諾時程）**：
-- **Phase 5 選配**（[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md) 第六節）：主動提醒、好策略一鍵轉 Bot、助手 tool_calls 顯示
+- ~~**Phase 5 選配**：主動提醒、好策略一鍵轉 Bot、助手 tool_calls 顯示~~ ✅ 完成（好策略一鍵轉
+  Bot `POST /presets/{id}/to-bot` + 主動提醒 `GET /reminders`；**tool_calls 顯示已棄做**——助手早改成
+  「記憶預先注入 system 提示」、不再用 tool-use，無 tool_calls 可顯示）
 - **Phase 7 層加分續調**：`adaptive` / `kelly` 樣本外未加分、`event` 不可驗證——機制已就位，待更多資料/調參再決定去留
-- **redesign 後續**：自動化規則由 `.env` 改 DB 表（目前走 `.env`）
+- ~~**redesign 後續**：自動化規則由 `.env` 改 DB 表~~ ✅ 完成（`automation_config` 單列表 + `PUT /automation` 前端可編輯）
 - **實盤上線前必讀**：[`docs/human-vs-ai-operation.md`](docs/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）
 
 ## 安裝與設定

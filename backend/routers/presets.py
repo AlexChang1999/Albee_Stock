@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import StrategyPreset, BacktestRun
+from backend.models import StrategyPreset, BacktestRun, Bot
 from backend.services.backtest_engine import run_backtest
 from backend.services.analytics import tearsheet_html
 
@@ -46,6 +46,12 @@ class BacktestParams(BaseModel):
     """對某方案跑回測時的選項（都有預設值，可不傳）。"""
     days: int = 365             # 回測往前抓幾天
     initial_cash: float = 10000.0
+
+
+class ToBotIn(BaseModel):
+    """把方案一鍵轉成 Bot 時的選項（都可不傳）。"""
+    name: str | None = None        # 不帶就沿用方案名
+    trade_amount: float = 1000.0   # 每次下單金額（比照 BotCreate 預設）
 
 
 # ---------- 內部小工具 ----------
@@ -157,6 +163,33 @@ def delete_preset(preset_id: int, db: Session = Depends(get_db)):
     db.delete(p)
     db.commit()
     return {"message": f"已刪除策略方案：{name}"}
+
+
+@router.post("/presets/{preset_id}/to-bot")
+def preset_to_bot(
+    preset_id: int,
+    options: ToBotIn = ToBotIn(),
+    db: Session = Depends(get_db),
+):
+    """
+    好策略「一鍵轉 Bot」：把方案的策略/標的/參數複製成一個新 Bot 實跑（Phase 5 選配）。
+
+    刻意做成「複製一份」而非綁定：之後改方案不會動到已建出來的 Bot。
+    新 Bot 預設不啟動排程、風控欄位留空（None＝不啟用），交給使用者在 Bot 面板再調。
+    全程 Paper，下單仍經 submit_market_order 雙閘把關，本端點不碰實盤安全閥。
+    """
+    p = _get_preset_or_404(db, preset_id)
+    bot = Bot(
+        name=options.name or p.name,
+        strategy=p.strategy_key,
+        symbol=p.symbol.upper(),
+        params=p.params or {},
+        trade_amount=options.trade_amount,
+    )
+    db.add(bot)
+    db.commit()
+    db.refresh(bot)
+    return {"id": bot.id, "name": bot.name, "symbol": bot.symbol, "strategy": bot.strategy}
 
 
 # ========== 一鍵回測（Python 做） ==========
@@ -282,3 +315,57 @@ def toggle_backtest_run_favorite(
     run.is_good = is_good
     db.commit()
     return {"id": run.id, "is_good": run.is_good}
+
+
+# ========== 主動提醒（Phase 5 選配） ==========
+def _build_reminders(db: Session) -> list[dict]:
+    """
+    掃出「值得使用者主動關注」的事項，純讀現有資料、不連網。回傳由重要到次要。
+
+    兩種來源（對齊 Phase 5「EV 檢討 → 越來越聰明」閉環）：
+      1. review_negative_ev：回測 EV 為負且還沒做檢討 → 提示請 Claude 助手檢討。
+      2. deploy_good_strategy：標記為好策略(is_good)、但同 標的+策略 還沒建成 Bot →
+         提示可一鍵轉 Bot 實跑。
+    """
+    reminders: list[dict] = []
+
+    # 現有 Bot 的 (symbol, strategy) 集合，用來判斷好策略是否已實跑
+    existing = {
+        (b.symbol.upper(), b.strategy)
+        for b in db.query(Bot.symbol, Bot.strategy).all()
+    }
+
+    for run in db.query(BacktestRun).all():
+        ev = _ev_of(run)
+        # 1) 負 EV 未檢討
+        if ev != float("-inf") and ev < 0 and not run.claude_postmortem:
+            reminders.append({
+                "type": "review_negative_ev",
+                "run_id": run.id,
+                "preset_id": run.preset_id,
+                "symbol": run.symbol,
+                "strategy_key": run.strategy_key,
+                "expected_value": ev,
+                "message": f"{run.symbol}／{run.strategy_key} 回測 EV 為負（{ev:.2f}）且尚未檢討，"
+                           f"建議請助手分析錯在哪。",
+            })
+        # 2) 好策略尚未實跑
+        if run.is_good and (run.symbol.upper(), run.strategy_key) not in existing:
+            reminders.append({
+                "type": "deploy_good_strategy",
+                "run_id": run.id,
+                "preset_id": run.preset_id,
+                "symbol": run.symbol,
+                "strategy_key": run.strategy_key,
+                "expected_value": None if ev == float("-inf") else ev,
+                "message": f"{run.symbol}／{run.strategy_key} 已標為好策略但還沒實跑，"
+                           f"可一鍵轉成 Bot。",
+            })
+
+    return reminders
+
+
+@router.get("/reminders")
+def get_reminders(db: Session = Depends(get_db)):
+    """回傳主動提醒清單（給前端橫幅顯示）。無事項時回空陣列。"""
+    return {"reminders": _build_reminders(db)}

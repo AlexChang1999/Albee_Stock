@@ -30,6 +30,21 @@
 
 ### 新增
 
+- **Phase 5 選配：好策略一鍵轉 Bot + 主動提醒**——補完 `docs/roadmap-strategy-workbench.md`
+  第六節的選配項（原列三項，其中「助手 tool_calls 顯示」因助手早改成「記憶預先注入 system 提示」、
+  不再用 tool-use 而**棄做**，無 tool_calls 可顯示）。
+  - **好策略一鍵轉 Bot**：新增 `POST /presets/{id}/to-bot`（`backend/routers/presets.py`），把方案的
+    策略/標的/參數**複製**成一個新 Bot 實跑（複製非綁定：之後改方案不動到 Bot；symbol 轉大寫、
+    風控欄位留空、預設不啟動排程）。前端 `PresetsPage` 每張方案卡加「🤖 轉成 Bot 實跑」鈕，走
+    `ConfirmDialog` 確認後呼 `api.presetToBot`，成功顯示綠色提示。全程 Paper、不碰實盤雙閘。
+  - **主動提醒**：新增 `GET /reminders`（純讀現有資料、不連網），掃出兩類待辦——①回測 EV 為負且
+    尚未檢討（提示請助手分析）②標為好策略(`is_good`)但同 標的+策略 還沒建成 Bot（提示可一鍵轉 Bot），
+    對齊 Phase 5「EV 檢討 → 越來越聰明」閉環。前端新增 `RemindersBanner` 元件（無事項則不渲染），
+    掛在 `PresetsPage` 頂部；建 Bot / 跑回測後以 signal 觸發重抓。顏色吃主題、不寫死 hex。
+  - 測試：`tests/test_presets_extra.py`（preset→Bot 欄位對映 / name 覆寫；reminders 負 EV 未檢討、
+    已檢討/正 EV 不提醒、好策略未實跑→建 Bot 後消失，6 passed）；前端 `PresetsPage.test.jsx` 補
+    轉 Bot 流程、新增 `RemindersBanner.test.jsx`（空/有提醒兩態）。
+
 - **自動化規則 `.env` → DB 表（前端可編輯）**——把模式 B 自動部署規則（`AUTO_DEPLOY_*`）
   從「唯讀吃 `.env`、改了要重啟」搬進 DB 單列表，讓前端可即時編輯儲存。完成 README「後續/未竟」
   列的 redesign backlog。

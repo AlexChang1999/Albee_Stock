@@ -9,6 +9,8 @@ vi.mock("../api", () => ({
     updatePreset: vi.fn(() => Promise.resolve({})),
     deletePreset: vi.fn(() => Promise.resolve({})),
     backtestPreset: vi.fn(),
+    presetToBot: vi.fn(() => Promise.resolve({ id: 9, name: "我的均線", symbol: "AAPL" })),
+    getReminders: vi.fn(() => Promise.resolve({ reminders: [] })),
   },
 }));
 
@@ -25,6 +27,9 @@ describe("PresetsPage", () => {
     api.getPresets.mockResolvedValue(PRESETS);
     api.createPreset.mockClear();
     api.deletePreset.mockClear();
+    api.presetToBot.mockClear();
+    api.getReminders.mockClear();
+    api.getReminders.mockResolvedValue({ reminders: [] });
   });
 
   it("渲染既有方案", async () => {
@@ -52,5 +57,15 @@ describe("PresetsPage", () => {
     // ConfirmDialog 出現，按「刪除」
     fireEvent.click(screen.getByRole("button", { name: "刪除" }));
     await waitFor(() => expect(api.deletePreset).toHaveBeenCalledWith(1));
+  });
+
+  it("轉成 Bot 走確認後呼叫 presetToBot 並顯示成功訊息", async () => {
+    render(<PresetsPage />);
+    await screen.findByText("我的均線");
+    fireEvent.click(screen.getByText("🤖 轉成 Bot 實跑"));
+    // ConfirmDialog 出現，按「建立 Bot」
+    fireEvent.click(screen.getByRole("button", { name: "建立 Bot" }));
+    await waitFor(() => expect(api.presetToBot).toHaveBeenCalledWith(1));
+    expect(await screen.findByText(/已建立 Bot/)).toBeInTheDocument();
   });
 });

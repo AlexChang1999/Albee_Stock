@@ -23,6 +23,7 @@ import { api } from "../api";
 import { STRATEGIES } from "../constants";
 import ConfirmDialog from "../components/ConfirmDialog";
 import BacktestResultCard from "../components/BacktestResultCard";
+import RemindersBanner from "../components/RemindersBanner";
 
 function strategyLabel(key) {
   return STRATEGIES.find((s) => s.value === key)?.label || key;
@@ -39,6 +40,9 @@ export default function PresetsPage() {
   const [btRunningId, setBtRunningId] = useState(null);
   const [btResult, setBtResult] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [toBotTarget, setToBotTarget] = useState(null); // 「轉成 Bot」確認對象
+  const [msg, setMsg] = useState(""); // 成功訊息（建 Bot 等）
+  const [reminderSignal, setReminderSignal] = useState(0); // +1 觸發提醒橫幅重抓
 
   const loadPresets = useCallback(async () => {
     try {
@@ -131,10 +135,26 @@ export default function PresetsPage() {
     try {
       const r = await api.backtestPreset(p.id, { days: 365, initial_cash: 10000 });
       setBtResult({ presetName: p.name, ...r });
+      setReminderSignal((n) => n + 1); // 新回測可能產生「負 EV 未檢討」提醒
     } catch (e) {
       setErr(e.message);
     } finally {
       setBtRunningId(null);
+    }
+  }
+
+  // 好策略一鍵轉 Bot：確認後複製方案成新 Bot 實跑
+  async function confirmToBot() {
+    const p = toBotTarget;
+    setToBotTarget(null);
+    setErr("");
+    setMsg("");
+    try {
+      const bot = await api.presetToBot(p.id);
+      setMsg(`已建立 Bot「${bot.name}」（${bot.symbol}）。可到「交易」頁啟動排程。`);
+      setReminderSignal((n) => n + 1); // 好策略已實跑 → 對應提醒應消失
+    } catch (e) {
+      setErr(e.message);
     }
   }
 
@@ -149,6 +169,15 @@ export default function PresetsPage() {
           {err}
         </Alert>
       )}
+
+      {msg && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMsg("")}>
+          {msg}
+        </Alert>
+      )}
+
+      {/* 主動提醒橫幅（負 EV 未檢討 / 好策略未實跑） */}
+      <RemindersBanner signal={reminderSignal} />
 
       {/* 新增方案 */}
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
@@ -236,6 +265,15 @@ export default function PresetsPage() {
               >
                 {btRunningId === p.id ? "回測中…" : "▶ 跑回測（Python）"}
               </Button>
+              <Button
+                size="small"
+                variant="text"
+                fullWidth
+                sx={{ mt: 0.5 }}
+                onClick={() => setToBotTarget(p)}
+              >
+                🤖 轉成 Bot 實跑
+              </Button>
             </Paper>
           </Grid>
         ))}
@@ -266,6 +304,22 @@ export default function PresetsPage() {
         confirmText="刪除"
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={!!toBotTarget}
+        title="轉成 Bot 實跑"
+        message={
+          toBotTarget
+            ? `把方案「${toBotTarget.name}」（${strategyLabel(
+                toBotTarget.strategy_key
+              )} · ${toBotTarget.symbol}）複製成一個新 Bot？` +
+              "（複製一份，之後改方案不影響此 Bot；全程 Paper 模擬，建好後預設不啟動排程）"
+            : ""
+        }
+        confirmText="建立 Bot"
+        onConfirm={confirmToBot}
+        onClose={() => setToBotTarget(null)}
       />
     </Box>
   );

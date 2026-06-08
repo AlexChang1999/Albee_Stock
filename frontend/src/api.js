@@ -114,6 +114,16 @@ export const api = {
     request(`/presets/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deletePreset: (id) => request(`/presets/${id}`, { method: "DELETE" }),
 
+  // 好策略「一鍵轉 Bot」：把方案複製成新 Bot 實跑（options 可帶 name / trade_amount）
+  presetToBot: (id, options = {}) =>
+    request(`/presets/${id}/to-bot`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+
+  // 主動提醒：負 EV 未檢討、好策略未實跑等待辦事項（給橫幅顯示）
+  getReminders: () => request("/reminders"),
+
   // 對某方案一鍵跑回測（Python），回結果並存一筆回測紀錄
   backtestPreset: (id, options = {}) =>
     request(`/presets/${id}/backtest`, {
