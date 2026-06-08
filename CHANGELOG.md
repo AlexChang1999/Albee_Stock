@@ -15,6 +15,19 @@
 
 ## [未發布]
 
+### 變更
+
+- **README.md / CLAUDE.md 對齊實情（文件同步，無程式變更）**——比對發現 `README.md` 嚴重過期：
+  - 進度表把已完成的 **Phase 8（step-01~06）/ Phase 9（step-01~08）仍標「📋 構想藍圖」**，改為 ✅ 完成；
+    Phase 5 標示為「核心已落地（剩選配）」。
+  - 新增 Phase 8 / Phase 9 / **改版子軌（redesign）** 三段「已落地」描述，並把「規劃中」段改寫成
+    「後續/未竟」非阻塞 backlog（Phase 5 選配、Phase 7 層加分續調、自動化規則改 DB 表、實盤上線必讀）。
+  - 移除已刪元件的殘留引用（`StrategyWorkbench`/`CreateBotForm`/`TradingViewChart`）；前端結構改寫為
+    「左側 sidebar + react-router 多頁 + `pages/` + `LightweightChart`」；技術棧補 `lightweight-charts`。
+  - 主要 API 清單補 `/ai-recommendations`、`/automation`(+`/run`)、`/bars`、`/quotes`、`/explorations`、
+    `/knowledge`(+ranking/validate/promote/reject)。
+  - `CLAUDE.md` 專案結構前端區塊同步修正（死引用換成現存檔名、補 `pages/` 與新元件）。
+
 ### 新增
 
 - **redesign 殘項收尾：前端自動化規則面板 + BotAvatar 深底調色**——把 `docs/redesign/README.md`

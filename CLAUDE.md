@@ -105,20 +105,24 @@ Albee_Stock/
 │   └── bots/
 │       └── bot_manager.py # 管理所有 Bot 的啟停/執行/排程（Phase 6：每輪用 bot_id 重查最新設定）
 ├── explorations/         # 思考助手「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔，進 git）
-├── frontend/              # React 前端（Vite，已模組化拆分）
+├── frontend/              # React 前端（Vite；左側 sidebar + react-router 多頁，Phase 9）
 │   ├── .env.example          # 前端環境變數範本（VITE_API_URL）
 │   └── src/
-│       ├── App.jsx            # 主畫面編排層（state + handler + 分頁）
-│       ├── theme.js           # MUI 主題 + NEON 色票
+│       ├── App.jsx            # 路由編排層（state + handler + <Outlet context> 分配給各頁）
+│       ├── theme.js           # MUI 深藍主題 + NEON 色票（redesign P3）
 │       ├── constants.js       # 共用常數（策略清單 STRATEGIES）
 │       ├── api.js             # 前端 API 呼叫（讀 VITE_API_URL）
-│       ├── BotAvatar.jsx      # Bot 頭像元件
-│       ├── TradingViewChart.jsx  # K 線圖元件（App 以 React.lazy 延遲載入）
+│       ├── BotAvatar.jsx      # Bot 頭像元件（深藍發光徽章）
+│       ├── LightweightChart.jsx  # 原生 K 線圖（lightweight-charts，取代舊 TradingView iframe，redesign P1）
+│       ├── pages/             # 各路由頁（Dashboard/Trades/BacktestRuns/Presets/Explorations/
+│       │                      #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/BacktestTools）
 │       ├── components/        # 畫面區塊元件
-│       │   ├── Header / AccountCard / CreateBotForm / BotList
-│       │   ├── BacktestPanel / TradesTable / EditBotDialog
-│       │   ├── ConfirmDialog / Stat
-│       │   ├── StrategyWorkbench  # 右側可伸縮/收合策略工作台（方案/回測/EV歷史/LLM助手）
+│       │   ├── SidebarLayout  # 左側導覽外殼（Phase 9 step-01）
+│       │   ├── AssistantDrawer  # 思考助手全站抽屜（Phase 9 step-08，右下浮動鈕）
+│       │   ├── Header / AccountCard / BotList / Stat / ConfirmDialog
+│       │   ├── BacktestPanel / TradesTable / EditBotDialog / KnowledgeCard
+│       │   ├── RecommendationsPanel / AutomationPanel  # AI 海選推薦 / 模式 B 自動化規則（redesign P2/P4）
+│       │   ├── ChartGrid / LiveQuote / EquitySparkline / BacktestResultCard
 │       │   └── *.test.jsx     # 元件測試（Vitest + RTL）
 │       ├── hooks/             # 自訂 Hook
 │       │   └── useDashboardData.js  # 載入 account/bots/trades
