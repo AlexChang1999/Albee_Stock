@@ -144,7 +144,7 @@ Albee_Stock/
 | Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10，藍圖 [`docs/phase-6/`](docs/phase-6/README.md)） |
 | Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07：特徵/狀態分類/選策略/凱利/meta-labeling/事件風險閘/驗證框架，藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)；機制就位，各層 OOS 加分待 step-07 驗證後決定去留） |
 | Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06：知識庫模型/LLM 提案/組合引擎/OOS 驗證管線/排行+使用時機/人在迴路審核，藍圖 [`docs/phase-8-strategy-evolution/`](docs/phase-8-strategy-evolution/README.md)） |
-| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | 📋 構想藍圖（[`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)） |
+| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08：sidebar+路由外殼/交易/回測歷史/方案/探討（+後端讀取端點）/決策/進化+知識庫/助手抽屜，藍圖 [`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)） |
 
 > **改版子軌**：[`docs/redesign/`](docs/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
 > **跑真錢前必讀**：[`docs/human-vs-ai-operation.md`](docs/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。

@@ -130,4 +130,38 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ run_id: runId }),
     }),
+
+  // ===== Phase 9：決策審計（Phase 6 step-08 的軌跡）=====
+  // 某 Bot 最近的決策紀錄（含沒成交的觀望/跳過），依時間倒序
+  getBotDecisions: (botId, limit = 50) =>
+    request(`/bots/${botId}/decisions?limit=${limit}`),
+
+  // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
+  // 路標清單（每筆 run_id / file / strategy / symbol / summary）
+  getExplorations: () => request("/explorations"),
+  // 某篇探討的完整 markdown 內容（{ name, content }）
+  getExploration: (name) => request(`/explorations/${encodeURIComponent(name)}`),
+
+  // ===== Phase 9：策略知識庫 / 組合進化（Phase 8 端點）=====
+  // 知識清單（可選 status 篩選：candidate/validated/curated/rejected）
+  getKnowledge: (status) =>
+    request(`/knowledge${status ? `?status=${status}` : ""}`),
+  // 排行：依 OOS EV 由高到低（預設 validated；可改 curated）
+  getKnowledgeRanking: (status = "validated") =>
+    request(`/knowledge/ranking?status=${status}`),
+  getKnowledgeItem: (id) => request(`/knowledge/${id}`),
+  // 跑驗證管線（OOS + walk-forward）
+  validateKnowledge: (id, options = {}) =>
+    request(`/knowledge/${id}/validate`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+  // 人在迴路：晉升（validated→curated）/ 退回（→rejected，附理由）
+  promoteKnowledge: (id) =>
+    request(`/knowledge/${id}/promote`, { method: "POST" }),
+  rejectKnowledge: (id, reason = "") =>
+    request(`/knowledge/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
 };

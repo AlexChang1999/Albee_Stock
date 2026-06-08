@@ -17,6 +17,73 @@
 
 ### 新增
 
+- **Phase 9 step-08 思考助手改全站抽屜 + 拆除 StrategyWorkbench**——右側策略工作台的內容前面步驟
+  已分別搬到 `/presets`、`/backtest-runs`，這步收尾：把「思考助手聊天」改成全站可開的抽屜
+  `components/AssistantDrawer.jsx`（右下浮動鈕開關，沿用 `api.sendChat`/`api.postmortem`，
+  含填回測 ID 做事後檢討），掛在 `SidebarLayout`。確認三功能各有家後，**整支刪除**
+  `StrategyWorkbench.jsx`（不留註解死碼）；全站 grep 無殘留 import。助手後端契約不變（仍只思考，
+  不下單/不跑回測）。測試：`AssistantDrawer.test.jsx`（開抽屜/聊天/檢討）；Vitest 全綠（68 passed）、
+  build 通過。**Phase 9（step-01~08）完成。**
+
+- **Phase 9 step-07 進化實驗室（/evolution）+ 策略知識庫（/library）**——把 Phase 8 的
+  「策略知識庫 + 組合進化」呈現成兩頁。
+  - `api.js` 加 knowledge 全套（`getKnowledge`/`getKnowledgeRanking`/`getKnowledgeItem`/
+    `validateKnowledge`/`promoteKnowledge`/`rejectKnowledge`）。抽共用 `components/KnowledgeCard.jsx`
+    （理論/場景/使用時機/OOS 指標/狀態親和性）。
+  - `LibraryPage`：唯讀策展庫 + 排行（curated/validated，依 OOS EV 排序），不做晉升/退回。
+    `EvolutionPage`：候選審核 + 跑驗證管線 + **人在迴路**晉升（validated→curated）/ 退回（附理由）——
+    晉升一律由使用者點按觸發，前端不自動晉升、不重算 EV/驗證。新增 sidebar「進化實驗室」「策略知識庫」項。
+  - 測試：`EvolutionPage.test.jsx`（候選/驗證/晉升）+ `LibraryPage.test.jsx`（策展庫/切換）；
+    Vitest 全綠（65 passed）、build 通過。
+
+- **Phase 9 step-06 決策審計頁（/decisions）**——把每個 Bot 的決策軌跡（為何在某時點
+  買/賣/觀望/跳過）做成可瀏覽頁，「每一筆自動決策可追溯」的前端呈現。`api.getBotDecisions`
+  打 Phase 6 `GET /bots/{id}/decisions`；`pages/DecisionsPage.jsx` 選 Bot → 時序列出
+  action/signal/reason/price/時間，不同 action（bought/sold/hold/skipped_*）配色。
+  只顯示後端審計、不重算。新增 sidebar「決策審計」項。測試：`DecisionsPage.test.jsx`
+  （未選不抓/選 Bot 列出含配色）；Vitest 全綠（61 passed）、build 通過。
+
+- **Phase 9 step-05 探討/檢討頁（/explorations）+ 後端讀取端點**——把 explorations 檔案記憶
+  （LLM 事後檢討）做成可瀏覽的唯讀頁（左清單 + 右內容）。**唯一碰後端的前端步驟**。
+  - 後端：新增 `backend/routers/explorations.py`（`GET /explorations` 重用 `list_index_entries()`；
+    `GET /explorations/{name}` 重用 `read_exploration()` 防穿越，讀不到回 404），掛上 `main.py`。
+    **不**自己 open()/拼路徑（安全紅線）；唯讀，無寫/改/刪。
+  - 前端：`api.js` 加 `getExplorations`/`getExploration`；新增 `pages/ExplorationsPage.jsx`
+    （內容用輕量 pre-wrap 顯示，不引重型 markdown 依賴）。新增 sidebar「探討檢討」項。
+  - 測試：`tests/test_explorations_api.py`（往返/404/**防穿越** `../`、非 .md，4 passed）+
+    `ExplorationsPage.test.jsx`（清單/讀內容）；前端 Vitest 全綠（59 passed）、build 通過。
+
+- **Phase 9 step-04 策略方案頁（/presets）**——把右側工作台的策略方案搬成獨立全頁：
+  CRUD（新增/改名/調參/收藏/刪除）+ 一鍵跑回測。沿用工作台既有方案邏輯與 preset api，
+  刪除走既有 `ConfirmDialog`、回測結果用共用 `BacktestResultCard`，不自造新表單風格。
+  新增 sidebar「策略方案」項。測試：`PresetsPage.test.jsx`（渲染/新增/刪除確認，monkeypatch api）；
+  Vitest 全綠（57 passed）、build 通過。
+
+- **Phase 9 step-03 回測歷史 / EV 榜頁（/backtest-runs）**——把埋在右側工作台的回測歷史搬成獨立全頁：
+  依 EV 排序的榜、收藏標星、點一筆看完整 metrics + 資金曲線、勾選數筆並排比較。
+  - 抽共用元件 `components/BacktestResultCard.jsx`（EV 頭條卡）並回頭讓 `StrategyWorkbench` 區2 改用它，
+    不重寫兩份；資金曲線用純 SVG `components/EquitySparkline.jsx`（**不引新圖表庫**）。
+  - 不改後端 `/backtest-runs` 排序語意、不在前端重算 EV——只顯示後端結果。新增 sidebar「回測歷史」項。
+  - 測試：`BacktestRunsPage.test.jsx`（渲染榜/收藏切換，monkeypatch api）；Vitest 全綠（54 passed）、build 通過。
+
+- **Phase 9 step-02 交易紀錄頁（/trades）+ 篩選**——把暫放回測工具頁的 TradesTable 升級成
+  獨立頁，上方加篩選列（依 Bot / 標的 / 買賣別 / 日期區間）。篩選為前端純函式
+  `utils/filterTrades.js`（不改後端 /trades 端點），抽純函式好測。新增 sidebar「交易紀錄」項。
+  測試：`filterTrades.test.jsx`（各維度/交集/空集/非陣列）+ `TradesPage.test.jsx`（渲染/篩選/清除）；
+  Vitest 全綠（52 passed）、`npm run build` 通過。
+
+- **Phase 9 step-01 導覽重構（Tabs→sidebar+路由）+ Dashboard 瘦身**——把原本「上方 4 個 Tabs +
+  右側折疊工作台」改成「左側 sidebar 導覽 + react-router 多頁面」的專業終端機外殼。
+  - 引入 `react-router-dom`；新增 `components/SidebarLayout.jsx`（常駐外殼：Header + 側欄導覽
+    + `<Outlet context>`，沿用 `theme.js` NEON 深藍色票，不另立配色）。
+  - `App.jsx` 改成路由根（`BrowserRouter`/`Routes`）；狀態與 handler 仍集中在 App，經
+    `<Outlet context>` 分配給各頁；既有四塊搬成路由頁（`pages/DashboardPage`/`AiExplorePage`/
+    `ChartsPage`/`FundamentalsPage`），**行為不變**、圖表仍 lazy 分包。
+  - **Dashboard 瘦身**：監控中心只留 AccountCard + AI 燈號 + BotList；AutoBacktestPanel /
+    BacktestPanel / TradesTable 移出儀表板，暫放 `pages/BacktestToolsPage`（step-02/03 接手拆分）。
+  - 測試：`SidebarLayout.test.jsx`（導覽項目/Outlet/實盤警告）；前端 Vitest 全綠（40 passed）、
+    `npm run build` 通過。
+
 - **Phase 8 step-01~06 策略知識庫 + 組合進化（人在迴路閉環）**——把「蒐集策略 → 整合組合 →
   自動驗證 → 排序 → 人在迴路策展」串成閉環，強依賴 Phase 6（誠實 OOS）與 Phase 7 step-07（防過擬合）。
   - **step-01 知識庫資料模型**：新增 `StrategyKnowledge`（理論/場景/使用時機/驗證狀態機
