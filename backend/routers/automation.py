@@ -37,6 +37,7 @@ class AutomationRulesUpdate(BaseModel):
     max_bots: Optional[int] = None
     cash_per_bot: Optional[float] = None
     scan_hour: Optional[int] = None
+    scan_interval_min: Optional[int] = None
 
 
 def _serialize(cfg, active_count: int) -> dict:
@@ -48,6 +49,7 @@ def _serialize(cfg, active_count: int) -> dict:
         "max_bots": cfg.max_bots,
         "cash_per_bot": cfg.cash_per_bot,
         "scan_hour": cfg.scan_hour,
+        "scan_interval_min": cfg.scan_interval_min,
         "active_bots": active_count,
         "slots_left": max(0, cfg.max_bots - active_count),
     }
@@ -66,9 +68,11 @@ def put_automation(body: AutomationRulesUpdate, db: Session = Depends(get_db)):
     """
     編輯自動化規則。只改「有帶」的欄位（None=不動）。
 
-    改 scan_hour 時即時重掛盤前掃描的 cron job（不必重啟後端）。
-    驗證失敗（如 scan_hour 超出 0~23）回 400。
+    改 scan_hour 時即時重掛盤前掃描的 cron job；改 scan_interval_min 時即時重掛常駐探勘的
+    週期 job（皆不必重啟後端）。驗證失敗（如 scan_hour 超出 0~23）回 400。
     """
+    # 先記下舊的掃描間隔，更新後比對是否要重掛常駐探勘 job（update_config 維持原 2-tuple 契約）
+    old_interval = get_config(db).scan_interval_min
     try:
         cfg, hour_changed = update_config(db, **body.model_dump())
     except ValueError as e:
@@ -77,6 +81,9 @@ def put_automation(body: AutomationRulesUpdate, db: Session = Depends(get_db)):
     # scan_hour 有變 → 立即用新時刻重掛 cron（add_job 已 replace_existing=True）
     if hour_changed:
         bot_manager.schedule_auto_deploy(cfg.scan_hour)
+    # scan_interval_min 有變 → 即時重掛常駐探勘週期 job（0=關，schedule 內部會移除）
+    if cfg.scan_interval_min != old_interval:
+        bot_manager.schedule_opportunity_scan(cfg.scan_interval_min)
 
     active_count = db.query(Bot).filter(Bot.is_active.is_(True)).count()
     return _serialize(cfg, active_count)

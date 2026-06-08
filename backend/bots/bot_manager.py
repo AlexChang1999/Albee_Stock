@@ -414,6 +414,30 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_opportunity_scan(self, interval_minutes: int) -> None:
+        """
+        掛上「常駐機會探勘」的週期工作（Phase 10 step-02）。
+
+        每隔 interval_minutes 分鐘跑一次 run_opportunity_scan（內部會先過盤中閘、收盤跳過）。
+        interval_minutes <= 0 代表關閉常駐掃描：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次；之後改 scan_interval_min 規則時即時重掛。
+        延遲 import 避免循環依賴（opportunity_scan 反過來用到 services）。
+        """
+        from backend.services.opportunity_scan import run_opportunity_scan
+
+        job_id = "opportunity_scan"
+        if interval_minutes <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_opportunity_scan,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
 
 # 全域共用的 Bot 管理器
 bot_manager = BotManager()

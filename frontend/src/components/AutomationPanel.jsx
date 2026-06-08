@@ -41,6 +41,7 @@ const NUMBER_FIELDS = [
   { key: "cash_per_bot", label: "配資 / Bot（$）", step: "100" },
   { key: "max_bots", label: "最大 Bot 數", step: "1" },
   { key: "scan_hour", label: "盤前掃描時刻（0~23）", step: "1" },
+  { key: "scan_interval_min", label: "探勘間隔（分；0=關）", step: "5" },
 ];
 
 export default function AutomationPanel({ onChanged }) {
@@ -96,6 +97,7 @@ export default function AutomationPanel({ onChanged }) {
       cash_per_bot: rules.cash_per_bot,
       max_bots: rules.max_bots,
       scan_hour: rules.scan_hour,
+      scan_interval_min: rules.scan_interval_min,
     });
     setResult(null);
     setError("");
@@ -233,6 +235,10 @@ export default function AutomationPanel({ onChanged }) {
             />
             <Stat label="配資 / Bot" value={`$${Number(rules.cash_per_bot).toLocaleString()}`} />
             <Stat label="盤前掃描時刻" value={`${rules.scan_hour} 時`} />
+            <Stat
+              label="探勘間隔"
+              value={rules.scan_interval_min > 0 ? `${rules.scan_interval_min} 分` : "關閉"}
+            />
             <Stat label="最大 Bot 數" value={rules.max_bots} />
             <Stat
               label="名額（已用 / 上限）"

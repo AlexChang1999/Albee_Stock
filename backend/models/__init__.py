@@ -13,6 +13,7 @@ from backend.models.decision_log import DecisionLog
 from backend.models.portfolio_state import PortfolioState
 from backend.models.strategy_knowledge import StrategyKnowledge
 from backend.models.automation_config import AutomationConfig
+from backend.models.opportunity import Opportunity
 
 __all__ = [
     "Bot",
@@ -23,4 +24,5 @@ __all__ = [
     "PortfolioState",
     "StrategyKnowledge",
     "AutomationConfig",
+    "Opportunity",
 ]

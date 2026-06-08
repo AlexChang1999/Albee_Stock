@@ -40,6 +40,10 @@ class AutomationConfig(Base):
     # 盤前掃描的本機時刻（24 小時制的「時」，0~23）
     scan_hour = Column(Integer, nullable=False, default=8)
 
+    # 常駐機會探勘的間隔（分鐘）：盤中每隔幾分鐘跑一次海選並更新機會清單（Phase 10 step-02）。
+    # 0 = 關掉常駐掃描（不掛週期 job）。與 scan_hour 的每日盤前自動部署是兩件事。
+    scan_interval_min = Column(Integer, nullable=False, default=30)
+
     # 最後一次更新時間
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
