@@ -15,7 +15,35 @@
 
 ## [未發布]
 
+### 變更
+
+- **README.md / CLAUDE.md 對齊實情（文件同步，無程式變更）**——比對發現 `README.md` 嚴重過期：
+  - 進度表把已完成的 **Phase 8（step-01~06）/ Phase 9（step-01~08）仍標「📋 構想藍圖」**，改為 ✅ 完成；
+    Phase 5 標示為「核心已落地（剩選配）」。
+  - 新增 Phase 8 / Phase 9 / **改版子軌（redesign）** 三段「已落地」描述，並把「規劃中」段改寫成
+    「後續/未竟」非阻塞 backlog（Phase 5 選配、Phase 7 層加分續調、自動化規則改 DB 表、實盤上線必讀）。
+  - 移除已刪元件的殘留引用（`StrategyWorkbench`/`CreateBotForm`/`TradingViewChart`）；前端結構改寫為
+    「左側 sidebar + react-router 多頁 + `pages/` + `LightweightChart`」；技術棧補 `lightweight-charts`。
+  - 主要 API 清單補 `/ai-recommendations`、`/automation`(+`/run`)、`/bars`、`/quotes`、`/explorations`、
+    `/knowledge`(+ranking/validate/promote/reject)。
+  - `CLAUDE.md` 專案結構前端區塊同步修正（死引用換成現存檔名、補 `pages/` 與新元件）。
+
 ### 新增
+
+- **redesign 殘項收尾：前端自動化規則面板 + BotAvatar 深底調色**——把 `docs/redesign/README.md`
+  與 `phase-4-automation.md` 列為「後續微調」的兩項未竟工補上（redesign 四階段早已完成、
+  phase-9 疊在其上無回歸，故只剩這兩個純打磨）。
+  - **模式 B 自動化規則面板**：`api.js` 加 `getAutomation`/`runAutomation`；新增
+    `components/AutomationPanel.jsx` 掛在監控中心——唯讀展示 `.env` 的 `AUTO_DEPLOY_*` 規則與
+    名額（總開關/EV·勝率門檻/配資/盤前時刻/已用·上限），並可「預覽（dry-run）」或「立即試跑一輪」
+    （試跑會建 Paper Bot，故走 `ConfirmDialog` 確認、成功後 reload）。規則本身仍由 `.env` 唯讀，
+    面板不改門檻、不碰實盤雙閘、不改後端自動化邏輯。`App.jsx` 的 outletContext 補出 `reload`。
+  - **BotAvatar 深底調色**：徽章頭像從淺色暖白改為深海軍藍漸層 + 冷白線稿 + 發光點綴色盤
+    （吸收 `theme.js` NEON），不再貼在深藍面板上突兀；部件幾何與雜湊邏輯完全不動。
+  - **連帶修正**：`Stat.jsx` 寫死的淺色文字（`#1a2238`）在深藍主題下幾乎看不見，改吃主題
+    `text.primary`/`text.secondary`（AccountCard 等共用，redesign 換深底後的對比修正）。
+  - 測試：新增 `AutomationPanel.test.jsx`（規則渲染 / dry-run 預覽 / 試跑需確認並 reload）；
+    Vitest 全綠（71 passed）。
 
 - **Phase 9 step-08 思考助手改全站抽屜 + 拆除 StrategyWorkbench**——右側策略工作台的內容前面步驟
   已分別搬到 `/presets`、`/backtest-runs`，這步收尾：把「思考助手聊天」改成全站可開的抽屜

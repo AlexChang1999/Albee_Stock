@@ -11,9 +11,10 @@ import { Box, Alert, Button } from "@mui/material";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import AccountCard from "../components/AccountCard";
 import BotList from "../components/BotList";
+import AutomationPanel from "../components/AutomationPanel";
 
 export default function DashboardPage() {
-  const { account, bots, onToggleActive, onRun, onEdit, onDelete } =
+  const { account, bots, onToggleActive, onRun, onEdit, onDelete, reload } =
     useOutletContext();
   const navigate = useNavigate();
 
@@ -32,6 +33,8 @@ export default function DashboardPage() {
       >
         想新增 Bot？讓 AI 盤前海選幫你挑高期望值（EV）策略，檢閱後一鍵部署。
       </Alert>
+      {/* 模式 B 全自動護欄：唯讀規則狀態 + 手動試跑（試跑會建 Paper Bot，故需 reload） */}
+      <AutomationPanel onChanged={reload} />
       <BotList
         bots={bots}
         onToggle={onToggleActive}

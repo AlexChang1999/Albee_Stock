@@ -8,7 +8,7 @@
 ## 技術棧
 
 - **後端**：Python 3.13 + FastAPI
-- **前端**：React (Vite) + Material UI
+- **前端**：React (Vite) + Material UI + 左側 sidebar 多頁路由（react-router）+ 原生圖表 `lightweight-charts`
 - **資料庫**：SQLite（用 **Alembic** 做版本化遷移，未來可換 PostgreSQL）
 - **交易/資料 API**：[Alpaca Markets](https://alpaca.markets)（`alpaca-py` 官方 SDK）
 - **回測**：自製 walk-forward 回測引擎（含**期望值 EV** 指標）
@@ -24,11 +24,13 @@
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成 |
 | Phase 3 | 多 Bot 管理 + 更多策略（8 種） | ✅ 完成 |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成 |
-| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地） |
+| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 核心已落地（剩選配項） |
 | Phase 6 | 可信度地基（回測 EV ≈ 實盤 EV：成本/隔日/OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10） |
 | Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07） |
-| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | 📋 構想藍圖 |
-| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | 📋 構想藍圖 |
+| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06） |
+| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08） |
+
+> 另有「改版子軌（redesign）」Phase 1–4，是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），✅ 已落地，與上表主線編號不同（詳見下方說明與 [`docs/redesign/`](docs/redesign/README.md)）。
 
 **已完成**：專案骨架、**9 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標／ADX 趨勢）、
 Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）、walk-forward 回測引擎、
@@ -37,7 +39,7 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 前後端單元測試、GitHub Actions CI。
 
 **Phase 5 已落地**（roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)）：
-- 右側可伸縮 / 可收合「**策略工作台**」（`StrategyWorkbench`）
+- 「**策略工作台**」（方案/回測/EV歷史/LLM助手）——Phase 9 已把內容拆進各自頁面（`/presets`、`/backtest-runs`）與助手抽屜，舊的右側 `StrategyWorkbench` 元件已移除
 - **策略方案（Preset）** CRUD + 一鍵 Python 回測，結果寫入 `backtest_runs`
 - 回測歷史用**期望值 EV**（非勝率）排序挑最優，含 profit factor、expectancy
 - **本機 LLM 思考助手**（預設 Ollama，免費）：設計 / 微調 / 事後檢討
@@ -64,10 +66,35 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
   `layer_validation` 對每層做 baseline-vs-candidate 樣本外比較，`is_layer_worth_it` 誠實判決去留
   （實測：meta ✅ 過、adaptive ❌、kelly ❌、event ⚪ 不可驗證——機制就位，加分待續調）
 
+**Phase 8 已落地**（策略知識庫 + 組合進化，藍圖：[`docs/phase-8-strategy-evolution/`](docs/phase-8-strategy-evolution/README.md)）——
+把「蒐集多策略 → 整合組合 → 驗證 → 人在迴路策展」串成閉環：
+- **策略知識庫**（step-01）：依理論/場景存策略說明，含 OOS 指標、狀態親和性、使用時機
+- **LLM 策略提案 + 組合引擎**（step-02~03）：本機 Ollama 提案候選 + 把多個已驗證子策略組成 `CompositeStrategy`
+- **自動驗證管線**（step-04）：候選一律過 Phase 6 OOS + Phase 7 step-07 walk-forward / purged CV，只有「OOS 真加分」才通過
+- **排行 + 使用時機**（step-05）：依 OOS EV 排序，附「何時該用」說明
+- **人在迴路審核**（step-06）：AI 只負責提案/驗證/排序，**晉升（validated→curated）/ 退回一律使用者點按**，理由寫進 `explorations/`
+
+**Phase 9 已落地**（專業前端工作站，藍圖：[`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)）——
+把「全擠在一個儀表板分頁 + 右側工作台」重構成左側 sidebar 分區的多頁終端機：
+- **導覽重構**（step-01）：上方 Tabs → 左側 sidebar + react-router 多頁；儀表板瘦身成純監控中心
+- **多頁面**（step-02~07）：交易紀錄 `/trades`、回測歷史 `/backtest-runs`、策略方案 `/presets`、探討檢討 `/explorations`（+ 新增 GET 端點）、決策審計 `/decisions`、進化實驗室 `/evolution`、策略知識庫 `/library`
+- **思考助手改全站抽屜**（step-08）：右下浮動鈕開關，並**拆除**舊的右側 `StrategyWorkbench`（內容已各自有家）
+
+**改版子軌（redesign）已落地**（AI 終端機改版，藍圖：[`docs/redesign/`](docs/redesign/README.md)）——
+Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
+- **原生圖表**（P1）：`lightweight-charts` 取代 TradingView iframe，可畫進場/止損/追蹤止盈水位線（可拖曳連動 DB）+ 2x2 網格盯盤
+- **AI 推薦資料流**（P2）：漏斗式海選（量能 → 本機 LLM 情緒 → EV）+ `/ai-recommendations` + 一鍵 Deploy
+- **深藍主題**（P3）：深海軍藍沉浸金融風，移除手填「建立 Bot」表單，儀表板改純監控
+- **模式 B 全自動護欄**（P4）：EV 閾值排程自動建 Bot（總開關預設關、與實盤雙閘獨立、全程 Paper），前端 `AutomationPanel` 唯讀規則 + 手動試跑
+
 > 系統工作流全貌見 [`docs/workflow-diagrams.md`](docs/workflow-diagrams.md)（Mermaid 畫的 4 張圖：
 > 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
 
-**規劃中**：見各 phase 藍圖（Phase 8 策略知識庫 + 組合進化、Phase 9 專業前端工作站）。
+**後續 / 未竟（非阻塞，未承諾時程）**：
+- **Phase 5 選配**（[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md) 第六節）：主動提醒、好策略一鍵轉 Bot、助手 tool_calls 顯示
+- **Phase 7 層加分續調**：`adaptive` / `kelly` 樣本外未加分、`event` 不可驗證——機制已就位，待更多資料/調參再決定去留
+- **redesign 後續**：自動化規則由 `.env` 改 DB 表（目前走 `.env`）
+- **實盤上線前必讀**：[`docs/human-vs-ai-operation.md`](docs/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）
 
 ## 安裝與設定
 
@@ -143,6 +170,22 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 - `POST /chat`：與本機 LLM 助手對話（注入帳戶/方案/EV歷史/探討路標當上下文）
 - `POST /chat/postmortem`：對某筆回測做事後檢討，寫入 `explorations/` 檔案記憶
 
+**AI 探勘 / 自動化 / 圖表（redesign 子軌）**
+
+- `GET /ai-recommendations`：漏斗式海選（量能 → 情緒 → EV）回傳值得部署的策略推薦
+- `GET /automation`：看模式 B 自動化規則與名額（由 `.env` 的 `AUTO_DEPLOY_*` 設定）
+- `POST /automation/run`：手動觸發一輪自動部署（`?dry_run=true` 只預覽、`?force=true` 略過總開關）
+- `GET /bars/{symbol}`：歷史日 K 線（給原生圖表 `lightweight-charts`）
+- `GET /quotes/{symbol}`：一次性最新報價（即時報價另走 WebSocket）
+- `GET /fundamentals/{symbol}`、`/financials`、`/news`、`/actions`：基本面/財報/新聞
+
+**探討記憶 / 策略知識庫（Phase 8/9）**
+
+- `GET /explorations`、`GET /explorations/{name}`：探討/檢討檔案記憶（唯讀路標 + 內容）
+- `GET /knowledge`、`GET /knowledge/ranking`、`GET /knowledge/{id}`：策略知識庫（可依狀態/OOS EV 排序）
+- `POST /knowledge/{id}/validate`：跑 OOS + walk-forward 驗證管線
+- `POST /knowledge/{id}/promote`、`POST /knowledge/{id}/reject`：人在迴路晉升/退回
+
 ### 建立 Bot 的範例（POST /bots）
 
 ```json
@@ -181,11 +224,14 @@ Albee_Stock/
 │   │                        #   sizing(凱利)/event_risk/validation/layer_validation
 │   ├── strategies/          # 9 種交易策略 + 註冊表 + 顯示名（list_strategies 單一來源）
 │   └── bots/                # Bot 管理器（執行 + 排程；每輪用 bot_id 重查最新設定）
-├── frontend/                # React 前端（Vite，模組化）
+├── frontend/                # React 前端（Vite，模組化；左側 sidebar + react-router 多頁）
 │   └── src/
 │       ├── api.js           # 後端 API 呼叫層（讀 VITE_API_URL）
-│       ├── App.jsx          # 主畫面編排層
-│       ├── components/      # 畫面區塊元件 + 測試（含 StrategyWorkbench 策略工作台）
+│       ├── App.jsx          # 路由編排層（state + handler + <Outlet context> 分配給各頁）
+│       ├── pages/           # 各路由頁（Dashboard/Trades/BacktestRuns/Presets/Explorations/
+│       │                    #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals…）
+│       ├── components/      # 畫面區塊元件 + 測試（SidebarLayout 導覽外殼、AssistantDrawer 助手抽屜、
+│       │                    #   AccountCard/BotList/AutomationPanel、LightweightChart/ChartGrid 原生圖表…）
 │       ├── hooks/ utils/    # 自訂 Hook、純函式工具（好測試）
 │       └── ...
 ├── explorations/            # 思考助手的「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔）
