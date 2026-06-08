@@ -17,6 +17,12 @@
 
 ### 新增
 
+- **Phase 9 step-04 策略方案頁（/presets）**——把右側工作台的策略方案搬成獨立全頁：
+  CRUD（新增/改名/調參/收藏/刪除）+ 一鍵跑回測。沿用工作台既有方案邏輯與 preset api，
+  刪除走既有 `ConfirmDialog`、回測結果用共用 `BacktestResultCard`，不自造新表單風格。
+  新增 sidebar「策略方案」項。測試：`PresetsPage.test.jsx`（渲染/新增/刪除確認，monkeypatch api）；
+  Vitest 全綠（57 passed）、build 通過。
+
 - **Phase 9 step-03 回測歷史 / EV 榜頁（/backtest-runs）**——把埋在右側工作台的回測歷史搬成獨立全頁：
   依 EV 排序的榜、收藏標星、點一筆看完整 metrics + 資金曲線、勾選數筆並排比較。
   - 抽共用元件 `components/BacktestResultCard.jsx`（EV 頭條卡）並回頭讓 `StrategyWorkbench` 區2 改用它，

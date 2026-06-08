@@ -23,6 +23,7 @@ describe("SidebarLayout", () => {
     expect(screen.getByText("監控中心")).toBeInTheDocument();
     expect(screen.getByText("交易紀錄")).toBeInTheDocument();
     expect(screen.getByText("回測歷史")).toBeInTheDocument();
+    expect(screen.getByText("策略方案")).toBeInTheDocument();
     expect(screen.getByText("AI 探勘")).toBeInTheDocument();
     expect(screen.getByText("K 線圖")).toBeInTheDocument();
     expect(screen.getByText("基本面")).toBeInTheDocument();
