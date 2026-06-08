@@ -29,6 +29,7 @@
 | Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07） |
 | Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06） |
 | Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08） |
+| Phase 10 | AI 交易公司（編排層 + 戰情頁 + 市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | 📋 構想藍圖（step-01~07） |
 
 > 另有「改版子軌（redesign）」Phase 1–4，是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），✅ 已落地，與上表主線編號不同（詳見下方說明與 [`docs/redesign/`](docs/redesign/README.md)）。
 
@@ -91,6 +92,8 @@ Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
 > 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
 
 **後續 / 未竟（非阻塞，未承諾時程）**：
+- **Phase 10 構想藍圖**：AI 交易公司（編排層 + 戰情頁 + 市場蒐集員/政治員/常駐探勘/因子報表/董事會核准
+  Bot 上真錢）——藍圖 [`docs/phase-10-ai-company/`](docs/phase-10-ai-company/README.md)（step-01~07，尚未動程式）
 - ~~**Phase 5 選配**：主動提醒、好策略一鍵轉 Bot、助手 tool_calls 顯示~~ ✅ 完成（好策略一鍵轉
   Bot `POST /presets/{id}/to-bot` + 主動提醒 `GET /reminders`；**tool_calls 顯示已棄做**——助手早改成
   「記憶預先注入 system 提示」、不再用 tool-use，無 tool_calls 可顯示）
