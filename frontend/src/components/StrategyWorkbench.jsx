@@ -33,6 +33,7 @@ import {
 import { STRATEGIES } from "../constants";
 import { NEON } from "../theme";
 import { api } from "../api";
+import BacktestResultCard from "./BacktestResultCard";
 
 // localStorage 的鍵名（存面板寬度）
 const WIDTH_KEY = "workbench_width";
@@ -449,56 +450,13 @@ export default function StrategyWorkbench() {
         {btResult && (
           <>
             <SectionTitle>② 最近一次回測結果</SectionTitle>
-            <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
-              <Typography variant="caption" color="text.secondary">
-                {btResult.presetName}
-              </Typography>
-              {/* EV 頭條 */}
-              <Box sx={{ my: 1, textAlign: "center" }}>
-                <Typography variant="caption" color="text.secondary">
-                  期望值 EV／筆
-                </Typography>
-                <Typography
-                  variant="h4"
-                  sx={{
-                    fontFamily: '"Sora", sans-serif',
-                    fontWeight: 700,
-                    color:
-                      btResult.expected_value >= 0 ? NEON.green : NEON.red,
-                  }}
-                >
-                  {btResult.expected_value >= 0 ? "+" : ""}
-                  {btResult.expected_value}
-                </Typography>
-              </Box>
-              <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mb: 1 }}>
-                <Chip size="small" label={`勝率 ${btResult.win_rate_pct}%`} />
-                <Chip size="small" label={`PF ${btResult.profit_factor ?? "—"}`} />
-                <Chip size="small" label={`總報酬 ${btResult.total_return_pct}%`} />
-                <Chip size="small" label={`回撤 ${btResult.max_drawdown_pct}%`} />
-                <Chip size="small" label={`買賣 ${btResult.num_round_trips} 筆`} />
-                {/* quantstats 風險調整後指標（有算出才顯示） */}
-                {btResult.extended?.sharpe != null && (
-                  <Chip size="small" label={`Sharpe ${btResult.extended.sharpe}`} />
-                )}
-                {btResult.extended?.sortino != null && (
-                  <Chip size="small" label={`Sortino ${btResult.extended.sortino}`} />
-                )}
-              </Stack>
-              {btResult.run_id && (
-                <Button
-                  size="small"
-                  onClick={() => window.open(api.reportUrl(btResult.run_id), "_blank")}
-                >
-                  📊 開啟完整績效報表
-                </Button>
-              )}
-              {btResult.expected_value < 0 && (
-                <Alert severity="warning" sx={{ mt: 1 }}>
-                  EV 為負（長期不賺）。建議到下方歷史按「檢討」請 Claude 分析錯在哪。
-                </Alert>
-              )}
-            </Paper>
+            <Box sx={{ mb: 2 }}>
+              <BacktestResultCard
+                metrics={btResult}
+                title={btResult.presetName}
+                runId={btResult.run_id}
+              />
+            </Box>
           </>
         )}
 

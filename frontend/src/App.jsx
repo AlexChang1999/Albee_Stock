@@ -26,6 +26,7 @@ import ChartsPage from "./pages/ChartsPage";
 import FundamentalsPage from "./pages/FundamentalsPage";
 import BacktestToolsPage from "./pages/BacktestToolsPage";
 import TradesPage from "./pages/TradesPage";
+import BacktestRunsPage from "./pages/BacktestRunsPage";
 
 // 常駐元件（外殼與彈窗）
 import EditBotDialog from "./components/EditBotDialog";
@@ -273,6 +274,7 @@ function App() {
           >
             <Route index element={<DashboardPage />} />
             <Route path="trades" element={<TradesPage />} />
+            <Route path="backtest-runs" element={<BacktestRunsPage />} />
             <Route path="ai-explore" element={<AiExplorePage />} />
             <Route path="charts" element={<ChartsPage />} />
             <Route path="fundamentals" element={<FundamentalsPage />} />

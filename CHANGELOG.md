@@ -17,6 +17,13 @@
 
 ### 新增
 
+- **Phase 9 step-03 回測歷史 / EV 榜頁（/backtest-runs）**——把埋在右側工作台的回測歷史搬成獨立全頁：
+  依 EV 排序的榜、收藏標星、點一筆看完整 metrics + 資金曲線、勾選數筆並排比較。
+  - 抽共用元件 `components/BacktestResultCard.jsx`（EV 頭條卡）並回頭讓 `StrategyWorkbench` 區2 改用它，
+    不重寫兩份；資金曲線用純 SVG `components/EquitySparkline.jsx`（**不引新圖表庫**）。
+  - 不改後端 `/backtest-runs` 排序語意、不在前端重算 EV——只顯示後端結果。新增 sidebar「回測歷史」項。
+  - 測試：`BacktestRunsPage.test.jsx`（渲染榜/收藏切換，monkeypatch api）；Vitest 全綠（54 passed）、build 通過。
+
 - **Phase 9 step-02 交易紀錄頁（/trades）+ 篩選**——把暫放回測工具頁的 TradesTable 升級成
   獨立頁，上方加篩選列（依 Bot / 標的 / 買賣別 / 日期區間）。篩選為前端純函式
   `utils/filterTrades.js`（不改後端 /trades 端點），抽純函式好測。新增 sidebar「交易紀錄」項。
