@@ -233,6 +233,7 @@ function App() {
     account,
     bots,
     trades,
+    reload, // 讓子頁（如自動化試跑後）能要求重抓 account/bots/trades
     // Bot 動作
     onToggleActive: handleToggleActive,
     onRun: handleRun,

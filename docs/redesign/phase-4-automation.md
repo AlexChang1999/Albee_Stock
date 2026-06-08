@@ -10,7 +10,8 @@
 > 編排 `run_auto_deploy` 支援 force/dry_run）、`backend/routers/automation.py`（`GET /automation`
 > 看規則名額、`POST /automation/run` 手動觸發）、`bot_manager.schedule_auto_deploy`（每日盤前 cron）、
 > `main.py` 啟動掛載。實盤雙閘**完全不動**、自動部署全程 Paper。測試後端 93 綠（+5）。
-> 未做（留後續，doc 未要求）：前端自動化規則面板、規則改用 DB 表（目前走 `.env`）。
+> 未做（留後續，doc 未要求）：~~前端自動化規則面板~~（✅ 已補，監控中心 `AutomationPanel`：唯讀規則 + 手動試跑）、
+> 規則改用 DB 表（目前走 `.env`，仍留後續——超出殘項範圍）。
 
 ---
 
