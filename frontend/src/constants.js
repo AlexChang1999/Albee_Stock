@@ -16,4 +16,5 @@ export const STRATEGIES = [
   { value: "momentum", label: "動量" },
   { value: "williams_r", label: "威廉指標" },
   { value: "adx_trend", label: "ADX 趨勢" },
+  { value: "composite", label: "策略組合" },
 ];

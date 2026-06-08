@@ -11,6 +11,7 @@ from backend.models.strategy_preset import StrategyPreset
 from backend.models.backtest_run import BacktestRun
 from backend.models.decision_log import DecisionLog
 from backend.models.portfolio_state import PortfolioState
+from backend.models.strategy_knowledge import StrategyKnowledge
 
 __all__ = [
     "Bot",
@@ -19,4 +20,5 @@ __all__ = [
     "BacktestRun",
     "DecisionLog",
     "PortfolioState",
+    "StrategyKnowledge",
 ]

@@ -15,6 +15,33 @@
 
 ## [未發布]
 
+### 新增
+
+- **Phase 8 step-01~06 策略知識庫 + 組合進化（人在迴路閉環）**——把「蒐集策略 → 整合組合 →
+  自動驗證 → 排序 → 人在迴路策展」串成閉環，強依賴 Phase 6（誠實 OOS）與 Phase 7 step-07（防過擬合）。
+  - **step-01 知識庫資料模型**：新增 `StrategyKnowledge`（理論/場景/使用時機/驗證狀態機
+    candidate→validated→curated/rejected/OOS 指標/狀態親和性），走 Alembic 遷移
+    `f6a7b8c9d0e1`；新增 `routers/knowledge.py` 基本 CRUD。
+  - **step-02 策略生成器**：`services/strategy_generator.py` 用 LLM 依場景**草擬**候選參數
+    （限既有策略鍵），`POST /knowledge/propose` 只進候選區、不回測不部署；沿用 `llm` 外送安全閥，
+    **不**自動寫新策略 `.py`（新邏輯一律走 strategy-builder skill）。
+  - **step-03 策略組合引擎**：`strategies/composite.py` 的 `CompositeStrategy`（投票/加權/狀態切換），
+    聚合抽成純函式 `aggregate_signals`；註冊進 `STRATEGY_REGISTRY`（鍵 `composite`），走既有
+    `_run_on_df`/Bot 流程零特例；子策略統一吃同一份 df（呼應「資料只抓一次」）。
+  - **step-04 自動驗證管線**：`services/evolution.py` 的 `validate_candidate` **重用** Phase 6
+    含成本/隔日成交回測 + `split_train_test` 單次 OOS + Phase 7 `walk_forward`/`is_layer_worth_it`，
+    只有「樣本外真加分」判 validated，否則 rejected；判定鍵讀 OOS/walk-forward，非 in-sample。
+  - **step-05 排行 + 使用時機說明**：`GET /knowledge/ranking` 依 OOS EV 排序；
+    `POST /knowledge/{id}/usage-note` 用 Phase 7 狀態親和性 + LLM 寫一兩句白話「何時用」，
+    寫回 `usage_note`/`regime_affinity`。
+  - **step-06 人在迴路審核**：`POST /knowledge/{id}/promote`（validated→curated，**只能由人觸發**）、
+    `/reject`（附理由）；採用/淘汰理由沿用 explorations 檔案記憶（新增 `write_knowledge_note`，
+    `knowledge-` 前綴與回測檢討區隔不撞檔），形成可追溯軌跡。自動流程到 validated 為止，無自動晉升路徑。
+  - 測試：`test_knowledge`/`test_composite`/`test_strategy_generator`/`test_evolution`
+    （CRUD/狀態流轉/404、聚合純函式、LLM 提案 monkeypatch、OOS 加分→validated/不加分→rejected）；
+    `pytest tests/ -q` 全綠（249 passed）。`composite` 為事件式聚合器，於 `test_vectorized_engine`
+    的「全策略向量化」不變式中明確豁免。
+
 ### 變更
 
 - **依層驗證結論接線：meta-labeling 收回固定策略線上路徑（其餘層不動）**——跑 `scripts/validate_layers.py`
