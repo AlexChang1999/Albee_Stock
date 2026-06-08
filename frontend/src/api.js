@@ -186,4 +186,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+
+  // ===== Phase 10：公司戰情（各部門現況聚合，唯讀）=====
+  getCompanyOverview: () => request("/company/overview"),
 };

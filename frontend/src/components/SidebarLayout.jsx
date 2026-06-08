@@ -25,6 +25,7 @@ import { NEON } from "../theme";
 // 灰底（依賴前面 phase）頁面在對應 step 落地時再逐一加進來。
 const NAV_ITEMS = [
   { to: "/", label: "監控中心", end: true },
+  { to: "/company", label: "公司戰情" },
   { to: "/trades", label: "交易紀錄" },
   { to: "/backtest-runs", label: "回測歷史" },
   { to: "/presets", label: "策略方案" },
