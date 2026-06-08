@@ -17,6 +17,13 @@
 
 ### 新增
 
+- **Phase 9 step-06 決策審計頁（/decisions）**——把每個 Bot 的決策軌跡（為何在某時點
+  買/賣/觀望/跳過）做成可瀏覽頁，「每一筆自動決策可追溯」的前端呈現。`api.getBotDecisions`
+  打 Phase 6 `GET /bots/{id}/decisions`；`pages/DecisionsPage.jsx` 選 Bot → 時序列出
+  action/signal/reason/price/時間，不同 action（bought/sold/hold/skipped_*）配色。
+  只顯示後端審計、不重算。新增 sidebar「決策審計」項。測試：`DecisionsPage.test.jsx`
+  （未選不抓/選 Bot 列出含配色）；Vitest 全綠（61 passed）、build 通過。
+
 - **Phase 9 step-05 探討/檢討頁（/explorations）+ 後端讀取端點**——把 explorations 檔案記憶
   （LLM 事後檢討）做成可瀏覽的唯讀頁（左清單 + 右內容）。**唯一碰後端的前端步驟**。
   - 後端：新增 `backend/routers/explorations.py`（`GET /explorations` 重用 `list_index_entries()`；

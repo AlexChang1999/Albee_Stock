@@ -131,6 +131,11 @@ export const api = {
       body: JSON.stringify({ run_id: runId }),
     }),
 
+  // ===== Phase 9：決策審計（Phase 6 step-08 的軌跡）=====
+  // 某 Bot 最近的決策紀錄（含沒成交的觀望/跳過），依時間倒序
+  getBotDecisions: (botId, limit = 50) =>
+    request(`/bots/${botId}/decisions?limit=${limit}`),
+
   // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
   // 路標清單（每筆 run_id / file / strategy / symbol / summary）
   getExplorations: () => request("/explorations"),
