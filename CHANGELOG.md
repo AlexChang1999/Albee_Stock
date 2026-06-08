@@ -17,6 +17,16 @@
 
 ### 新增
 
+- **Phase 9 step-05 探討/檢討頁（/explorations）+ 後端讀取端點**——把 explorations 檔案記憶
+  （LLM 事後檢討）做成可瀏覽的唯讀頁（左清單 + 右內容）。**唯一碰後端的前端步驟**。
+  - 後端：新增 `backend/routers/explorations.py`（`GET /explorations` 重用 `list_index_entries()`；
+    `GET /explorations/{name}` 重用 `read_exploration()` 防穿越，讀不到回 404），掛上 `main.py`。
+    **不**自己 open()/拼路徑（安全紅線）；唯讀，無寫/改/刪。
+  - 前端：`api.js` 加 `getExplorations`/`getExploration`；新增 `pages/ExplorationsPage.jsx`
+    （內容用輕量 pre-wrap 顯示，不引重型 markdown 依賴）。新增 sidebar「探討檢討」項。
+  - 測試：`tests/test_explorations_api.py`（往返/404/**防穿越** `../`、非 .md，4 passed）+
+    `ExplorationsPage.test.jsx`（清單/讀內容）；前端 Vitest 全綠（59 passed）、build 通過。
+
 - **Phase 9 step-04 策略方案頁（/presets）**——把右側工作台的策略方案搬成獨立全頁：
   CRUD（新增/改名/調參/收藏/刪除）+ 一鍵跑回測。沿用工作台既有方案邏輯與 preset api，
   刪除走既有 `ConfirmDialog`、回測結果用共用 `BacktestResultCard`，不自造新表單風格。

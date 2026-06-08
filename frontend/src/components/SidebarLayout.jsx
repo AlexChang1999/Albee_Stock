@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: "/trades", label: "交易紀錄" },
   { to: "/backtest-runs", label: "回測歷史" },
   { to: "/presets", label: "策略方案" },
+  { to: "/explorations", label: "探討檢討" },
   { to: "/ai-explore", label: "AI 探勘" },
   { to: "/charts", label: "K 線圖" },
   { to: "/fundamentals", label: "基本面" },

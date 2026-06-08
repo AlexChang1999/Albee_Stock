@@ -130,4 +130,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ run_id: runId }),
     }),
+
+  // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
+  // 路標清單（每筆 run_id / file / strategy / symbol / summary）
+  getExplorations: () => request("/explorations"),
+  // 某篇探討的完整 markdown 內容（{ name, content }）
+  getExploration: (name) => request(`/explorations/${encodeURIComponent(name)}`),
 };
