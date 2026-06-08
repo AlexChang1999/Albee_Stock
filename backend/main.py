@@ -57,8 +57,13 @@ async def lifespan(app: FastAPI):
     # --- 啟動時 ---
     init_db()  # 把資料庫的表建好（如果還沒建）
     _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
-    # 模式 B：掛上盤前自動部署的每日定時工作（是否真的部署仍由 AUTO_DEPLOY_ENABLED 控制）
-    bot_manager.schedule_auto_deploy(settings.AUTO_DEPLOY_HOUR)
+    # 模式 B：掛上盤前自動部署的每日定時工作（時刻讀 DB 規則；是否真的部署仍由 enabled 總開關控制）
+    _db = SessionLocal()
+    try:
+        from backend.services.automation_config import get_config
+        bot_manager.schedule_auto_deploy(get_config(_db).scan_hour)
+    finally:
+        _db.close()
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")
     yield
     # --- 關閉時 ---（目前沒事要做，先留空）

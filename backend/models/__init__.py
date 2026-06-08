@@ -12,6 +12,7 @@ from backend.models.backtest_run import BacktestRun
 from backend.models.decision_log import DecisionLog
 from backend.models.portfolio_state import PortfolioState
 from backend.models.strategy_knowledge import StrategyKnowledge
+from backend.models.automation_config import AutomationConfig
 
 __all__ = [
     "Bot",
@@ -21,4 +22,5 @@ __all__ = [
     "DecisionLog",
     "PortfolioState",
     "StrategyKnowledge",
+    "AutomationConfig",
 ]

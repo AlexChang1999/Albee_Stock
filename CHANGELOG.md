@@ -30,6 +30,32 @@
 
 ### 新增
 
+- **自動化規則 `.env` → DB 表（前端可編輯）**——把模式 B 自動部署規則（`AUTO_DEPLOY_*`）
+  從「唯讀吃 `.env`、改了要重啟」搬進 DB 單列表，讓前端可即時編輯儲存。完成 README「後續/未竟」
+  列的 redesign backlog。
+  - **新 model + 遷移**：`backend/models/automation_config.py`（單列 id=1，比照 `portfolio_state`，
+    6 欄：`enabled`/`ev_threshold`/`winrate_threshold`/`max_bots`/`cash_per_bot`/`scan_hour`），
+    走 Alembic 遷移 `a7b8c9d0e1f2`（建表 + 用 `.env` 預設常數種一筆預設列）。
+  - **存取服務**：`backend/services/automation_config.py` 的 `get_config`（load-or-seed：空表用
+    `settings.AUTO_DEPLOY_*` 種一筆防呆）+ `update_config`（只改有帶欄位、驗證範圍、回傳
+    `scan_hour` 是否變動）。
+  - **後端讀取點全改吃 DB**：`automation.run_auto_deploy` 開頭 `get_config(db)`，總開關 / 門檻 /
+    配資一律讀 `cfg.*`（`plan_deployments` 純函式與雙門檻/去重/名額演算法**不動**）；`main.py`
+    啟動掛盤前 cron 改讀 DB 的 `scan_hour`。
+  - **API**：`GET /automation` 改讀 DB（回傳鍵名/型別不變，保前端契約）；新增 `PUT /automation`
+    （6 欄全 Optional、驗證失敗回 400；改 `scan_hour` 即時 `bot_manager.schedule_auto_deploy`
+    重掛 cron，不必重啟）。
+  - **前端**：`api.js` 加 `updateAutomation`；`AutomationPanel.jsx` 從唯讀儀表加「編輯規則」模式
+    （受控表單 + Switch + 數字欄位），儲存呼 PUT；**開啟總開關走 `ConfirmDialog` 二次確認**
+    （語意＝開自動駕駛，仍全程 Paper、與實盤雙閘獨立）。顏色吃主題、不寫死 hex。
+  - **連帶修正**：`AutomationPanel` 勝率門檻顯示原本寫 `winrate_threshold * 100`，但後端存的就是
+    百分比（55=55%），會誤顯示成 5500%；改為直接顯示，與可編輯表單的回送語意一致。
+  - **安全紅線**：全程不碰實盤雙閘（`ALPACA_BASE_URL` / `ALLOW_LIVE_TRADING`），自動建的 Bot
+    下單仍經 `submit_market_order` 雙閘把關；`.env` 的 `AUTO_DEPLOY_*` 保留當建表種子 / fallback。
+  - 測試：新增 `tests/test_automation_config.py`（get_config seed/冪等、update_config 只改有帶/
+    驗證/scan_hour 變動旗標、PUT 往返 + 重掛 cron + 驗證 400）；`AutomationPanel.test.jsx` 補
+    編輯儲存 / 開總開關需確認，並把假資料的 `winrate_threshold` 對齊真實後端（55 而非 0.55）。
+
 - **redesign 殘項收尾：前端自動化規則面板 + BotAvatar 深底調色**——把 `docs/redesign/README.md`
   與 `phase-4-automation.md` 列為「後續微調」的兩項未竟工補上（redesign 四階段早已完成、
   phase-9 疊在其上無回歸，故只剩這兩個純打磨）。

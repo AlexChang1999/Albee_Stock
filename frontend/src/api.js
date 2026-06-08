@@ -93,9 +93,12 @@ export const api = {
   getNews: (symbol) => request(`/fundamentals/${symbol}/news`),
   getActions: (symbol) => request(`/fundamentals/${symbol}/actions`),
 
-  // ===== redesign Phase 4：模式 B 全局自動化規則（唯讀狀態 + 手動觸發）=====
-  // 看目前規則與名額（規則由 .env 的 AUTO_DEPLOY_* 設定，runtime 唯讀）
+  // ===== redesign Phase 4：模式 B 全局自動化規則（規則存 DB，可編輯）=====
+  // 看目前規則與名額
   getAutomation: () => request("/automation"),
+  // 編輯規則（只送有帶的欄位；改 scan_hour 後端會即時重掛排程）
+  updateAutomation: (body) =>
+    request("/automation", { method: "PUT", body: JSON.stringify(body) }),
   // 手動觸發一輪自動部署。dry_run=true 只預覽會部署誰、不真的建；force=true 略過總開關
   runAutomation: ({ force = false, dry_run = false } = {}) =>
     request(`/automation/run?force=${force}&dry_run=${dry_run}`, {
