@@ -322,11 +322,21 @@ def _build_reminders(db: Session) -> list[dict]:
     """
     掃出「值得使用者主動關注」的事項，純讀現有資料、不連網。回傳由重要到次要。
 
-    兩種來源（對齊 Phase 5「EV 檢討 → 越來越聰明」閉環）：
+    三種來源：
       1. review_negative_ev：回測 EV 為負且還沒做檢討 → 提示請 Claude 助手檢討。
       2. deploy_good_strategy：標記為好策略(is_good)、但同 標的+策略 還沒建成 Bot →
          提示可一鍵轉 Bot 實跑。
+      3. propose_live_candidate（Phase 10 step-06）：Paper Bot 實績達標、但還沒提議上真錢 →
+         提示可送董事會核准。達標判斷一律走 promotion 的純函式（EV 看樣本外、樣本要夠）。
     """
+    # 延遲匯入避免循環依賴（promotion 也用到 performance/automation_config）
+    from backend.routers.promotion import (
+        evaluate_promotion_readiness,
+        _bot_paper_stats,
+        _best_oos_ev,
+    )
+    from backend.services.automation_config import get_config
+
     reminders: list[dict] = []
 
     # 現有 Bot 的 (symbol, strategy) 集合，用來判斷好策略是否已實跑
@@ -360,6 +370,28 @@ def _build_reminders(db: Session) -> list[dict]:
                 "expected_value": None if ev == float("-inf") else ev,
                 "message": f"{run.symbol}／{run.strategy_key} 已標為好策略但還沒實跑，"
                            f"可一鍵轉成 Bot。",
+            })
+
+    # 3) Paper Bot 實績達標、但還沒提議上真錢 → 提示送董事會核准
+    cfg = get_config(db)
+    for bot in db.query(Bot).filter(Bot.promotion_status == "paper").all():
+        stats = _bot_paper_stats(db, bot.id)
+        oos_ev = _best_oos_ev(db, bot.symbol, bot.strategy)
+        verdict = evaluate_promotion_readiness(
+            stats, oos_ev,
+            ev_threshold=cfg.ev_threshold,
+            winrate_threshold=cfg.winrate_threshold,
+        )
+        if verdict["ready"]:
+            reminders.append({
+                "type": "propose_live_candidate",
+                "bot_id": bot.id,
+                "symbol": bot.symbol,
+                "strategy_key": bot.strategy,
+                "expected_value": oos_ev,
+                "message": f"{bot.symbol}／{bot.strategy} 的 Bot「{bot.name}」Paper 表現達標"
+                           f"（OOS EV={oos_ev}、勝率={stats.get('win_rate_pct')}%），"
+                           f"可提議送董事會核准上真錢。",
             })
 
     return reminders

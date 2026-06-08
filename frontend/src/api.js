@@ -193,4 +193,21 @@ export const api = {
   // 機會清單：常駐探勘持久化的候選，依 OOS EV 由高到低（可選 limit / status）
   getOpportunities: ({ limit = 50, status } = {}) =>
     request(`/opportunities?limit=${limit}${status ? `&status=${status}` : ""}`),
+
+  // ===== Phase 10 step-06：董事會核准（Bot 進真錢，人在迴路）=====
+  // 晉升清單：預設「待核（proposed_live）」；可帶 status 看其他狀態
+  getPromotions: (status) =>
+    request(`/promotions${status ? `?status=${status}` : ""}`),
+  // 系統/人提議某 Bot 上真錢（附達標證據）；未達標後端回 409
+  proposePromotion: (botId) =>
+    request(`/promotions/${botId}/propose`, { method: "POST" }),
+  // 老闆核准（→ approved_live，只是人工旗標，不放行真錢）
+  approvePromotion: (botId) =>
+    request(`/promotions/${botId}/approve`, { method: "POST" }),
+  // 老闆退回（→ rejected，附理由）
+  rejectPromotion: (botId, reason = "") =>
+    request(`/promotions/${botId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
 };

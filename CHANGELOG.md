@@ -37,6 +37,28 @@
 
 ### 新增
 
+- **Phase 10 step-06：董事會核准頁（Bot 進真錢，人在迴路）**——補「老闆一頁核准 + AI 主動提醒」：
+  系統偵測「某 Bot Paper 表現達標、建議上真錢」→ 提議 → 使用者一頁**核准 / 退回**。
+  - `bots` 表加三欄（`backend/models/bot.py`：`promotion_status`〔paper/proposed_live/
+    approved_live/rejected〕/`promotion_proposed_at`/`promotion_reason`），走 **Alembic 遷移**
+    `c9d0e1f2a3b4`（`batch_alter_table` 加欄、既有列 server_default 回填 `paper`）。
+  - 新增 `backend/routers/promotion.py`：純函式 `evaluate_promotion_readiness`（三道門檻：
+    OOS EV ≥ `ev_threshold`、Paper 勝率 ≥ `winrate_threshold`、完整買賣 ≥ 3 才達標，好單測）；
+    端點 `GET /promotions`（預設待核清單）、`POST /promotions/{id}/propose`（達標才提議、附證據、
+    主動 `notify` 一次、冪等去抖；未達標回 409）、`/approve`、`/reject`（附理由）。達標證據
+    **重用既有** `performance.compute_bot_stats`（Paper 實績）+ 機會清單最佳 OOS EV，不重算。
+  - `presets._build_reminders` 加第三種提醒 `propose_live_candidate`（Paper Bot 達標但未提議 →
+    浮上橫幅），判斷一律走 promotion 的純函式。`main.py` 掛上 `promotion.router`。
+  - 前端新增 `pages/PromotionPage.jsx`（比照 `EvolutionPage` 的 tab + 卡片 + 動作鈕：候選 Paper→
+    提議、待核→核准/退回），sidebar 加「董事會核准」項 + 路由；`api.js` 加四支呼叫。顏色吃
+    `theme`/`NEON`、不寫死 hex。
+  - ★**安全紅線**：UI「核准」只是**多一道人工閘**，`approved_live` 只是「人已同意」旗標，
+    **不放行真錢**——真錢仍須 `ALPACA_BASE_URL` 實盤 + `ALLOW_LIVE_TRADING=true` 雙閘，由
+    `alpaca_client.submit_market_order` 把關（兩者 AND）。本步**完全不碰那道安全閥、不改
+    `alpaca_client`、不改 `.env` 語意、不做自動晉升**（一律人工點按）。理由存 `promotion_reason`
+    欄位供追溯。測試：`tests/test_promotion.py`（純函式三門檻/狀態流轉冪等/未達標 409/退回理由/
+    提醒命中）、前端 `PromotionPage.test.jsx`（候選提議 + 待核核准）。
+
 - **Phase 10 step-02：常駐探勘 + 機會清單持久化（好策略不漏掉）**——把海選從「手動觸發」
   補成**盤中週期自動跑 + 排名候選存 DB**，名額滿時不再把第 6~N 名直接丟掉、關掉 app 也留著。
   - 新增 `opportunities` 表（`backend/models/opportunity.py`：symbol/strategy_key/params/
