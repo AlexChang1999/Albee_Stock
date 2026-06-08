@@ -17,6 +17,17 @@
 
 ### 新增
 
+- **Phase 9 step-07 進化實驗室（/evolution）+ 策略知識庫（/library）**——把 Phase 8 的
+  「策略知識庫 + 組合進化」呈現成兩頁。
+  - `api.js` 加 knowledge 全套（`getKnowledge`/`getKnowledgeRanking`/`getKnowledgeItem`/
+    `validateKnowledge`/`promoteKnowledge`/`rejectKnowledge`）。抽共用 `components/KnowledgeCard.jsx`
+    （理論/場景/使用時機/OOS 指標/狀態親和性）。
+  - `LibraryPage`：唯讀策展庫 + 排行（curated/validated，依 OOS EV 排序），不做晉升/退回。
+    `EvolutionPage`：候選審核 + 跑驗證管線 + **人在迴路**晉升（validated→curated）/ 退回（附理由）——
+    晉升一律由使用者點按觸發，前端不自動晉升、不重算 EV/驗證。新增 sidebar「進化實驗室」「策略知識庫」項。
+  - 測試：`EvolutionPage.test.jsx`（候選/驗證/晉升）+ `LibraryPage.test.jsx`（策展庫/切換）；
+    Vitest 全綠（65 passed）、build 通過。
+
 - **Phase 9 step-06 決策審計頁（/decisions）**——把每個 Bot 的決策軌跡（為何在某時點
   買/賣/觀望/跳過）做成可瀏覽頁，「每一筆自動決策可追溯」的前端呈現。`api.getBotDecisions`
   打 Phase 6 `GET /bots/{id}/decisions`；`pages/DecisionsPage.jsx` 選 Bot → 時序列出

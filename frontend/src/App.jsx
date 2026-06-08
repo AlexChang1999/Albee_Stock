@@ -30,6 +30,8 @@ import BacktestRunsPage from "./pages/BacktestRunsPage";
 import PresetsPage from "./pages/PresetsPage";
 import ExplorationsPage from "./pages/ExplorationsPage";
 import DecisionsPage from "./pages/DecisionsPage";
+import LibraryPage from "./pages/LibraryPage";
+import EvolutionPage from "./pages/EvolutionPage";
 
 // 常駐元件（外殼與彈窗）
 import EditBotDialog from "./components/EditBotDialog";
@@ -281,6 +283,8 @@ function App() {
             <Route path="presets" element={<PresetsPage />} />
             <Route path="explorations" element={<ExplorationsPage />} />
             <Route path="decisions" element={<DecisionsPage />} />
+            <Route path="evolution" element={<EvolutionPage />} />
+            <Route path="library" element={<LibraryPage />} />
             <Route path="ai-explore" element={<AiExplorePage />} />
             <Route path="charts" element={<ChartsPage />} />
             <Route path="fundamentals" element={<FundamentalsPage />} />

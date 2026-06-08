@@ -29,6 +29,8 @@ const NAV_ITEMS = [
   { to: "/presets", label: "策略方案" },
   { to: "/explorations", label: "探討檢討" },
   { to: "/decisions", label: "決策審計" },
+  { to: "/evolution", label: "進化實驗室" },
+  { to: "/library", label: "策略知識庫" },
   { to: "/ai-explore", label: "AI 探勘" },
   { to: "/charts", label: "K 線圖" },
   { to: "/fundamentals", label: "基本面" },
