@@ -37,6 +37,21 @@
 
 ### 新增
 
+- **Phase 10 step-04：市場蒐集員（爬蟲收料，靈感收件匣）**——補「上網找策略」前台：定時從 RSS / 部落格
+  收「策略描述文字」進收件匣（`raw_strategy_finds`），當人 / `strategy-builder` 寫成策略的素材。
+  **只收料、不驗證、不部署**——收回來一律走既有 OOS 閘 + 人工核准才可能上線。
+  - 後端：`models/raw_strategy_find.py`（status 流轉 new→triaged→built/discarded）、
+    `services/collector.py`（純函式 `parse_rss`〔RSS2.0+Atom〕/ `parse_html_listing`〔bs4〕/ `dedup_rows` /
+    `upsert_finds`〔冪等、保留 status〕 + best-effort `fetch_url` + 排程入口 `run_collector_scan`）、
+    `routers/collector.py`（`GET /collector/finds` + `PATCH /collector/finds/{id}` 改狀態）。
+  - 排程：`bot_manager.schedule_collector_scan`（沿用 step-02 APScheduler 機制）；`main.py` 啟動時掛上，
+    `COLLECTOR_INTERVAL_MIN` 預設 0（關）、沒設 `COLLECTOR_RSS_FEEDS` 也會跳過，不無故打外站。
+  - 前端：新頁 `pages/CollectorPage.jsx`（收件匣表 + 狀態策展鈕）+ sidebar 導覽「市場蒐集員」。
+  - 依賴：`beautifulsoup4==4.15.0`（純 Python、Windows 安全，靜態頁解析用）。
+  - DB：Alembic `e1f2a3b4c5d6_add_raw_strategy_finds`。
+  - 測試：`tests/test_collector.py`（10 項：解析/去重/upsert 冪等/掃描去抖/API 往返）、
+    `CollectorPage.test.jsx`（2 項）。**股價不爬**（用既有 `market_data`/yfinance）。守 robots/節流/User-Agent。
+
 - **Phase 10 step-07：開機常駐化（Windows 自啟，純 ops 零交易邏輯改動）**——補「電腦開機就一直跑」：
   新增 `scripts\register_autostart.bat`（用 `schtasks /SC ONLOGON` 註冊「登入時自動啟動」工作
   `AlbeeStockBackend`，觸發既有根目錄 `start_backend.bat`）+ `scripts\unregister_autostart.bat`

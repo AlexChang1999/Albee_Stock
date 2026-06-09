@@ -47,6 +47,9 @@ requests==2.34.2
 # --- LLM 思考助手（Phase 5；OpenAI 相容介面，預設接本機 Ollama，免費） ---
 openai==2.40.0
 
+# --- HTML 解析（Phase 10 step-04 市場蒐集員爬靜態頁；純 Python、Windows 安全） ---
+beautifulsoup4==4.15.0
+
 # --- 測試（開發/CI 用） ---
 pytest==9.0.3
 httpx==0.28.1

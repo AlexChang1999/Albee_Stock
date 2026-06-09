@@ -218,4 +218,15 @@ export const api = {
   // CSV 匯出「完整網址」（回 CSV 不是 JSON，給 <a href> 下載用，不走 request()）
   factorsCsvUrl: (symbol) =>
     `${BASE_URL}/factors/export.csv${symbol ? `?symbol=${symbol}` : ""}`,
+
+  // ===== Phase 10 step-04：市場蒐集員（爬蟲收料，靈感收件匣）=====
+  // 收件匣素材清單：依抓取時間由新到舊（可選 limit / status）
+  getCollectorFinds: ({ limit = 50, status } = {}) =>
+    request(`/collector/finds?limit=${limit}${status ? `&status=${status}` : ""}`),
+  // 人工策展：標記一筆素材的狀態（new/triaged/built/discarded）
+  updateCollectorFind: (id, status) =>
+    request(`/collector/finds/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
 };

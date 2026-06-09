@@ -132,6 +132,21 @@ class Settings:
     SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
 
     # ========================================================
+    # 市場蒐集員 — 爬蟲收料（Phase 10 step-04）
+    # ========================================================
+    # 定時從 RSS / 部落格收「策略描述文字」進收件匣（raw_strategy_finds），當人 /
+    # strategy-builder 寫成策略的素材。**只收料、不驗證、不部署**，收回來一律過既有 OOS 閘。
+    #   - COLLECTOR_RSS_FEEDS：逗號 / 換行分隔的 RSS 網址；留空＝不收料（預設關，要收自己填）。
+    #   - COLLECTOR_INTERVAL_MIN：每隔幾分鐘收一次；0＝關閉常駐收料（預設關，避免無故打外站）。
+    #   - COLLECTOR_USER_AGENT：禮貌的 User-Agent，尊重來源、降低被封 IP 風險。
+    COLLECTOR_RSS_FEEDS: str = os.getenv("COLLECTOR_RSS_FEEDS", "")
+    COLLECTOR_INTERVAL_MIN: int = int(os.getenv("COLLECTOR_INTERVAL_MIN", "0"))
+    COLLECTOR_USER_AGENT: str = os.getenv(
+        "COLLECTOR_USER_AGENT",
+        "AlbeeStockCollector/1.0 (+personal research bot; best-effort, respects robots)",
+    )
+
+    # ========================================================
     # 回測成本模型（Phase 6 step-02）
     # ========================================================
     # 讓回測吃到真實摩擦成本，EV 才誠實（沒成本的 EV 是行銷數字，不是可下注的數字）。

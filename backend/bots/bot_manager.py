@@ -438,6 +438,29 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_collector_scan(self, interval_minutes: int) -> None:
+        """
+        掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。
+
+        每隔 interval_minutes 分鐘跑一次 run_collector_scan（抓 RSS → 收件匣 → 有新料提醒）。
+        interval_minutes <= 0 代表關閉常駐收料：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.collector import run_collector_scan
+
+        job_id = "collector_scan"
+        if interval_minutes <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_collector_scan,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
 
 # 全域共用的 Bot 管理器
 bot_manager = BotManager()

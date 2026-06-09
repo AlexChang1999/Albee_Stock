@@ -15,6 +15,7 @@ from backend.models.strategy_knowledge import StrategyKnowledge
 from backend.models.automation_config import AutomationConfig
 from backend.models.opportunity import Opportunity
 from backend.models.factor_snapshot import FactorSnapshot
+from backend.models.raw_strategy_find import RawStrategyFind
 
 __all__ = [
     "Bot",
@@ -27,4 +28,5 @@ __all__ = [
     "AutomationConfig",
     "Opportunity",
     "FactorSnapshot",
+    "RawStrategyFind",
 ]
