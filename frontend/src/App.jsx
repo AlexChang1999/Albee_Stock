@@ -36,6 +36,7 @@ import CompanyPage from "./pages/CompanyPage";
 import PromotionPage from "./pages/PromotionPage";
 import FactorsPage from "./pages/FactorsPage";
 import CollectorPage from "./pages/CollectorPage";
+import PoliticalPage from "./pages/PoliticalPage";
 
 // 常駐元件（外殼與彈窗）
 import EditBotDialog from "./components/EditBotDialog";
@@ -285,6 +286,7 @@ function App() {
             <Route path="promotions" element={<PromotionPage />} />
             <Route path="factors" element={<FactorsPage />} />
             <Route path="collector" element={<CollectorPage />} />
+            <Route path="political" element={<PoliticalPage />} />
             <Route path="trades" element={<TradesPage />} />
             <Route path="backtest-runs" element={<BacktestRunsPage />} />
             <Route path="presets" element={<PresetsPage />} />

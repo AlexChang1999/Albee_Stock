@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { to: "/promotions", label: "董事會核准" },
   { to: "/factors", label: "因子報表" },
   { to: "/collector", label: "市場蒐集員" },
+  { to: "/political", label: "政治專討員" },
   { to: "/trades", label: "交易紀錄" },
   { to: "/backtest-runs", label: "回測歷史" },
   { to: "/presets", label: "策略方案" },

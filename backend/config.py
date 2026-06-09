@@ -147,6 +147,21 @@ class Settings:
     )
 
     # ========================================================
+    # 政治專討員 — Discord 事件流（Phase 10 step-05）
+    # ========================================================
+    # 從 Discord 頻道偵測政治貼文（例如川普發文鏡像）→ 本機 Ollama 判讀 → 接既有風險煞車。
+    # ★ 定位是「煞車（降風險、不開新倉），不是油門」。預設**完全關閉**，不影響現行下單。
+    #   - POLITICAL_ENABLED：bridge 總開關（預設 false）。false＝political_size_factor 一律放行。
+    #   - POLITICAL_DISCORD_TOKEN / POLITICAL_CHANNEL_ID：Discord runner 用（留空＝不啟動 runner）。
+    #   - POLITICAL_AUTHOR_FILTER：只處理這個作者名的貼文（留空＝該頻道所有貼文）。
+    #   - POLITICAL_EVENT_MAX_AGE_HOURS：政治情緒超過幾小時就退場、不再煞車（預設 24h）。
+    POLITICAL_ENABLED: bool = os.getenv("POLITICAL_ENABLED", "false").lower() in ("1", "true", "yes")
+    POLITICAL_DISCORD_TOKEN: str = os.getenv("POLITICAL_DISCORD_TOKEN", "")
+    POLITICAL_CHANNEL_ID: str = os.getenv("POLITICAL_CHANNEL_ID", "")
+    POLITICAL_AUTHOR_FILTER: str = os.getenv("POLITICAL_AUTHOR_FILTER", "")
+    POLITICAL_EVENT_MAX_AGE_HOURS: float = float(os.getenv("POLITICAL_EVENT_MAX_AGE_HOURS", "24"))
+
+    # ========================================================
     # 回測成本模型（Phase 6 step-02）
     # ========================================================
     # 讓回測吃到真實摩擦成本，EV 才誠實（沒成本的 EV 是行銷數字，不是可下注的數字）。

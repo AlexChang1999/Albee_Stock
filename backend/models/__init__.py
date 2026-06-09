@@ -16,6 +16,7 @@ from backend.models.automation_config import AutomationConfig
 from backend.models.opportunity import Opportunity
 from backend.models.factor_snapshot import FactorSnapshot
 from backend.models.raw_strategy_find import RawStrategyFind
+from backend.models.political_event import PoliticalEvent
 
 __all__ = [
     "Bot",
@@ -29,4 +30,5 @@ __all__ = [
     "Opportunity",
     "FactorSnapshot",
     "RawStrategyFind",
+    "PoliticalEvent",
 ]

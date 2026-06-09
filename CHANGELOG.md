@@ -37,6 +37,25 @@
 
 ### 新增
 
+- **Phase 10 step-05：政治專討員（Discord 事件流，只當煞車）**——補「川普推文 → 風險」前台：
+  Discord runner 偵測政治貼文 → 本機 Ollama 判讀 → 落表（`political_events`）→ 分數接既有風險煞車。
+  **★ 定位是「煞車（降風險 / 不開新倉），不是油門」**：「貼文 → 漲跌」最易過擬合、無乾淨
+  point-in-time 對齊資料可誠實回測，所以只在重大負面時縮部位 / 不開新倉，**不猜方向、不放大部位**。
+  - 後端：`models/political_event.py`、`services/political.py`（純函式 `summarize_post` /
+    `frequency_features`〔發文頻率特徵〕/ `judge_post`〔本機 Ollama，守外送閘〕/ `event_to_sentiment` /
+    `latest_event_sentiment`〔太舊退場〕 + ★ bridge `political_size_factor`〔接既有 `event_risk`〕）、
+    `routers/political.py`（`GET /political/events` + `GET /political/risk`）。
+  - bridge **預設關**（`POLITICAL_ENABLED=false`）：未啟用一律放行 `size_factor=1.0`，完全不影響現行下單；
+    啟用才把最近政治情緒交給既有 `event_risk.assess_event_risk` 決定縮多少 / 要不要不開新倉。
+  - runner：`bots/political_watcher.py`（獨立常駐，`python -m backend.bots.political_watcher`；
+    discord 套件延遲 import；沒設 `POLITICAL_DISCORD_TOKEN` 印指引後結束）。**來源前提**：Discord bot
+    只能讀「它所在的頻道」，需先有「同步川普貼文的鏡像頻道」才有東西可讀。
+  - 前端：新頁 `pages/PoliticalPage.jsx`（風險煞車現況橫幅 + 事件表）+ sidebar 導覽「政治專討員」。
+  - 依賴：`discord.py==2.7.1`（只給獨立 runner 用，FastAPI 後端不依賴）。
+  - DB：Alembic `f2a3b4c5d6e7_add_political_events`。
+  - 測試：`tests/test_political.py`（13：純函式 / judge / bridge 開關 / runner glue / API）、
+    `PoliticalPage.test.jsx`（3）；全後端 322 passed、全前端 89 passed。
+
 - **Phase 10 step-04：市場蒐集員（爬蟲收料，靈感收件匣）**——補「上網找策略」前台：定時從 RSS / 部落格
   收「策略描述文字」進收件匣（`raw_strategy_finds`），當人 / `strategy-builder` 寫成策略的素材。
   **只收料、不驗證、不部署**——收回來一律走既有 OOS 閘 + 人工核准才可能上線。

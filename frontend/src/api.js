@@ -229,4 +229,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+
+  // ===== Phase 10 step-05：政治專討員（Discord 事件流，唯讀）=====
+  // 政治事件清單：依發文時間由新到舊（可選 limit / label）
+  getPoliticalEvents: ({ limit = 50, label } = {}) =>
+    request(`/political/events?limit=${limit}${label ? `&label=${label}` : ""}`),
+  // 政治風險煞車現況（接既有 event_risk；旗標關時 size_factor=1.0 放行）
+  getPoliticalRisk: () => request("/political/risk"),
 };
