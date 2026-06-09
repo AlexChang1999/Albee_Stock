@@ -92,6 +92,8 @@ function App() {
   const [editBot, setEditBot] = useState(null);
   // 準備要刪除的 Bot（null = 沒有打開刪除確認視窗）
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // 準備要停止的 Bot（停止 = 危險動作，尤其實盤；與刪除一樣走二次確認）
+  const [stopTarget, setStopTarget] = useState(null);
 
   // 一鍵部署：把 AI 推薦的策略直接變成一個啟用中的 Bot
   async function handleDeploy(rec) {
@@ -163,19 +165,34 @@ function App() {
   }
 
   // 啟動 / 停止 Bot（依目前狀態切換）
+  // 啟動：直接做（無風險）。停止：危險動作 → 先開確認視窗，由 confirmStop 真正執行。
   async function handleToggleActive(bot) {
     setError("");
     setMessage("");
+    if (bot.is_active) {
+      setStopTarget(bot); // 開「停止 Bot」確認視窗
+      return;
+    }
     try {
-      if (bot.is_active) {
-        await api.stopBot(bot.id);
-        setMessage(`已停止 Bot：${bot.name}`);
-      } else {
-        await api.startBot(bot.id);
-        setMessage(
-          `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
-        );
-      }
+      await api.startBot(bot.id);
+      setMessage(
+        `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
+      );
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 真正執行停止（由停止確認視窗的「停止」鈕觸發）
+  async function confirmStop() {
+    const bot = stopTarget;
+    setStopTarget(null);
+    setError("");
+    setMessage("");
+    try {
+      await api.stopBot(bot.id);
+      setMessage(`已停止 Bot：${bot.name}`);
       reload();
     } catch (e) {
       setError(e.message);
@@ -236,6 +253,7 @@ function App() {
   const outletContext = {
     // 資料
     account,
+    status, // 交易環境（含 live_armed，給 AI 探勘頁的實盤部署確認用）
     bots,
     trades,
     reload, // 讓子頁（如自動化試跑後）能要求重抓 account/bots/trades
@@ -276,6 +294,7 @@ function App() {
                 loading={loading}
                 error={error}
                 message={message}
+                onClearMessage={() => setMessage("")}
                 loadError={loadError}
                 context={outletContext}
               />
@@ -321,6 +340,23 @@ function App() {
         confirmText="刪除"
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* 停止 Bot 的確認視窗（停止 = 危險動作；實盤時文案加強提醒） */}
+      <ConfirmDialog
+        open={!!stopTarget}
+        title="停止 Bot"
+        message={
+          stopTarget
+            ? `確定要停止「${stopTarget.name}」嗎？停止後它將不再依排程監聽、也不會自動執行出場。${
+                status?.live_armed ? "（目前為實盤模式，請特別確認手上部位。）" : ""
+              }`
+            : ""
+        }
+        confirmText="停止"
+        confirmColor="warning"
+        onConfirm={confirmStop}
+        onClose={() => setStopTarget(null)}
       />
     </ThemeProvider>
   );

@@ -111,3 +111,17 @@ body::before {
 ::selection {
   background: rgba(77, 163, 255, 0.28);
 }
+
+/* 尊重「減少動態效果」系統偏好（無障礙 prefers-reduced-motion）：
+   使用者若在 OS 開了「減少動態」，把全站動畫/轉場幾乎關掉，
+   避免前庭不適。涵蓋 App 進場的 albeeFadeUp、卡片 hover 的 transition 等。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

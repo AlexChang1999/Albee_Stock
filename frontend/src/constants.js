@@ -18,3 +18,9 @@ export const STRATEGIES = [
   { value: "adx_trend", label: "ADX 趨勢" },
   { value: "composite", label: "策略組合" },
 ];
+
+// 策略代號 → 中文標籤的單一來源（找不到就回原代號，不會壞畫面）。
+// 取代各元件各自寫一份對照，避免有的頁面顯示中文、有的印出 "ma_crossover"。
+export function strategyLabel(key) {
+  return STRATEGIES.find((s) => s.value === key)?.label || key;
+}

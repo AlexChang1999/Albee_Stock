@@ -22,3 +22,31 @@ export function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return `${(Number(value) * 100).toFixed(2)}%`;
 }
+
+// 取數值的正負號字首：正數回 "+"，負數/零回 ""（負號由數字本身帶、零不標號）。
+// 用途（無障礙 color-not-only）：漲跌不能只靠綠/紅顏色表達，
+// 在數字前補 "+/-" 讓色盲或單色畫面也讀得出方向。
+// 例：signOf(5.2) → "+"、signOf(-3) → ""（因 -3 已含負號）、signOf(0) → ""。
+export function signOf(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n === 0) return "";
+  return n > 0 ? "+" : "";
+}
+
+// 一般金額字串（千分位、無正負號）："$1,234" / "—"。
+// 取代各元件 inline 的 `$${Number(v).toLocaleString()}`，集中一處好維護。
+export function money(value) {
+  if (value === null || value === undefined || value === "" || Number.isNaN(Number(value)))
+    return "—";
+  return `$${Number(value).toLocaleString()}`;
+}
+
+// 帶正負號的金額字串，符號永遠在錢號之前："+$12" / "-$5" / "$0" / "—"。
+// 直接 `$${n}` 會印出 "$-5"（負號夾在中間、不好讀），故這裡把符號提前。
+export function signedMoney(value) {
+  if (value === null || value === undefined || value === "" || Number.isNaN(Number(value)))
+    return "—";
+  const n = Number(value);
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n)}`;
+}

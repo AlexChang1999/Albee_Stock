@@ -23,7 +23,7 @@
 //   - 拖動時用 series.coordinateToPrice(y) 反推新價格，即時移動線
 //   - 放開時把新價格換算成百分比，呼叫 onPriceLineDrag 通知父元件存回後端
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createChart, CandlestickSeries, LineStyle } from "lightweight-charts";
 
 import { api } from "./api";
@@ -50,6 +50,10 @@ export default function LightweightChart({
   const handleNodesRef = useRef([]); // 每個把手的 DOM 節點
   const draggingRef = useRef(null); // 正在拖第幾條（null = 沒在拖）
   const rafRef = useRef(0);
+
+  // 載入狀態：loading（抓資料中）/ ok（有資料）/ empty（查無資料）/ error（抓取失敗）
+  // 用來在 canvas 上疊一層提示，避免「空白畫布」讓人以為當機（圖表規則 §10）。
+  const [status, setStatus] = useState("loading");
 
   // 即時報價（WebSocket）。symbol 換了會自動重新訂閱。
   const quote = useLiveQuote(symbol);
@@ -117,6 +121,7 @@ export default function LightweightChart({
     const series = seriesRef.current;
     if (!series || !symbol) return;
 
+    setStatus("loading");
     api
       .getBars(symbol)
       .then((res) => {
@@ -125,10 +130,14 @@ export default function LightweightChart({
         series.setData(candles);
         lastBarRef.current = candles.length ? candles[candles.length - 1] : null;
         chartRef.current?.timeScale().fitContent();
+        setStatus(candles.length ? "ok" : "empty");
       })
       .catch(() => {
         // 抓不到資料（離線 / 代號錯）就清空，不讓整個畫面崩
-        if (!cancelled) series.setData([]);
+        if (!cancelled) {
+          series.setData([]);
+          setStatus("error");
+        }
       });
 
     return () => {
@@ -256,6 +265,32 @@ export default function LightweightChart({
   return (
     <div style={{ position: "relative", width: "100%", height }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+
+      {/* 載入/空資料/錯誤的覆蓋提示（status 非 ok 才顯示）。pointerEvents:none
+          讓有資料後不擋圖表互動；無資料時也不會是一片空白讓人誤以為當機。 */}
+      {status !== "ok" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            color: "#9aa9c2",
+            fontSize: 14,
+            fontFamily: "var(--font-body)",
+            textAlign: "center",
+            padding: "0 16px",
+          }}
+        >
+          {status === "loading"
+            ? "圖表載入中…"
+            : status === "empty"
+            ? "查無資料（請確認股票代號）"
+            : "資料載入失敗，請稍後再試"}
+        </div>
+      )}
 
       {/* 可拖曳把手：疊在圖右側，y 由 rAF 對齊到線；拖它即可調整止損/止盈 */}
       {editableLines.map((line, i) => (

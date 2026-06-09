@@ -28,13 +28,12 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { api } from "../api";
-import { STRATEGIES } from "../constants";
+import { strategyLabel } from "../constants";
+import { signOf, signedMoney } from "../utils/number";
+import { NEON } from "../theme";
 
 // 等寬字（數字對齊用，帳本感）
 const MONO = { fontFamily: "var(--font-mono)" };
-
-// 策略代號 -> 中文名稱
-const STRATEGY_LABEL = Object.fromEntries(STRATEGIES.map((s) => [s.value, s.label]));
 
 // 把參數 dict 轉成精簡字串，例如 {fast:12, slow:26} -> "fast 12 · slow 26"
 function paramsText(params) {
@@ -125,10 +124,10 @@ export default function AutoBacktestPanel() {
             size="small"
             label="最強"
             sx={{
-              bgcolor: "rgba(176,136,58,0.14)",
-              color: "#8a6a25",
+              bgcolor: "rgba(245,196,81,0.16)",
+              color: NEON.magenta,
               fontWeight: 700,
-              border: "1px solid rgba(176,136,58,0.3)",
+              border: "1px solid rgba(245,196,81,0.35)",
             }}
           />
         </Box>
@@ -212,12 +211,12 @@ export default function AutoBacktestPanel() {
               }}
             >
               <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mb: 0.5 }}>
-                <Typography sx={{ fontSize: 13, fontWeight: 700, color: "#8a6a25", letterSpacing: "0.04em" }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 700, color: NEON.magenta, letterSpacing: "0.04em" }}>
                   🏆 冠軍策略
                 </Typography>
               </Box>
               <Typography variant="h5" sx={{ mb: 0.3 }}>
-                {STRATEGY_LABEL[best.strategy_key] || best.strategy_key}
+                {strategyLabel(best.strategy_key)}
               </Typography>
               <Typography sx={{ ...MONO, fontSize: 13, color: "text.secondary", mb: 2 }}>
                 {paramsText(best.params)}
@@ -231,25 +230,26 @@ export default function AutoBacktestPanel() {
                   gap: 2,
                 }}
               >
+                {/* 漲跌數字一律補 +/- 號（signOf/signedMoney），不只靠紅綠顏色表達 */}
                 <Metric
                   label="期望值 EV / 筆"
-                  value={`$${bm.expected_value}`}
+                  value={signedMoney(bm.expected_value)}
                   color={signColor(bm.expected_value)}
                   big
                 />
                 <Metric
                   label="EV 佔本金"
-                  value={`${bm.expectancy_pct}%`}
+                  value={`${signOf(bm.expectancy_pct)}${bm.expectancy_pct}%`}
                   color={signColor(bm.expectancy_pct)}
                 />
                 <Metric
                   label="策略總報酬"
-                  value={`${bm.total_return_pct}%`}
+                  value={`${signOf(bm.total_return_pct)}${bm.total_return_pct}%`}
                   color={signColor(bm.total_return_pct)}
                 />
                 <Metric
                   label="買進持有對照"
-                  value={`${bm.buy_and_hold_pct}%`}
+                  value={`${signOf(bm.buy_and_hold_pct)}${bm.buy_and_hold_pct}%`}
                   color={signColor(bm.buy_and_hold_pct)}
                 />
                 <Metric label="勝率" value={`${bm.win_rate_pct}%`} />
@@ -298,19 +298,19 @@ export default function AutoBacktestPanel() {
                         {i === 0 ? "🏆" : i + 1}
                       </TableCell>
                       <TableCell sx={{ fontWeight: i === 0 ? 700 : 500 }}>
-                        {STRATEGY_LABEL[e.strategy_key] || e.strategy_key}
+                        {strategyLabel(e.strategy_key)}
                       </TableCell>
                       <TableCell sx={{ ...MONO, fontSize: 12, color: "text.secondary" }}>
                         {paramsText(e.params)}
                       </TableCell>
                       <TableCell align="right" sx={{ ...MONO, color: signColor(e.expected_value) }}>
-                        {e.expected_value}
+                        {signOf(e.expected_value)}{e.expected_value}
                       </TableCell>
                       <TableCell align="right" sx={{ ...MONO, color: signColor(e.expectancy_pct) }}>
-                        {e.expectancy_pct}
+                        {signOf(e.expectancy_pct)}{e.expectancy_pct}
                       </TableCell>
                       <TableCell align="right" sx={{ ...MONO, color: signColor(e.total_return_pct) }}>
-                        {e.total_return_pct}
+                        {signOf(e.total_return_pct)}{e.total_return_pct}
                       </TableCell>
                       <TableCell align="right" sx={MONO}>
                         {e.win_rate_pct}
