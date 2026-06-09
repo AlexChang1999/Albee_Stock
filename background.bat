@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >/dev/null
 REM ============================================
 REM Albee Stock 一鍵「背景」啟動：同時起後端 + 前端

@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul
 REM ============================================
 REM Albee Stock 後端一鍵啟動
