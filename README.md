@@ -81,6 +81,15 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **多頁面**（step-02~07）：交易紀錄 `/trades`、回測歷史 `/backtest-runs`、策略方案 `/presets`、探討檢討 `/explorations`（+ 新增 GET 端點）、決策審計 `/decisions`、進化實驗室 `/evolution`、策略知識庫 `/library`
 - **思考助手改全站抽屜**（step-08）：右下浮動鈕開關，並**拆除**舊的右側 `StrategyWorkbench`（內容已各自有家）
 
+**Phase 10 已落地**（AI 交易公司，藍圖：[`docs/phase-10-ai-company/`](docs/phase-10-ai-company/README.md)）——
+把「編排層 + 多個 AI 專員 + 人在迴路核准」串成一條「找料 → 觀測 → 提案 → 核准上真錢」的前台：
+- **戰情頁 + 常駐機會掃描**（step-01~02）：戰情總覽頁 + 常駐機會清單，排程定時掃 watchlist 收機會與提醒
+- **因子數值表 + CSV 報表**（step-03）：把市場狀態 7 因子 + regime 標籤落成可查可匯出的 `factor_snapshots` 表（`GET /factors` + CSV）——**是觀測佐證報表，不是新交易訊號**
+- **市場蒐集員**（step-04）：定時從 RSS / 部落格收「策略描述文字」進收件匣（`raw_strategy_finds`）當素材——**只收料、不驗證、不部署**，收回來仍走既有 OOS 閘 + 人工核准
+- **政治專討員**（step-05）：Discord 事件流 → 本機 Ollama 判讀政治貼文 → 接既有風險煞車——**★ 只當煞車（重大負面時縮部位 / 不開新倉），不猜方向、不放大部位**；bridge 預設關
+- **董事會核准頁**（step-06）：偵測「某 Bot Paper 表現達標、建議上真錢」→ 提議 → 使用者一頁**核准 / 退回**（人在迴路，AI 不自己上真錢）
+- **開機常駐化**（step-07）：`schtasks` 註冊登入自啟（純 ops、零交易邏輯改動），常駐跑的仍是 Paper
+
 **改版子軌（redesign）已落地**（AI 終端機改版，藍圖：[`docs/redesign/`](docs/redesign/README.md)）——
 Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
 - **原生圖表**（P1）：`lightweight-charts` 取代 TradingView iframe，可畫進場/止損/追蹤止盈水位線（可拖曳連動 DB）+ 2x2 網格盯盤
@@ -92,8 +101,10 @@ Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
 > 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
 
 **後續 / 未竟（非阻塞，未承諾時程）**：
-- **Phase 10 構想藍圖**：AI 交易公司（編排層 + 戰情頁 + 市場蒐集員/政治員/常駐探勘/因子報表/董事會核准
-  Bot 上真錢）——藍圖 [`docs/phase-10-ai-company/`](docs/phase-10-ai-company/README.md)（step-01~07，尚未動程式）
+- **Phase 10 通電前置**（機制已落地，僅待「接上真資料來源」才生效，預設安全關閉）：
+  - 政治專討員需先建「同步川普貼文的鏡像頻道」才有貼文可讀，且 `POLITICAL_ENABLED` 預設關（關時一律放行、不影響下單）
+  - 市場蒐集員 `COLLECTOR_INTERVAL_MIN=0`（關）、需設 `COLLECTOR_RSS_FEEDS` 才會實際收料
+  - Bot 上真錢仍卡「董事會核准頁人工核准」+「實盤雙閘（實盤網址 + `ALLOW_LIVE_TRADING=true`）」
 - ~~**Phase 5 選配**：主動提醒、好策略一鍵轉 Bot、助手 tool_calls 顯示~~ ✅ 完成（好策略一鍵轉
   Bot `POST /presets/{id}/to-bot` + 主動提醒 `GET /reminders`；**tool_calls 顯示已棄做**——助手早改成
   「記憶預先注入 system 提示」、不再用 tool-use，無 tool_calls 可顯示）
@@ -191,6 +202,13 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 - `POST /knowledge/{id}/validate`：跑 OOS + walk-forward 驗證管線
 - `POST /knowledge/{id}/promote`、`POST /knowledge/{id}/reject`：人在迴路晉升/退回
 
+**AI 交易公司（Phase 10）**
+
+- `GET /factors`、`GET /factors/export.csv`：市場狀態因子數值表 + CSV 匯出（觀測報表，非交易訊號）
+- `GET /collector/finds`、`PATCH /collector/finds/{id}`：市場蒐集員收件匣（策略素材收料 + 狀態策展）
+- `GET /political/events`、`GET /political/risk`：政治事件流 + 風險煞車現況（只縮部位、不猜方向）
+- `GET /promotions`、`POST /promotions/{id}/propose|approve|reject`：董事會核准（Bot 上真錢，人在迴路）
+
 ### 建立 Bot 的範例（POST /bots）
 
 ```json
@@ -221,20 +239,24 @@ Albee_Stock/
 │   ├── database.py          # SQLite 連線
 │   ├── main.py              # FastAPI 入口（CORS + 掛 router + lifespan 恢復排程）
 │   ├── test_connection.py   # Alpaca 連線測試
-│   ├── routers/             # API 路由（bots / backtest / orders / presets / chat / automation / strategies …）
-│   ├── models/              # 資料模型（Bot、TradeLog、StrategyPreset、BacktestRun、DecisionLog、PortfolioState）
+│   ├── routers/             # API 路由（bots / backtest / orders / presets / chat / automation / strategies /
+│   │                        #   factors / collector / political / promotion …）
+│   ├── models/              # 資料模型（Bot、TradeLog、StrategyPreset、BacktestRun、DecisionLog、PortfolioState、
+│   │                        #   FactorSnapshot、RawStrategyFind、PoliticalEvent）
 │   ├── services/            # Alpaca 封裝、回測引擎、optimizer、screener、自動部署、資金守門 capital、
 │   │                        #   回撤熔斷 circuit_breaker、績效、風控、通知、LLM、探討檔案記憶；
 │   │                        #   Phase 7：regime_features/regime/strategy_selector/meta_label/
 │   │                        #   sizing(凱利)/event_risk/validation/layer_validation
 │   ├── strategies/          # 9 種交易策略 + 註冊表 + 顯示名（list_strategies 單一來源）
-│   └── bots/                # Bot 管理器（執行 + 排程；每輪用 bot_id 重查最新設定）
+│   └── bots/                # Bot 管理器（執行 + 排程；每輪用 bot_id 重查最新設定）+
+│                            #   political_watcher 獨立常駐 runner（python -m backend.bots.political_watcher）
 ├── frontend/                # React 前端（Vite，模組化；左側 sidebar + react-router 多頁）
 │   └── src/
 │       ├── api.js           # 後端 API 呼叫層（讀 VITE_API_URL）
 │       ├── App.jsx          # 路由編排層（state + handler + <Outlet context> 分配給各頁）
 │       ├── pages/           # 各路由頁（Dashboard/Trades/BacktestRuns/Presets/Explorations/
-│       │                    #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals…）
+│       │                    #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/
+│       │                    #   Factors/Collector/Political/Promotion…）
 │       ├── components/      # 畫面區塊元件 + 測試（SidebarLayout 導覽外殼、AssistantDrawer 助手抽屜、
 │       │                    #   AccountCard/BotList/AutomationPanel、LightweightChart/ChartGrid 原生圖表…）
 │       ├── hooks/ utils/    # 自訂 Hook、純函式工具（好測試）

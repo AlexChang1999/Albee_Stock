@@ -51,6 +51,18 @@
 
 ### 變更
 
+- **README.md 同步 Phase 10 落地實情（文件，無程式變更）**——修正自打架：進度表已標
+  `Phase 10 ✅ 完成（step-01~07）`，但「後續 / 未竟」段第一條仍寫「**尚未動程式**」（前一次
+  README 對齊只補到 Phase 8/9，Phase 10 之後才落地、文件沒跟上）。本次：
+  - **移除過期句**，改寫成 **Phase 10 通電前置**（政治員需鏡像頻道且 `POLITICAL_ENABLED` 預設關／
+    蒐集員需設 `COLLECTOR_RSS_FEEDS`／上真錢仍卡董事會核准 + 實盤雙閘）——機制已落地、只待接真資料來源。
+  - **新增「Phase 10 已落地」描述塊**（補平 Phase 5~9 + redesign 格式）：戰情頁 + 常駐機會掃描 /
+    因子表 + CSV / 市場蒐集員（只收料）/ 政治專討員（只當煞車、不猜方向）/ 董事會核准（人在迴路上真錢）/
+    開機常駐化。
+  - **主要 API 清單**補 Phase 10 端點（`/factors`〔+`export.csv`〕、`/collector/finds`、
+    `/political/events`〔+`/risk`〕、`/promotions`〔+`propose`/`approve`/`reject`〕，已對程式核實路徑）。
+  - **專案結構**補 Phase 10 的 routers / models / pages 與 `political_watcher` 獨立常駐 runner。
+  - CLAUDE.md 進度表已是 ✅完成、無矛盾，本次未動。
 - **前端 UX 強化（套用 UI/UX Pro Max skill，無障礙 / 回饋 / 表單 / 表格）**——對齊 skill 規則：
   - **無障礙**：圖示鈕補 `aria-label`（`BotList`）；損益/EV 改帶 `+/-` 號（`utils/number.js` 新增
     `signOf`/`signedMoney`/`money`，套到 `BotList`/`BacktestPanel`/`AutoBacktestPanel`/`RecommendationsPanel`）；
