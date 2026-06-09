@@ -1,0 +1,262 @@
+"""
+市場蒐集員測試（Phase 10 step-04）
+====================================
+涵蓋：
+1. 純函式 parse_rss：解析 RSS 2.0 與 Atom 兩種格式（本地樣本，不連網）。
+2. 純函式 parse_html_listing：用 bs4 從靜態 HTML 撿文章連結（過濾太短 / 相對連結）。
+3. 純函式 dedup_rows：同 source_url 去重。
+4. 純函式 upsert_finds：同 source_url 不重複（冪等）、已存在保留 status。
+5. run_collector_scan：沒設 feed 直接跳過；有新料 monkeypatch 抓取 + 攔截通知。
+6. GET /collector/finds + PATCH 狀態流轉。
+
+不連網：用臨時 SQLite + monkeypatch fetch_url / notify。
+
+執行方式（專案根目錄）：
+    venv\\Scripts\\python.exe -m pytest tests\\test_collector.py -q
+"""
+
+import sys
+from pathlib import Path
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from contextlib import contextmanager
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
+
+from backend.database import Base, get_db
+from backend.models import RawStrategyFind
+from backend.services import collector
+from backend.services.collector import (
+    parse_rss,
+    parse_html_listing,
+    dedup_rows,
+    upsert_finds,
+    run_collector_scan,
+)
+
+
+def _session(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'collector.db'}")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+# 本地樣本：RSS 2.0
+_RSS = """<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Algo Blog</title>
+    <item>
+      <title>A mean-reversion strategy on SPY</title>
+      <link>https://blog.example.com/mean-reversion</link>
+      <description>Buy when RSI &lt; 30, exit at the 20-day mean.</description>
+    </item>
+    <item>
+      <title>Momentum rotation</title>
+      <link>https://blog.example.com/momentum</link>
+      <description>Rotate into the top-3 momentum names monthly.</description>
+    </item>
+  </channel>
+</rss>"""
+
+# 本地樣本：Atom（link 在 href、摘要在 summary）
+_ATOM = """<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Quant Feed</title>
+  <entry>
+    <title>Pairs trading basics</title>
+    <link href="https://quant.example.com/pairs"/>
+    <summary>Cointegration-based pairs on two correlated tickers.</summary>
+  </entry>
+</feed>"""
+
+
+# ---------- 1. parse_rss ----------
+def test_parse_rss_2_0():
+    rows = parse_rss(_RSS, source="algo")
+    assert len(rows) == 2
+    first = rows[0]
+    assert first["title"] == "A mean-reversion strategy on SPY"
+    assert first["source_url"] == "https://blog.example.com/mean-reversion"
+    assert "RSI" in first["summary"]
+    assert first["source"] == "algo"
+
+
+def test_parse_atom():
+    rows = parse_rss(_ATOM)
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Pairs trading basics"
+    # Atom 的網址在 href 屬性，要抓得到
+    assert rows[0]["source_url"] == "https://quant.example.com/pairs"
+    assert "Cointegration" in rows[0]["summary"]
+
+
+def test_parse_rss_garbage_returns_empty():
+    assert parse_rss("not xml at all") == []
+    assert parse_rss("") == []
+
+
+def test_parse_rss_skips_items_without_link():
+    xml = """<rss><channel><item><title>No link here</title></item></channel></rss>"""
+    assert parse_rss(xml) == []
+
+
+# ---------- 2. parse_html_listing ----------
+def test_parse_html_listing_picks_article_links():
+    html = """
+    <html><body>
+      <a href="https://site.example.com/article-one">A complete guide to breakout strategies</a>
+      <a href="https://site.example.com/article-two">Volatility targeting explained in depth</a>
+      <a href="https://site.example.com/x">home</a>        <!-- 文字太短，濾掉 -->
+      <a href="/relative/path">Relative link should be skipped</a>  <!-- 相對連結，濾掉 -->
+    </body></html>
+    """
+    rows = parse_html_listing(html, source="site")
+    urls = [r["source_url"] for r in rows]
+    assert "https://site.example.com/article-one" in urls
+    assert "https://site.example.com/article-two" in urls
+    # 太短的錨點 / 相對連結都不收
+    assert "https://site.example.com/x" not in urls
+    assert all(u.startswith("http") for u in urls)
+
+
+# ---------- 3. dedup_rows ----------
+def test_dedup_rows_by_url():
+    rows = [
+        {"source_url": "https://a.com/1", "title": "x"},
+        {"source_url": "https://a.com/1", "title": "dup"},
+        {"source_url": "https://a.com/2", "title": "y"},
+        {"source_url": None, "title": "no url"},
+    ]
+    out = dedup_rows(rows)
+    assert [r["source_url"] for r in out] == ["https://a.com/1", "https://a.com/2"]
+
+
+# ---------- 4. upsert_finds（冪等 + 保留 status） ----------
+def test_upsert_idempotent_and_preserves_status(tmp_path):
+    db = _session(tmp_path)
+    rows = parse_rss(_RSS, source="algo")
+    r1 = upsert_finds(db, rows)
+    assert r1 == {"inserted": 2, "skipped": 0}
+    assert db.query(RawStrategyFind).count() == 2
+
+    # 把第一筆標成 triaged，再 upsert 同一批：全部已存在 → skip，status 保留
+    first = db.query(RawStrategyFind).filter_by(source_url="https://blog.example.com/mean-reversion").first()
+    first.status = "triaged"
+    db.commit()
+
+    r2 = upsert_finds(db, rows)
+    assert r2 == {"inserted": 0, "skipped": 2}
+    assert db.query(RawStrategyFind).count() == 2  # 沒重複堆積
+    first = db.query(RawStrategyFind).filter_by(source_url="https://blog.example.com/mean-reversion").first()
+    assert first.status == "triaged"  # 保留人工策展結果
+
+
+# ---------- 5. run_collector_scan ----------
+def test_scan_skips_when_no_feeds(monkeypatch, tmp_path):
+    # 沒設 feed → 直接 return，不抓網、不寫表、不提醒
+    monkeypatch.setattr(collector.settings, "COLLECTOR_RSS_FEEDS", "")
+    notes = []
+    monkeypatch.setattr(collector.notifier, "notify", lambda msg: notes.append(msg))
+    called = {"fetch": 0}
+    monkeypatch.setattr(collector, "fetch_url", lambda url: called.__setitem__("fetch", called["fetch"] + 1))
+
+    run_collector_scan()
+    assert called["fetch"] == 0
+    assert notes == []
+
+
+def test_scan_fetches_upserts_and_notifies(monkeypatch, tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'scan.db'}")
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    monkeypatch.setattr(collector, "SessionLocal", TestingSession)
+    monkeypatch.setattr(collector.settings, "COLLECTOR_RSS_FEEDS", "https://blog.example.com/feed")
+    monkeypatch.setattr(collector, "fetch_url", lambda url: _RSS)  # 假抓取，回本地樣本
+    notes = []
+    monkeypatch.setattr(collector.notifier, "notify", lambda msg: notes.append(msg))
+
+    run_collector_scan()
+
+    db = TestingSession()
+    try:
+        assert db.query(RawStrategyFind).count() == 2
+    finally:
+        db.close()
+    assert len(notes) == 1 and "2 篇" in notes[0]
+
+    # 再跑一次：全已收過 → 不新增、不提醒（去重）
+    run_collector_scan()
+    assert len(notes) == 1
+
+
+# ---------- 6. GET /collector/finds + PATCH ----------
+@contextmanager
+def _isolated_client(tmp_path):
+    from backend.main import app
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'app_collector.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    def _override():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = _override
+    try:
+        with TestClient(app) as client:
+            yield client, TestingSession
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_finds_api_list_and_status_transition(tmp_path):
+    with _isolated_client(tmp_path) as (client, TestingSession):
+        db = TestingSession()
+        try:
+            db.add_all([
+                RawStrategyFind(source="a", source_url="https://a.com/1", title="One", status="new"),
+                RawStrategyFind(source="b", source_url="https://b.com/2", title="Two", status="triaged"),
+            ])
+            db.commit()
+            fid = db.query(RawStrategyFind).filter_by(source_url="https://a.com/1").first().id
+        finally:
+            db.close()
+
+        # 列出全部
+        rows = client.get("/collector/finds").json()
+        assert {r["title"] for r in rows} == {"One", "Two"}
+
+        # status 篩選
+        new_only = client.get("/collector/finds?status=new").json()
+        assert [r["title"] for r in new_only] == ["One"]
+
+        # PATCH：new → built
+        res = client.patch(f"/collector/finds/{fid}", json={"status": "built"})
+        assert res.status_code == 200
+        assert res.json()["status"] == "built"
+
+        # 不合法 status → 400
+        bad = client.patch(f"/collector/finds/{fid}", json={"status": "nonsense"})
+        assert bad.status_code == 400
+
+        # 不存在的 id → 404
+        missing = client.patch("/collector/finds/99999", json={"status": "built"})
+        assert missing.status_code == 404

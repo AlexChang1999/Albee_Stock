@@ -93,11 +93,16 @@ cd ..
 # 1) 測試後端能連上 Alpaca（會顯示帳戶餘額）
 venv\Scripts\python.exe backend\test_connection.py
 
-# 2) 跑單元測試（不需連線，全過代表程式碼完整）
-venv\Scripts\python.exe -m pytest tests/test_strategies.py tests/test_backtest.py
+# 2) 跑後端完整單元測試（不需連線，全過代表程式碼完整）
+venv\Scripts\python.exe -m pytest tests/ -q
+
+# 3) 跑前端單元測試（在 frontend 資料夾）
+cd frontend
+npm run test
+cd ..
 ```
 
-兩個都成功，就代表新電腦環境 OK 了。
+三個都成功，就代表新電腦環境 OK 了。
 
 ---
 
@@ -156,6 +161,13 @@ clone 後這些**不存在**，要靠上面步驟重建：
 # 開工前：把另一台電腦的最新進度拉下來
 git pull
 
+# pull 後若有人改過資料庫 schema（新增 alembic/versions/ 遷移檔），升級本機 DB：
+venv\Scripts\alembic.exe upgrade head
+
+# 若 requirements.txt / package.json 有更新，補裝依賴：
+venv\Scripts\python.exe -m pip install -r requirements.txt
+cd frontend && npm install && cd ..
+
 # 收工前：把這台的進度推上去
 git add .
 git commit -m "今天做了什麼"
@@ -163,3 +175,4 @@ git push
 ```
 
 > 養成「開工 pull、收工 push」的習慣，兩台電腦就不會打架。
+> `git pull` 看到 `alembic/versions/` 有新檔，記得 `alembic upgrade head`，否則新欄位 / 新表會對不上。

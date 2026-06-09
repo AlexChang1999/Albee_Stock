@@ -18,6 +18,7 @@ from backend.strategies.stochastic import StochasticStrategy
 from backend.strategies.momentum import MomentumStrategy
 from backend.strategies.williams_r import WilliamsRStrategy
 from backend.strategies.adx_trend import ADXTrendStrategy
+from backend.strategies.composite import CompositeStrategy
 
 # 策略註冊表：代號 -> 類別
 # 之後新增策略，就在這裡多加一行對應即可。
@@ -31,6 +32,8 @@ STRATEGY_REGISTRY = {
     "momentum": MomentumStrategy,
     "williams_r": WilliamsRStrategy,
     "adx_trend": ADXTrendStrategy,
+    # Phase 8 step-03：策略組合（子策略訊號投票 / 加權 / 狀態切換）
+    "composite": CompositeStrategy,
 }
 
 # 策略顯示名（中文）：代號 -> 給人看的名稱。
@@ -46,6 +49,7 @@ STRATEGY_LABELS = {
     "momentum": "動量",
     "williams_r": "威廉指標",
     "adx_trend": "ADX 趨勢",
+    "composite": "策略組合",
 }
 
 

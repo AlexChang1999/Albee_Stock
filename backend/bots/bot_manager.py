@@ -258,6 +258,11 @@ def _run_strategy(bot: Bot):
 
     Phase 7 step-03：bot.adaptive 開啟時走「自適應選策略」——
     先算當下市場狀態，查「狀態→最佳策略對照表」挑策略；無可信策略時保守觀望。
+
+    Phase 7 step-05（層驗證收尾）：固定策略路徑的 BUY 也過 meta 二級過濾。
+    層驗證證明只有 meta-labeling 在樣本外加分（adaptive 反而 −115、已維持關），
+    且驗證的 baseline 正是「固定策略訊號 + should_take」這條路徑，故把它收回線上。
+    閘由 `settings.META_LABEL_ENABLED` 控（關掉 = 純一級訊號，向後相容）。
     """
     if getattr(bot, "adaptive", False):
         return _run_adaptive_strategy(bot)
@@ -267,7 +272,23 @@ def _run_strategy(bot: Bot):
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
     strategy = get_strategy(bot.strategy, bot.params or {})
-    return strategy.generate_signal(df)
+    signal, reason = strategy.generate_signal(df)
+
+    # meta 二級過濾：只把關進場（BUY）。流程與 layer_validation.MetaFilteredStrategy
+    # 一致，線上行為才等於樣本外驗證量到的那條（+27.8 OOS EV）。SELL/HOLD 不受影響。
+    if signal == Signal.BUY:
+        from backend.services.regime_features import compute_features
+        from backend.services.regime import classify_regime
+        from backend.services.meta_label import should_take
+
+        features = compute_features(df)
+        regime = classify_regime(features)
+        take, conf = should_take(signal, features, regime)
+        if not take:
+            return Signal.HOLD, f"[meta {regime}] 二級過濾否決進場（信心 {conf:.2f} < 門檻）"
+        reason = f"二級信心 {conf:.2f}｜{reason}"
+
+    return signal, reason
 
 
 def _run_adaptive_strategy(bot: Bot):
@@ -389,6 +410,53 @@ class BotManager:
             run_auto_deploy,
             "cron",
             hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_opportunity_scan(self, interval_minutes: int) -> None:
+        """
+        掛上「常駐機會探勘」的週期工作（Phase 10 step-02）。
+
+        每隔 interval_minutes 分鐘跑一次 run_opportunity_scan（內部會先過盤中閘、收盤跳過）。
+        interval_minutes <= 0 代表關閉常駐掃描：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次；之後改 scan_interval_min 規則時即時重掛。
+        延遲 import 避免循環依賴（opportunity_scan 反過來用到 services）。
+        """
+        from backend.services.opportunity_scan import run_opportunity_scan
+
+        job_id = "opportunity_scan"
+        if interval_minutes <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_opportunity_scan,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_collector_scan(self, interval_minutes: int) -> None:
+        """
+        掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。
+
+        每隔 interval_minutes 分鐘跑一次 run_collector_scan（抓 RSS → 收件匣 → 有新料提醒）。
+        interval_minutes <= 0 代表關閉常駐收料：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.collector import run_collector_scan
+
+        job_id = "collector_scan"
+        if interval_minutes <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_collector_scan,
+            "interval",
+            minutes=interval_minutes,
             id=job_id,
             replace_existing=True,
         )

@@ -93,6 +93,18 @@ export const api = {
   getNews: (symbol) => request(`/fundamentals/${symbol}/news`),
   getActions: (symbol) => request(`/fundamentals/${symbol}/actions`),
 
+  // ===== redesign Phase 4：模式 B 全局自動化規則（規則存 DB，可編輯）=====
+  // 看目前規則與名額
+  getAutomation: () => request("/automation"),
+  // 編輯規則（只送有帶的欄位；改 scan_hour 後端會即時重掛排程）
+  updateAutomation: (body) =>
+    request("/automation", { method: "PUT", body: JSON.stringify(body) }),
+  // 手動觸發一輪自動部署。dry_run=true 只預覽會部署誰、不真的建；force=true 略過總開關
+  runAutomation: ({ force = false, dry_run = false } = {}) =>
+    request(`/automation/run?force=${force}&dry_run=${dry_run}`, {
+      method: "POST",
+    }),
+
   // ===== Phase 5：策略工作台 =====
   // 策略方案 CRUD
   getPresets: () => request("/presets"),
@@ -101,6 +113,16 @@ export const api = {
   updatePreset: (id, data) =>
     request(`/presets/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deletePreset: (id) => request(`/presets/${id}`, { method: "DELETE" }),
+
+  // 好策略「一鍵轉 Bot」：把方案複製成新 Bot 實跑（options 可帶 name / trade_amount）
+  presetToBot: (id, options = {}) =>
+    request(`/presets/${id}/to-bot`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+
+  // 主動提醒：負 EV 未檢討、好策略未實跑等待辦事項（給橫幅顯示）
+  getReminders: () => request("/reminders"),
 
   // 對某方案一鍵跑回測（Python），回結果並存一筆回測紀錄
   backtestPreset: (id, options = {}) =>
@@ -130,4 +152,88 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ run_id: runId }),
     }),
+
+  // ===== Phase 9：決策審計（Phase 6 step-08 的軌跡）=====
+  // 某 Bot 最近的決策紀錄（含沒成交的觀望/跳過），依時間倒序
+  getBotDecisions: (botId, limit = 50) =>
+    request(`/bots/${botId}/decisions?limit=${limit}`),
+
+  // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
+  // 路標清單（每筆 run_id / file / strategy / symbol / summary）
+  getExplorations: () => request("/explorations"),
+  // 某篇探討的完整 markdown 內容（{ name, content }）
+  getExploration: (name) => request(`/explorations/${encodeURIComponent(name)}`),
+
+  // ===== Phase 9：策略知識庫 / 組合進化（Phase 8 端點）=====
+  // 知識清單（可選 status 篩選：candidate/validated/curated/rejected）
+  getKnowledge: (status) =>
+    request(`/knowledge${status ? `?status=${status}` : ""}`),
+  // 排行：依 OOS EV 由高到低（預設 validated；可改 curated）
+  getKnowledgeRanking: (status = "validated") =>
+    request(`/knowledge/ranking?status=${status}`),
+  getKnowledgeItem: (id) => request(`/knowledge/${id}`),
+  // 跑驗證管線（OOS + walk-forward）
+  validateKnowledge: (id, options = {}) =>
+    request(`/knowledge/${id}/validate`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+  // 人在迴路：晉升（validated→curated）/ 退回（→rejected，附理由）
+  promoteKnowledge: (id) =>
+    request(`/knowledge/${id}/promote`, { method: "POST" }),
+  rejectKnowledge: (id, reason = "") =>
+    request(`/knowledge/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  // ===== Phase 10：公司戰情（各部門現況聚合，唯讀）=====
+  getCompanyOverview: () => request("/company/overview"),
+
+  // 機會清單：常駐探勘持久化的候選，依 OOS EV 由高到低（可選 limit / status）
+  getOpportunities: ({ limit = 50, status } = {}) =>
+    request(`/opportunities?limit=${limit}${status ? `&status=${status}` : ""}`),
+
+  // ===== Phase 10 step-06：董事會核准（Bot 進真錢，人在迴路）=====
+  // 晉升清單：預設「待核（proposed_live）」；可帶 status 看其他狀態
+  getPromotions: (status) =>
+    request(`/promotions${status ? `?status=${status}` : ""}`),
+  // 系統/人提議某 Bot 上真錢（附達標證據）；未達標後端回 409
+  proposePromotion: (botId) =>
+    request(`/promotions/${botId}/propose`, { method: "POST" }),
+  // 老闆核准（→ approved_live，只是人工旗標，不放行真錢）
+  approvePromotion: (botId) =>
+    request(`/promotions/${botId}/approve`, { method: "POST" }),
+  // 老闆退回（→ rejected，附理由）
+  rejectPromotion: (botId, reason = "") =>
+    request(`/promotions/${botId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  // ===== Phase 10 step-03：因子數值表（蒐集員主管報表，唯讀）=====
+  // 因子快照清單：依觀測時點由新到舊（可選 symbol / limit）
+  getFactors: ({ symbol, limit = 100 } = {}) =>
+    request(`/factors?limit=${limit}${symbol ? `&symbol=${symbol}` : ""}`),
+  // CSV 匯出「完整網址」（回 CSV 不是 JSON，給 <a href> 下載用，不走 request()）
+  factorsCsvUrl: (symbol) =>
+    `${BASE_URL}/factors/export.csv${symbol ? `?symbol=${symbol}` : ""}`,
+
+  // ===== Phase 10 step-04：市場蒐集員（爬蟲收料，靈感收件匣）=====
+  // 收件匣素材清單：依抓取時間由新到舊（可選 limit / status）
+  getCollectorFinds: ({ limit = 50, status } = {}) =>
+    request(`/collector/finds?limit=${limit}${status ? `&status=${status}` : ""}`),
+  // 人工策展：標記一筆素材的狀態（new/triaged/built/discarded）
+  updateCollectorFind: (id, status) =>
+    request(`/collector/finds/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  // ===== Phase 10 step-05：政治專討員（Discord 事件流，唯讀）=====
+  // 政治事件清單：依發文時間由新到舊（可選 limit / label）
+  getPoliticalEvents: ({ limit = 50, label } = {}) =>
+    request(`/political/events?limit=${limit}${label ? `&label=${label}` : ""}`),
+  // 政治風險煞車現況（接既有 event_risk；旗標關時 size_factor=1.0 放行）
+  getPoliticalRisk: () => request("/political/risk"),
 };

@@ -15,6 +15,350 @@
 
 ## [未發布]
 
+### 移除
+
+- **清理：刪除被取代的舊藍圖 `docs/blueprint-ai-terminal.md`**——它是「AI 終端機改版」的舊單檔藍圖，
+  已被 `docs/redesign/`（深化拆成 4 階段、且全部完成）取代、無任何連結指向、狀態仍停在「規劃中 Draft」，
+  刪除以減少混淆。另順手清掉可再生的本機垃圾（`__pycache__` / `.pytest_cache` / 測試殘留暫存夾
+  `tests/_tmp_expl_*`，皆 git-ignored、不影響版控）。
+
+### 變更
+
+- **README.md / CLAUDE.md 對齊實情（文件同步，無程式變更）**——比對發現 `README.md` 嚴重過期：
+  - 進度表把已完成的 **Phase 8（step-01~06）/ Phase 9（step-01~08）仍標「📋 構想藍圖」**，改為 ✅ 完成；
+    Phase 5 標示為「核心已落地（剩選配）」。
+  - 新增 Phase 8 / Phase 9 / **改版子軌（redesign）** 三段「已落地」描述，並把「規劃中」段改寫成
+    「後續/未竟」非阻塞 backlog（Phase 5 選配、Phase 7 層加分續調、自動化規則改 DB 表、實盤上線必讀）。
+  - 移除已刪元件的殘留引用（`StrategyWorkbench`/`CreateBotForm`/`TradingViewChart`）；前端結構改寫為
+    「左側 sidebar + react-router 多頁 + `pages/` + `LightweightChart`」；技術棧補 `lightweight-charts`。
+  - 主要 API 清單補 `/ai-recommendations`、`/automation`(+`/run`)、`/bars`、`/quotes`、`/explorations`、
+    `/knowledge`(+ranking/validate/promote/reject)。
+  - `CLAUDE.md` 專案結構前端區塊同步修正（死引用換成現存檔名、補 `pages/` 與新元件）。
+
+### 新增
+
+- **Phase 10 step-05：政治專討員（Discord 事件流，只當煞車）**——補「川普推文 → 風險」前台：
+  Discord runner 偵測政治貼文 → 本機 Ollama 判讀 → 落表（`political_events`）→ 分數接既有風險煞車。
+  **★ 定位是「煞車（降風險 / 不開新倉），不是油門」**：「貼文 → 漲跌」最易過擬合、無乾淨
+  point-in-time 對齊資料可誠實回測，所以只在重大負面時縮部位 / 不開新倉，**不猜方向、不放大部位**。
+  - 後端：`models/political_event.py`、`services/political.py`（純函式 `summarize_post` /
+    `frequency_features`〔發文頻率特徵〕/ `judge_post`〔本機 Ollama，守外送閘〕/ `event_to_sentiment` /
+    `latest_event_sentiment`〔太舊退場〕 + ★ bridge `political_size_factor`〔接既有 `event_risk`〕）、
+    `routers/political.py`（`GET /political/events` + `GET /political/risk`）。
+  - bridge **預設關**（`POLITICAL_ENABLED=false`）：未啟用一律放行 `size_factor=1.0`，完全不影響現行下單；
+    啟用才把最近政治情緒交給既有 `event_risk.assess_event_risk` 決定縮多少 / 要不要不開新倉。
+  - runner：`bots/political_watcher.py`（獨立常駐，`python -m backend.bots.political_watcher`；
+    discord 套件延遲 import；沒設 `POLITICAL_DISCORD_TOKEN` 印指引後結束）。**來源前提**：Discord bot
+    只能讀「它所在的頻道」，需先有「同步川普貼文的鏡像頻道」才有東西可讀。
+  - 前端：新頁 `pages/PoliticalPage.jsx`（風險煞車現況橫幅 + 事件表）+ sidebar 導覽「政治專討員」。
+  - 依賴：`discord.py==2.7.1`（只給獨立 runner 用，FastAPI 後端不依賴）。
+  - DB：Alembic `f2a3b4c5d6e7_add_political_events`。
+  - 測試：`tests/test_political.py`（13：純函式 / judge / bridge 開關 / runner glue / API）、
+    `PoliticalPage.test.jsx`（3）；全後端 322 passed、全前端 89 passed。
+
+- **Phase 10 step-04：市場蒐集員（爬蟲收料，靈感收件匣）**——補「上網找策略」前台：定時從 RSS / 部落格
+  收「策略描述文字」進收件匣（`raw_strategy_finds`），當人 / `strategy-builder` 寫成策略的素材。
+  **只收料、不驗證、不部署**——收回來一律走既有 OOS 閘 + 人工核准才可能上線。
+  - 後端：`models/raw_strategy_find.py`（status 流轉 new→triaged→built/discarded）、
+    `services/collector.py`（純函式 `parse_rss`〔RSS2.0+Atom〕/ `parse_html_listing`〔bs4〕/ `dedup_rows` /
+    `upsert_finds`〔冪等、保留 status〕 + best-effort `fetch_url` + 排程入口 `run_collector_scan`）、
+    `routers/collector.py`（`GET /collector/finds` + `PATCH /collector/finds/{id}` 改狀態）。
+  - 排程：`bot_manager.schedule_collector_scan`（沿用 step-02 APScheduler 機制）；`main.py` 啟動時掛上，
+    `COLLECTOR_INTERVAL_MIN` 預設 0（關）、沒設 `COLLECTOR_RSS_FEEDS` 也會跳過，不無故打外站。
+  - 前端：新頁 `pages/CollectorPage.jsx`（收件匣表 + 狀態策展鈕）+ sidebar 導覽「市場蒐集員」。
+  - 依賴：`beautifulsoup4==4.15.0`（純 Python、Windows 安全，靜態頁解析用）。
+  - DB：Alembic `e1f2a3b4c5d6_add_raw_strategy_finds`。
+  - 測試：`tests/test_collector.py`（10 項：解析/去重/upsert 冪等/掃描去抖/API 往返）、
+    `CollectorPage.test.jsx`（2 項）。**股價不爬**（用既有 `market_data`/yfinance）。守 robots/節流/User-Agent。
+
+- **Phase 10 step-07：開機常駐化（Windows 自啟，純 ops 零交易邏輯改動）**——補「電腦開機就一直跑」：
+  新增 `scripts\register_autostart.bat`（用 `schtasks /SC ONLOGON` 註冊「登入時自動啟動」工作
+  `AlbeeStockBackend`，觸發既有根目錄 `start_backend.bat`）+ `scripts\unregister_autostart.bat`
+  （移除工作）+ 運維手冊 `docs/phase-10-ai-company/ops-autostart.md`（安裝/驗收 checklist/常見操作/
+  排查/界線）。後端起來後由既有 `main.py` `lifespan` 自動接回啟用中 Bot + 盤前自動部署 cron +
+  常駐機會掃描（step-02），**無程式碼變更**。提醒：常駐跑的仍是 Paper，真錢仍受實盤雙閘 +
+  董事會核准（step-06）把關；不做系統服務/NSSM、不在開機腳本塞交易邏輯。
+
+- **Phase 10 step-03：因子數值表 + 報表（蒐集員主管）**——把市場狀態因子（regime_features 的
+  7 個因子 + regime 標籤）落成**可查、可匯出**的數值表 + 一頁報表。**因子是觀測佐證、給人和
+  回測看的報表，不是新的交易訊號**（不自動下單）。
+  - 新增 `factor_snapshots` 表（`backend/models/factor_snapshot.py`：symbol/as_of + 7 因子欄
+    〔volume_ratio/return_5d/return_20d/volatility_20d/trend_strength/atr_pct/range_position〕
+    + regime），走 **Alembic 遷移** `d0e1f2a3b4c5`。新增 `settings.FACTOR_RETENTION_DAYS`
+    （預設 90，0=不修剪）控保留天數，避免 DB 膨脹。
+  - `services/opportunity_scan.py` 加純函式 `features_to_snapshot_row`（映射 7 因子鍵、缺值帶
+    None，不重算第二套公式）與 `collect_factor_snapshots`（對 watchlist 各檔走**同一條正規資料
+    路徑** `market_data.get_bars(..., source=settings.DATA_SOURCE)` →
+    `regime_features.compute_features` → `regime.classify_regime` → 落一筆，並依保留天數修剪）；
+    `run_opportunity_scan` 在 upsert 機會後**順手呼叫**（best-effort 包 try，因子落表失敗不影響
+    機會收集與提醒）。無 look-ahead（compute_features 只用截至最後一根的資料）。
+  - 新增 `backend/routers/factors.py`：唯讀 `GET /factors`（依 as_of 由新到舊，可選 symbol/limit）
+    與 **本專案第一個 CSV 端點** `GET /factors/export.csv`（`StreamingResponse` + `csv`，表頭與
+    欄位順序固定）。`main.py` 掛上 `factors.router`。
+  - 前端新增 `pages/FactorsPage.jsx`（沿用既有表格頁風格：symbol 篩選 + 表格 + 匯出鈕，
+    regime 中文標籤），sidebar 加「因子報表」+ 路由；`api.js` 加 `getFactors` / `factorsCsvUrl`。
+    顏色吃 `theme`/`NEON`、不寫死 hex。
+  - 取捨說明：因 `screener` 內部抓完 bars 即丟、不外傳，因子落表是**同一條正規資料路徑的獨立一抓**
+    （非 screener 那次）；watchlist 小、日線、成本低，故未為「抓一次共用」而改動 screener（避免
+    範圍蔓延）。保留天數用 `config` 設定而非 `automation_config` DB 欄位（少一張表/前端欄位，夠用）。
+    測試：`tests/test_factor_snapshot.py`（純函式映射/落表值＝直接算的值/保留天數修剪/端點往返/CSV
+    表頭）、前端 `FactorsPage.test.jsx`；並更新 `tests/test_opportunity.py` 讓掃描測試離線餵假 K 線。
+
+- **Phase 10 step-06：董事會核准頁（Bot 進真錢，人在迴路）**——補「老闆一頁核准 + AI 主動提醒」：
+  系統偵測「某 Bot Paper 表現達標、建議上真錢」→ 提議 → 使用者一頁**核准 / 退回**。
+  - `bots` 表加三欄（`backend/models/bot.py`：`promotion_status`〔paper/proposed_live/
+    approved_live/rejected〕/`promotion_proposed_at`/`promotion_reason`），走 **Alembic 遷移**
+    `c9d0e1f2a3b4`（`batch_alter_table` 加欄、既有列 server_default 回填 `paper`）。
+  - 新增 `backend/routers/promotion.py`：純函式 `evaluate_promotion_readiness`（三道門檻：
+    OOS EV ≥ `ev_threshold`、Paper 勝率 ≥ `winrate_threshold`、完整買賣 ≥ 3 才達標，好單測）；
+    端點 `GET /promotions`（預設待核清單）、`POST /promotions/{id}/propose`（達標才提議、附證據、
+    主動 `notify` 一次、冪等去抖；未達標回 409）、`/approve`、`/reject`（附理由）。達標證據
+    **重用既有** `performance.compute_bot_stats`（Paper 實績）+ 機會清單最佳 OOS EV，不重算。
+  - `presets._build_reminders` 加第三種提醒 `propose_live_candidate`（Paper Bot 達標但未提議 →
+    浮上橫幅），判斷一律走 promotion 的純函式。`main.py` 掛上 `promotion.router`。
+  - 前端新增 `pages/PromotionPage.jsx`（比照 `EvolutionPage` 的 tab + 卡片 + 動作鈕：候選 Paper→
+    提議、待核→核准/退回），sidebar 加「董事會核准」項 + 路由；`api.js` 加四支呼叫。顏色吃
+    `theme`/`NEON`、不寫死 hex。
+  - ★**安全紅線**：UI「核准」只是**多一道人工閘**，`approved_live` 只是「人已同意」旗標，
+    **不放行真錢**——真錢仍須 `ALPACA_BASE_URL` 實盤 + `ALLOW_LIVE_TRADING=true` 雙閘，由
+    `alpaca_client.submit_market_order` 把關（兩者 AND）。本步**完全不碰那道安全閥、不改
+    `alpaca_client`、不改 `.env` 語意、不做自動晉升**（一律人工點按）。理由存 `promotion_reason`
+    欄位供追溯。測試：`tests/test_promotion.py`（純函式三門檻/狀態流轉冪等/未達標 409/退回理由/
+    提醒命中）、前端 `PromotionPage.test.jsx`（候選提議 + 待核核准）。
+
+- **Phase 10 step-02：常駐探勘 + 機會清單持久化（好策略不漏掉）**——把海選從「手動觸發」
+  補成**盤中週期自動跑 + 排名候選存 DB**，名額滿時不再把第 6~N 名直接丟掉、關掉 app 也留著。
+  - 新增 `opportunities` 表（`backend/models/opportunity.py`：symbol/strategy_key/params/
+    `oos_expected_value`/`oos_win_rate_pct`/sentiment/scanned_at/status）；`automation_config`
+    加 `scan_interval_min` 欄位（盤中探勘間隔，分；0=關），走 **Alembic 遷移**
+    `b8c9d0e1f2a3`（建表 + `batch_alter_table` 加欄、既有規則列 server_default 回填 30）。
+  - 新增 `services/opportunity_scan.py`：純函式 `screener_results_to_rows`（映射 + 依 OOS EV 排序）
+    與 `upsert_opportunities`（同 symbol+strategy 更新不重複、保留既有 status），及排程入口
+    `run_opportunity_scan`——**先過盤中閘**（重用 `alpaca_client.is_market_open()`，收盤跳過不空轉
+    回測；查不到開市狀態時 best-effort 照跑），**重用既有 `screener.screen_watchlist`**，把候選
+    upsert 進表，對「新發現且超過提醒門檻（OOS EV ≥ `ev_threshold`）」者 `notify` 一次後翻 `seen`
+    去抖。`bot_manager` 加 `schedule_opportunity_scan(interval)` 週期 job（0=移除），`main.py`
+    啟動時依規則掛上。
+  - 新增唯讀 `GET /opportunities`（依 OOS EV 排序，可選 limit/status）；戰情頁聚合加「機會清單」
+    部門卡；`PUT /automation` 開放編輯 `scan_interval_min`（改值即時重掛週期 job，不必重啟）、
+    前端 `AutomationPanel` 加「探勘間隔」欄位。
+  - 紀律：候選 EV/勝率**一律存樣本外（OOS）**、提醒門檻比對 OOS（Phase 6 step-04）；週期 job
+    **只收集 + 排名 + 持久化**，不自動建 Bot、不上真錢（部署是 step-06 人工核准）。測試：
+    `tests/test_opportunity.py`（純函式/upsert 冪等與 status 流轉/盤中閘與去抖提醒/端點往返）、
+    前端 `CompanyPage.test.jsx`+`AutomationPanel.test.jsx` 補對應斷言。
+
+- **Phase 10 step-01：戰情室聚合 + 公司戰情頁（看得到的 AI 公司）**——新增唯讀聚合端點
+  `GET /company/overview`（`backend/routers/company.py`），把既有讀取點（帳戶 best-effort /
+  Bot 艦隊啟用數 / 自動化規則與名額 / 風控熔斷 / 最近決策審計）組成一包，**純呈現、不自算 EV、
+  不做任何交易或部署動作**；帳戶區塊離線（無金鑰）時回 `None` 不讓整頁崩。前端新增
+  `pages/CompanyPage.jsx`（sidebar 加「公司戰情」項 + 路由），用「部門卡」呈現每個公司角色現況並
+  連到對應既有頁（Bot 艦隊→監控中心、策略主管→回測歷史、回測主管→進化實驗室、決策審計→決策頁）。
+  顏色一律吃 `theme`/`NEON`、不寫死 hex。測試：`tests/test_company.py`（聚合鍵齊全 + 離線降級）、
+  `CompanyPage.test.jsx`（部門卡渲染 + 連結）。
+
+- **Phase 10「AI 交易公司」構想藍圖**——把使用者願景（市場蒐集員爬蟲找策略 / 蒐集員主管列因子數值表 /
+  政治專討員 Discord 判讀川普貼文 / 開機常駐自跑 / 老闆一頁核准 Bot 上真錢）整理成可分步施工的藍圖。
+  確立兩條紀律：①「六角色 = 既有服務上的部門/關卡」的**編排層**（非自治多代理 swarm）；②任何新來源
+  （爬蟲 / Discord / LLM 提案）的策略點子**一律過 Phase 6 OOS + Phase 7 step-07 防過擬合閘才進 Paper**、
+  進真錢再過人工核准 + **既有實盤雙閘不更動**。新增 `docs/phase-10-ai-company/`：README（願景→可行性表
+  ＝組織圖對照現有碼→目標架構圖→施工路線→明確界線）+ 7 個 step 檔（戰情頁 / 常駐探勘+機會清單 /
+  因子表+報表 / 爬蟲蒐集員 / Discord 政治員 / 董事會核准頁 / 開機常駐化），各檔走護欄合約結構
+  （目標→改動→重用既有→DoD→不要做）。`README.md` / `CLAUDE.md` 開發階段表加 Phase 10 列（標構想藍圖）。
+  **純文件、未動程式碼。**
+
+- **Phase 5 選配：好策略一鍵轉 Bot + 主動提醒**——補完 `docs/roadmap-strategy-workbench.md`
+  第六節的選配項（原列三項，其中「助手 tool_calls 顯示」因助手早改成「記憶預先注入 system 提示」、
+  不再用 tool-use 而**棄做**，無 tool_calls 可顯示）。
+  - **好策略一鍵轉 Bot**：新增 `POST /presets/{id}/to-bot`（`backend/routers/presets.py`），把方案的
+    策略/標的/參數**複製**成一個新 Bot 實跑（複製非綁定：之後改方案不動到 Bot；symbol 轉大寫、
+    風控欄位留空、預設不啟動排程）。前端 `PresetsPage` 每張方案卡加「🤖 轉成 Bot 實跑」鈕，走
+    `ConfirmDialog` 確認後呼 `api.presetToBot`，成功顯示綠色提示。全程 Paper、不碰實盤雙閘。
+  - **主動提醒**：新增 `GET /reminders`（純讀現有資料、不連網），掃出兩類待辦——①回測 EV 為負且
+    尚未檢討（提示請助手分析）②標為好策略(`is_good`)但同 標的+策略 還沒建成 Bot（提示可一鍵轉 Bot），
+    對齊 Phase 5「EV 檢討 → 越來越聰明」閉環。前端新增 `RemindersBanner` 元件（無事項則不渲染），
+    掛在 `PresetsPage` 頂部；建 Bot / 跑回測後以 signal 觸發重抓。顏色吃主題、不寫死 hex。
+  - 測試：`tests/test_presets_extra.py`（preset→Bot 欄位對映 / name 覆寫；reminders 負 EV 未檢討、
+    已檢討/正 EV 不提醒、好策略未實跑→建 Bot 後消失，6 passed）；前端 `PresetsPage.test.jsx` 補
+    轉 Bot 流程、新增 `RemindersBanner.test.jsx`（空/有提醒兩態）。
+
+- **自動化規則 `.env` → DB 表（前端可編輯）**——把模式 B 自動部署規則（`AUTO_DEPLOY_*`）
+  從「唯讀吃 `.env`、改了要重啟」搬進 DB 單列表，讓前端可即時編輯儲存。完成 README「後續/未竟」
+  列的 redesign backlog。
+  - **新 model + 遷移**：`backend/models/automation_config.py`（單列 id=1，比照 `portfolio_state`，
+    6 欄：`enabled`/`ev_threshold`/`winrate_threshold`/`max_bots`/`cash_per_bot`/`scan_hour`），
+    走 Alembic 遷移 `a7b8c9d0e1f2`（建表 + 用 `.env` 預設常數種一筆預設列）。
+  - **存取服務**：`backend/services/automation_config.py` 的 `get_config`（load-or-seed：空表用
+    `settings.AUTO_DEPLOY_*` 種一筆防呆）+ `update_config`（只改有帶欄位、驗證範圍、回傳
+    `scan_hour` 是否變動）。
+  - **後端讀取點全改吃 DB**：`automation.run_auto_deploy` 開頭 `get_config(db)`，總開關 / 門檻 /
+    配資一律讀 `cfg.*`（`plan_deployments` 純函式與雙門檻/去重/名額演算法**不動**）；`main.py`
+    啟動掛盤前 cron 改讀 DB 的 `scan_hour`。
+  - **API**：`GET /automation` 改讀 DB（回傳鍵名/型別不變，保前端契約）；新增 `PUT /automation`
+    （6 欄全 Optional、驗證失敗回 400；改 `scan_hour` 即時 `bot_manager.schedule_auto_deploy`
+    重掛 cron，不必重啟）。
+  - **前端**：`api.js` 加 `updateAutomation`；`AutomationPanel.jsx` 從唯讀儀表加「編輯規則」模式
+    （受控表單 + Switch + 數字欄位），儲存呼 PUT；**開啟總開關走 `ConfirmDialog` 二次確認**
+    （語意＝開自動駕駛，仍全程 Paper、與實盤雙閘獨立）。顏色吃主題、不寫死 hex。
+  - **連帶修正**：`AutomationPanel` 勝率門檻顯示原本寫 `winrate_threshold * 100`，但後端存的就是
+    百分比（55=55%），會誤顯示成 5500%；改為直接顯示，與可編輯表單的回送語意一致。
+  - **安全紅線**：全程不碰實盤雙閘（`ALPACA_BASE_URL` / `ALLOW_LIVE_TRADING`），自動建的 Bot
+    下單仍經 `submit_market_order` 雙閘把關；`.env` 的 `AUTO_DEPLOY_*` 保留當建表種子 / fallback。
+  - 測試：新增 `tests/test_automation_config.py`（get_config seed/冪等、update_config 只改有帶/
+    驗證/scan_hour 變動旗標、PUT 往返 + 重掛 cron + 驗證 400）；`AutomationPanel.test.jsx` 補
+    編輯儲存 / 開總開關需確認，並把假資料的 `winrate_threshold` 對齊真實後端（55 而非 0.55）。
+
+- **redesign 殘項收尾：前端自動化規則面板 + BotAvatar 深底調色**——把 `docs/redesign/README.md`
+  與 `phase-4-automation.md` 列為「後續微調」的兩項未竟工補上（redesign 四階段早已完成、
+  phase-9 疊在其上無回歸，故只剩這兩個純打磨）。
+  - **模式 B 自動化規則面板**：`api.js` 加 `getAutomation`/`runAutomation`；新增
+    `components/AutomationPanel.jsx` 掛在監控中心——唯讀展示 `.env` 的 `AUTO_DEPLOY_*` 規則與
+    名額（總開關/EV·勝率門檻/配資/盤前時刻/已用·上限），並可「預覽（dry-run）」或「立即試跑一輪」
+    （試跑會建 Paper Bot，故走 `ConfirmDialog` 確認、成功後 reload）。規則本身仍由 `.env` 唯讀，
+    面板不改門檻、不碰實盤雙閘、不改後端自動化邏輯。`App.jsx` 的 outletContext 補出 `reload`。
+  - **BotAvatar 深底調色**：徽章頭像從淺色暖白改為深海軍藍漸層 + 冷白線稿 + 發光點綴色盤
+    （吸收 `theme.js` NEON），不再貼在深藍面板上突兀；部件幾何與雜湊邏輯完全不動。
+  - **連帶修正**：`Stat.jsx` 寫死的淺色文字（`#1a2238`）在深藍主題下幾乎看不見，改吃主題
+    `text.primary`/`text.secondary`（AccountCard 等共用，redesign 換深底後的對比修正）。
+  - 測試：新增 `AutomationPanel.test.jsx`（規則渲染 / dry-run 預覽 / 試跑需確認並 reload）；
+    Vitest 全綠（71 passed）。
+
+- **Phase 9 step-08 思考助手改全站抽屜 + 拆除 StrategyWorkbench**——右側策略工作台的內容前面步驟
+  已分別搬到 `/presets`、`/backtest-runs`，這步收尾：把「思考助手聊天」改成全站可開的抽屜
+  `components/AssistantDrawer.jsx`（右下浮動鈕開關，沿用 `api.sendChat`/`api.postmortem`，
+  含填回測 ID 做事後檢討），掛在 `SidebarLayout`。確認三功能各有家後，**整支刪除**
+  `StrategyWorkbench.jsx`（不留註解死碼）；全站 grep 無殘留 import。助手後端契約不變（仍只思考，
+  不下單/不跑回測）。測試：`AssistantDrawer.test.jsx`（開抽屜/聊天/檢討）；Vitest 全綠（68 passed）、
+  build 通過。**Phase 9（step-01~08）完成。**
+
+- **Phase 9 step-07 進化實驗室（/evolution）+ 策略知識庫（/library）**——把 Phase 8 的
+  「策略知識庫 + 組合進化」呈現成兩頁。
+  - `api.js` 加 knowledge 全套（`getKnowledge`/`getKnowledgeRanking`/`getKnowledgeItem`/
+    `validateKnowledge`/`promoteKnowledge`/`rejectKnowledge`）。抽共用 `components/KnowledgeCard.jsx`
+    （理論/場景/使用時機/OOS 指標/狀態親和性）。
+  - `LibraryPage`：唯讀策展庫 + 排行（curated/validated，依 OOS EV 排序），不做晉升/退回。
+    `EvolutionPage`：候選審核 + 跑驗證管線 + **人在迴路**晉升（validated→curated）/ 退回（附理由）——
+    晉升一律由使用者點按觸發，前端不自動晉升、不重算 EV/驗證。新增 sidebar「進化實驗室」「策略知識庫」項。
+  - 測試：`EvolutionPage.test.jsx`（候選/驗證/晉升）+ `LibraryPage.test.jsx`（策展庫/切換）；
+    Vitest 全綠（65 passed）、build 通過。
+
+- **Phase 9 step-06 決策審計頁（/decisions）**——把每個 Bot 的決策軌跡（為何在某時點
+  買/賣/觀望/跳過）做成可瀏覽頁，「每一筆自動決策可追溯」的前端呈現。`api.getBotDecisions`
+  打 Phase 6 `GET /bots/{id}/decisions`；`pages/DecisionsPage.jsx` 選 Bot → 時序列出
+  action/signal/reason/price/時間，不同 action（bought/sold/hold/skipped_*）配色。
+  只顯示後端審計、不重算。新增 sidebar「決策審計」項。測試：`DecisionsPage.test.jsx`
+  （未選不抓/選 Bot 列出含配色）；Vitest 全綠（61 passed）、build 通過。
+
+- **Phase 9 step-05 探討/檢討頁（/explorations）+ 後端讀取端點**——把 explorations 檔案記憶
+  （LLM 事後檢討）做成可瀏覽的唯讀頁（左清單 + 右內容）。**唯一碰後端的前端步驟**。
+  - 後端：新增 `backend/routers/explorations.py`（`GET /explorations` 重用 `list_index_entries()`；
+    `GET /explorations/{name}` 重用 `read_exploration()` 防穿越，讀不到回 404），掛上 `main.py`。
+    **不**自己 open()/拼路徑（安全紅線）；唯讀，無寫/改/刪。
+  - 前端：`api.js` 加 `getExplorations`/`getExploration`；新增 `pages/ExplorationsPage.jsx`
+    （內容用輕量 pre-wrap 顯示，不引重型 markdown 依賴）。新增 sidebar「探討檢討」項。
+  - 測試：`tests/test_explorations_api.py`（往返/404/**防穿越** `../`、非 .md，4 passed）+
+    `ExplorationsPage.test.jsx`（清單/讀內容）；前端 Vitest 全綠（59 passed）、build 通過。
+
+- **Phase 9 step-04 策略方案頁（/presets）**——把右側工作台的策略方案搬成獨立全頁：
+  CRUD（新增/改名/調參/收藏/刪除）+ 一鍵跑回測。沿用工作台既有方案邏輯與 preset api，
+  刪除走既有 `ConfirmDialog`、回測結果用共用 `BacktestResultCard`，不自造新表單風格。
+  新增 sidebar「策略方案」項。測試：`PresetsPage.test.jsx`（渲染/新增/刪除確認，monkeypatch api）；
+  Vitest 全綠（57 passed）、build 通過。
+
+- **Phase 9 step-03 回測歷史 / EV 榜頁（/backtest-runs）**——把埋在右側工作台的回測歷史搬成獨立全頁：
+  依 EV 排序的榜、收藏標星、點一筆看完整 metrics + 資金曲線、勾選數筆並排比較。
+  - 抽共用元件 `components/BacktestResultCard.jsx`（EV 頭條卡）並回頭讓 `StrategyWorkbench` 區2 改用它，
+    不重寫兩份；資金曲線用純 SVG `components/EquitySparkline.jsx`（**不引新圖表庫**）。
+  - 不改後端 `/backtest-runs` 排序語意、不在前端重算 EV——只顯示後端結果。新增 sidebar「回測歷史」項。
+  - 測試：`BacktestRunsPage.test.jsx`（渲染榜/收藏切換，monkeypatch api）；Vitest 全綠（54 passed）、build 通過。
+
+- **Phase 9 step-02 交易紀錄頁（/trades）+ 篩選**——把暫放回測工具頁的 TradesTable 升級成
+  獨立頁，上方加篩選列（依 Bot / 標的 / 買賣別 / 日期區間）。篩選為前端純函式
+  `utils/filterTrades.js`（不改後端 /trades 端點），抽純函式好測。新增 sidebar「交易紀錄」項。
+  測試：`filterTrades.test.jsx`（各維度/交集/空集/非陣列）+ `TradesPage.test.jsx`（渲染/篩選/清除）；
+  Vitest 全綠（52 passed）、`npm run build` 通過。
+
+- **Phase 9 step-01 導覽重構（Tabs→sidebar+路由）+ Dashboard 瘦身**——把原本「上方 4 個 Tabs +
+  右側折疊工作台」改成「左側 sidebar 導覽 + react-router 多頁面」的專業終端機外殼。
+  - 引入 `react-router-dom`；新增 `components/SidebarLayout.jsx`（常駐外殼：Header + 側欄導覽
+    + `<Outlet context>`，沿用 `theme.js` NEON 深藍色票，不另立配色）。
+  - `App.jsx` 改成路由根（`BrowserRouter`/`Routes`）；狀態與 handler 仍集中在 App，經
+    `<Outlet context>` 分配給各頁；既有四塊搬成路由頁（`pages/DashboardPage`/`AiExplorePage`/
+    `ChartsPage`/`FundamentalsPage`），**行為不變**、圖表仍 lazy 分包。
+  - **Dashboard 瘦身**：監控中心只留 AccountCard + AI 燈號 + BotList；AutoBacktestPanel /
+    BacktestPanel / TradesTable 移出儀表板，暫放 `pages/BacktestToolsPage`（step-02/03 接手拆分）。
+  - 測試：`SidebarLayout.test.jsx`（導覽項目/Outlet/實盤警告）；前端 Vitest 全綠（40 passed）、
+    `npm run build` 通過。
+
+- **Phase 8 step-01~06 策略知識庫 + 組合進化（人在迴路閉環）**——把「蒐集策略 → 整合組合 →
+  自動驗證 → 排序 → 人在迴路策展」串成閉環，強依賴 Phase 6（誠實 OOS）與 Phase 7 step-07（防過擬合）。
+  - **step-01 知識庫資料模型**：新增 `StrategyKnowledge`（理論/場景/使用時機/驗證狀態機
+    candidate→validated→curated/rejected/OOS 指標/狀態親和性），走 Alembic 遷移
+    `f6a7b8c9d0e1`；新增 `routers/knowledge.py` 基本 CRUD。
+  - **step-02 策略生成器**：`services/strategy_generator.py` 用 LLM 依場景**草擬**候選參數
+    （限既有策略鍵），`POST /knowledge/propose` 只進候選區、不回測不部署；沿用 `llm` 外送安全閥，
+    **不**自動寫新策略 `.py`（新邏輯一律走 strategy-builder skill）。
+  - **step-03 策略組合引擎**：`strategies/composite.py` 的 `CompositeStrategy`（投票/加權/狀態切換），
+    聚合抽成純函式 `aggregate_signals`；註冊進 `STRATEGY_REGISTRY`（鍵 `composite`），走既有
+    `_run_on_df`/Bot 流程零特例；子策略統一吃同一份 df（呼應「資料只抓一次」）。
+  - **step-04 自動驗證管線**：`services/evolution.py` 的 `validate_candidate` **重用** Phase 6
+    含成本/隔日成交回測 + `split_train_test` 單次 OOS + Phase 7 `walk_forward`/`is_layer_worth_it`，
+    只有「樣本外真加分」判 validated，否則 rejected；判定鍵讀 OOS/walk-forward，非 in-sample。
+  - **step-05 排行 + 使用時機說明**：`GET /knowledge/ranking` 依 OOS EV 排序；
+    `POST /knowledge/{id}/usage-note` 用 Phase 7 狀態親和性 + LLM 寫一兩句白話「何時用」，
+    寫回 `usage_note`/`regime_affinity`。
+  - **step-06 人在迴路審核**：`POST /knowledge/{id}/promote`（validated→curated，**只能由人觸發**）、
+    `/reject`（附理由）；採用/淘汰理由沿用 explorations 檔案記憶（新增 `write_knowledge_note`，
+    `knowledge-` 前綴與回測檢討區隔不撞檔），形成可追溯軌跡。自動流程到 validated 為止，無自動晉升路徑。
+  - 測試：`test_knowledge`/`test_composite`/`test_strategy_generator`/`test_evolution`
+    （CRUD/狀態流轉/404、聚合純函式、LLM 提案 monkeypatch、OOS 加分→validated/不加分→rejected）；
+    `pytest tests/ -q` 全綠（249 passed）。`composite` 為事件式聚合器，於 `test_vectorized_engine`
+    的「全策略向量化」不變式中明確豁免。
+
+### 修正
+
+- **Phase 8 加固：組合策略防呆 + 寫入把關，杜絕「爛組合進庫、實盤 Bot 崩」**——
+  - `strategies/composite.py` 新增純函式 `validate_composite_params`：method 須為
+    vote/weighted/regime_switch；members 須非空且子策略代號皆為既有策略、**禁巢狀 composite**
+    （防無限遞迴）；regime_switch 須帶非空且合法的 `regime_strategies` 對照表。
+  - `CompositeStrategy._sub_signal` 加執行期安全網：子策略建立/出訊號失敗時降級為觀望（HOLD），
+    **不往上拋例外**——避免單一壞子策略弄崩整個 `bot_manager` 實盤迴圈。
+  - `routers/knowledge.py`：`POST/PUT /knowledge` 對 `strategy_key=="composite"` 在**寫入前**
+    驗參數（不合法回 400）；`POST /knowledge/propose` 擋下 composite（無 LLM 參數 schema，請手動建立）。
+- **驗證管線資料不足時給明確錯誤**——`services/evolution.py` 的 `validate_candidate` 若
+  walk-forward 湊不出任何 fold（資料太短）改丟明確 `ValueError`（含所需/實際根數），
+  router 轉 400；使用者分得清「資料太短」與「策略真的不加分」，不再靜默判 rejected。
+- **`POST /knowledge/{id}/reject` 冪等**——已 rejected 的再退回回 400，避免重複寫 explorations 記憶。
+- **`GET /knowledge` 與 `/knowledge/ranking` 加可選 `limit`/`offset` 分頁**（預設全取，向後相容）。
+- 測試：`test_composite` 補 `validate_composite_params` 正/反例（空 members／非法子鍵／巢狀／
+  錯 method／regime_switch 缺表）與子策略安全網；`test_knowledge` 補 `/propose` 端點、composite
+  寫入把關（合法 200／非法 400）、reject 冪等。
+
+### 變更
+
+- **依層驗證結論接線：meta-labeling 收回固定策略線上路徑（其餘層不動）**——跑 `scripts/validate_layers.py`
+  （10 檔 watchlist、walk-forward）後依「沒加分就砍」鐵律調整：
+  - **唯一在 OOS 加分的是 meta-labeling**（folds=444、Δ=+27.8），但原本只接在 `adaptive` 路徑內，
+    而 adaptive 證明有害（folds=90、Δ=−115）且預設關 → meta 在普通 Bot 線上等於死碼。
+    把 `should_take` 二級過濾接進 `bot_manager._run_strategy` 的 BUY 路徑（閘 `META_LABEL_ENABLED`），
+    流程與 `layer_validation.MetaFilteredStrategy` 一致，線上行為＝樣本外驗證量到的那條。
+  - **adaptive 維持關**（`bot.adaptive` 預設 False，無 bot 開啟）；kelly folds 不足（2<3）不認證、擱置；
+    event-risk 為風險煞車、不可 OOS 驗證，照舊。
+- **層驗證誠實修法：adaptive / kelly 給「公平的樣本外測試」（非調參騙綠）**——遵守 step-07 鐵律
+  「框架是用來砍沒用的層、不是美化績效」，只修方法論瑕疵、不為了過而調門檻。
+  - **kelly 測試原本根本沒跑到（`folds=0`）**：舊版在同一段 60 根測試窗上「同時估 W/R 又複利」，
+    既偷看未來（in-sample 凱利）又因湊不到 `KELLY_MIN_ROUND_TRIPS` 而每 fold 全 skip。
+    改成分離訓練/測試＋**擴張窗**估比例：在「測試段之前的全段」估凱利比例（嚴格 OOS、不偷看），
+    把固定比例與凱利比例套到測試段已實現報酬流複利比終值。測試段只需 ≥1 筆 round-trip。
+    結果：`folds 0→2`、凱利略勝基準（+0.0011），但仍 < `VALIDATION_MIN_FOLDS=3`
+    → **無法認證**（資料太薄，需更多標的/更長歷史，不靠調參湊綠）。
+  - **adaptive 無可信狀態時 fallback 改為 best-fixed 而非 HOLD**：meta-strategy 在沒把握的狀態
+    不該坐現金白丟基準 edge，應退回「整體最佳固定策略」當地板（`AdaptiveMappedStrategy`
+    新增 `fallback_key`）。如此 candidate 只在「有把握更好」的狀態才偏離 baseline，驗純粹狀態切換增益。
+    結果：OOS 由 **−159.8 改善到 −115.2**（candidate 28.6→73.3），但**仍輸基準**
+    → 維持預設關（`bot.adaptive=False`），fallback 設計改善保留。
+  - 結論：兩層皆未以誠實手段轉綠——這正是 step-07 框架照設計運作（殺弱層，不美化）。
+    meta 仍為唯一 OOS 加分層（+27.8 / 444 folds）。
+
 ### 新增
 
 - **工作流視覺化文件**——新增 `docs/workflow-diagrams.md`，用 Mermaid 畫 4 張圖整理系統思緒：
