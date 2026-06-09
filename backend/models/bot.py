@@ -75,5 +75,21 @@ class Bot(Base):
     # 建立時間
     created_at = Column(DateTime, default=datetime.now)
 
+    # ----- 董事會晉升狀態（Phase 10 step-06，人在迴路）-----
+    # Bot 從 Paper（模擬）晉升到真錢的人工核准軌跡。預設 "paper"。
+    #   paper          ：跑模擬中（預設）
+    #   proposed_live  ：系統/人提議「建議上真錢」，待老闆核准
+    #   approved_live  ：老闆已核准（★只是「人已同意」的旗標，不放行真錢！）
+    #   rejected       ：老闆退回
+    # ★安全紅線：approved_live 不等於送真錢。真錢仍須 ALPACA_BASE_URL 實盤 +
+    #   ALLOW_LIVE_TRADING=true 雙閘，由 alpaca_client.submit_market_order 把關（兩者 AND）。
+    promotion_status = Column(String, nullable=False, default="paper")
+
+    # 被提議上真錢的時間（None = 還沒被提議）
+    promotion_proposed_at = Column(DateTime, nullable=True)
+
+    # 提議達標證據摘要 / 退回理由（人看的一句話，詳細軌跡另寫 explorations 記憶）
+    promotion_reason = Column(String, nullable=True)
+
     def __repr__(self) -> str:
         return f"<Bot {self.id} {self.name} ({self.strategy} on {self.symbol})>"

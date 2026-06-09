@@ -115,7 +115,8 @@
 | Phase 3 | [phase-3-ui-theme.md](phase-3-ui-theme.md) | 佈局清理 + 深藍主題 | 移除表單、Dashboard 純監控、深藍色票 | ✅ 完成 |
 | Phase 4 | [phase-4-automation.md](phase-4-automation.md) | 全自動護欄（模式 B） | EV 閾值排程自動建 Bot | ✅ 完成 |
 
-> 全 4 階段已落地（2026-06-03）。後續微調：前端自動化規則面板、`BotAvatar` 深底調色、圖上拖曳水平線連動 DB。
+> 全 4 階段已落地（2026-06-03）。後續微調：~~前端自動化規則面板~~（✅ 已補，監控中心 `AutomationPanel`）、
+> ~~`BotAvatar` 深底調色~~（✅ 已補，深藍徽章 + 冷白線稿）、~~圖上拖曳水平線連動 DB~~（✅ 已落地，`handlePriceLineDrag`）。
 
 ---
 

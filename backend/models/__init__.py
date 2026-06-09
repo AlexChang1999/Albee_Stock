@@ -11,6 +11,12 @@ from backend.models.strategy_preset import StrategyPreset
 from backend.models.backtest_run import BacktestRun
 from backend.models.decision_log import DecisionLog
 from backend.models.portfolio_state import PortfolioState
+from backend.models.strategy_knowledge import StrategyKnowledge
+from backend.models.automation_config import AutomationConfig
+from backend.models.opportunity import Opportunity
+from backend.models.factor_snapshot import FactorSnapshot
+from backend.models.raw_strategy_find import RawStrategyFind
+from backend.models.political_event import PoliticalEvent
 
 __all__ = [
     "Bot",
@@ -19,4 +25,10 @@ __all__ = [
     "BacktestRun",
     "DecisionLog",
     "PortfolioState",
+    "StrategyKnowledge",
+    "AutomationConfig",
+    "Opportunity",
+    "FactorSnapshot",
+    "RawStrategyFind",
+    "PoliticalEvent",
 ]

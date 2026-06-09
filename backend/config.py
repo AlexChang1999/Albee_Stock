@@ -109,6 +109,10 @@ class Settings:
     # 第一層最多放幾檔進第二層（控制 LLM 呼叫次數，建議 5~10）。
     SCREENER_TOP_N: int = int(os.getenv("SCREENER_TOP_N", "8"))
 
+    # 因子數值表（Phase 10 step-03）保留天數：常駐掃描每輪順手把 watchlist 各檔因子落表，
+    # 超過此天數的舊快照會被修剪，避免 DB 無上限膨脹。0 = 不修剪（保留全部）。
+    FACTOR_RETENTION_DAYS: int = int(os.getenv("FACTOR_RETENTION_DAYS", "90"))
+
     # ========================================================
     # 全自動護欄 / 模式 B 自動部署（改版 Phase 4）
     # ========================================================
@@ -123,6 +127,39 @@ class Settings:
     AUTO_DEPLOY_CASH_PER_BOT: float = float(os.getenv("AUTO_DEPLOY_CASH_PER_BOT", "1000"))
     # 盤前掃描的本機時刻（24 小時制的「時」）。美股盤前、開盤前跑一次。
     AUTO_DEPLOY_HOUR: int = int(os.getenv("AUTO_DEPLOY_HOUR", "8"))
+    # 常駐機會探勘間隔（分鐘）：盤中每隔幾分鐘跑一次海選、更新機會清單（Phase 10 step-02）。
+    # 0 = 關掉常駐掃描。只當「首次建規則列」的種子預設，之後以 DB 的 scan_interval_min 為準。
+    SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
+
+    # ========================================================
+    # 市場蒐集員 — 爬蟲收料（Phase 10 step-04）
+    # ========================================================
+    # 定時從 RSS / 部落格收「策略描述文字」進收件匣（raw_strategy_finds），當人 /
+    # strategy-builder 寫成策略的素材。**只收料、不驗證、不部署**，收回來一律過既有 OOS 閘。
+    #   - COLLECTOR_RSS_FEEDS：逗號 / 換行分隔的 RSS 網址；留空＝不收料（預設關，要收自己填）。
+    #   - COLLECTOR_INTERVAL_MIN：每隔幾分鐘收一次；0＝關閉常駐收料（預設關，避免無故打外站）。
+    #   - COLLECTOR_USER_AGENT：禮貌的 User-Agent，尊重來源、降低被封 IP 風險。
+    COLLECTOR_RSS_FEEDS: str = os.getenv("COLLECTOR_RSS_FEEDS", "")
+    COLLECTOR_INTERVAL_MIN: int = int(os.getenv("COLLECTOR_INTERVAL_MIN", "0"))
+    COLLECTOR_USER_AGENT: str = os.getenv(
+        "COLLECTOR_USER_AGENT",
+        "AlbeeStockCollector/1.0 (+personal research bot; best-effort, respects robots)",
+    )
+
+    # ========================================================
+    # 政治專討員 — Discord 事件流（Phase 10 step-05）
+    # ========================================================
+    # 從 Discord 頻道偵測政治貼文（例如川普發文鏡像）→ 本機 Ollama 判讀 → 接既有風險煞車。
+    # ★ 定位是「煞車（降風險、不開新倉），不是油門」。預設**完全關閉**，不影響現行下單。
+    #   - POLITICAL_ENABLED：bridge 總開關（預設 false）。false＝political_size_factor 一律放行。
+    #   - POLITICAL_DISCORD_TOKEN / POLITICAL_CHANNEL_ID：Discord runner 用（留空＝不啟動 runner）。
+    #   - POLITICAL_AUTHOR_FILTER：只處理這個作者名的貼文（留空＝該頻道所有貼文）。
+    #   - POLITICAL_EVENT_MAX_AGE_HOURS：政治情緒超過幾小時就退場、不再煞車（預設 24h）。
+    POLITICAL_ENABLED: bool = os.getenv("POLITICAL_ENABLED", "false").lower() in ("1", "true", "yes")
+    POLITICAL_DISCORD_TOKEN: str = os.getenv("POLITICAL_DISCORD_TOKEN", "")
+    POLITICAL_CHANNEL_ID: str = os.getenv("POLITICAL_CHANNEL_ID", "")
+    POLITICAL_AUTHOR_FILTER: str = os.getenv("POLITICAL_AUTHOR_FILTER", "")
+    POLITICAL_EVENT_MAX_AGE_HOURS: float = float(os.getenv("POLITICAL_EVENT_MAX_AGE_HOURS", "24"))
 
     # ========================================================
     # 回測成本模型（Phase 6 step-02）

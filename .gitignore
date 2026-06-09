@@ -49,3 +49,6 @@ skills-lock.json
 # 註：.claude/settings.json 改為「共享設定」（只放 plugin/marketplace，跨機自動安裝），
 #     已進 repo；機器專屬的個人設定一律放 settings.local.json。
 .claude/settings.local.json
+
+# 測試暫時產生的 explorations 資料夾（test_knowledge.py 用，跑完的殘留，不進 repo）
+tests/_tmp_expl_*/

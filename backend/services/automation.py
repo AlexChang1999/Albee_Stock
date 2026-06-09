@@ -4,7 +4,7 @@
 「自動駕駛」：盤前排程跑 AI 海選，對 EV + 勝率同時超標的策略「無人工確認」自動建 Bot。
 
 這是整個系統風險最高的一塊，所以層層設防：
-1. **總開關預設關**（settings.AUTO_DEPLOY_ENABLED=false）：沒明確開，排程不會自動建任何 Bot。
+1. **總開關預設關**（automation_config.enabled=false，存 DB）：沒明確開，排程不會自動建任何 Bot。
 2. **雙重門檻**：EV 與勝率兩個都要過（plan_deployments 純函式把關）。
 3. **情緒閘**（Phase 6 step-07）：bearish / 分數過低 → 情緒否決，不進部署（EV 為主、情緒為輔）。
 4. **組合回撤熔斷**（Phase 6 step-09）：總權益跌破門檻 → 整輪不建任何 Bot。
@@ -25,6 +25,7 @@ from backend.services.circuit_breaker import check_breaker
 from backend.services.event_risk import assess_event_risk
 from backend.services.notifier import notify
 from backend.services.sizing import kelly_trade_amount
+from backend.services.automation_config import get_config
 from backend.bots.bot_manager import bot_manager
 
 
@@ -126,24 +127,27 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
     :param dry_run: True = 只回「會部署誰」不真的建（給 API 預覽 / 測試用）。
     :return: 摘要 dict（enabled、planned/approved/rejected/deployed 清單、各項統計）。
     """
-    if not settings.AUTO_DEPLOY_ENABLED and not force:
-        return {"enabled": False, "reason": "自動部署總開關未開（AUTO_DEPLOY_ENABLED=false）",
-                "deployed": [], "planned": []}
-
-    # 組合回撤熔斷（Phase 6 step-09）：熔斷期間整輪不建任何 Bot（只擋進、不擋出）
-    breaker = check_breaker(db)
-    if breaker["tripped"]:
-        return {"enabled": True, "circuit_breaker": True,
-                "reason": f"組合回撤熔斷中（權益 {breaker['equity_now']} / 峰值 {breaker['equity_peak']}），暫停自動部署",
-                "deployed": [], "planned": []}
-
     own_session = db is None
     if own_session:
         db = SessionLocal()
     try:
+        # 規則改吃 DB（redesign 後續）：總開關 + 門檻 + 配資 + scan_hour 都讀 automation_config 單列表。
+        cfg = get_config(db)
+
+        if not cfg.enabled and not force:
+            return {"enabled": False, "reason": "自動部署總開關未開（automation_config.enabled=false）",
+                    "deployed": [], "planned": []}
+
+        # 組合回撤熔斷（Phase 6 step-09）：熔斷期間整輪不建任何 Bot（只擋進、不擋出）
+        breaker = check_breaker(db)
+        if breaker["tripped"]:
+            return {"enabled": True, "circuit_breaker": True,
+                    "reason": f"組合回撤熔斷中（權益 {breaker['equity_now']} / 峰值 {breaker['equity_peak']}），暫停自動部署",
+                    "deployed": [], "planned": []}
+
         # 1) 跑海選（每檔配資用自動部署的設定值，才和實際建出來的 Bot 一致）
         scan = screener.screen_watchlist(
-            initial_cash=settings.AUTO_DEPLOY_CASH_PER_BOT,
+            initial_cash=cfg.cash_per_bot,
             min_ev=0.0,
         )
         recs = scan.get("recommendations", [])
@@ -156,9 +160,9 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
         # 3) 純函式決定要部署誰（EV/勝率 + 情緒閘 + 名額）
         planned = plan_deployments(
             recs,
-            ev_threshold=settings.AUTO_DEPLOY_EV_THRESHOLD,
-            winrate_threshold=settings.AUTO_DEPLOY_WINRATE_THRESHOLD,
-            max_bots=settings.AUTO_DEPLOY_MAX_BOTS,
+            ev_threshold=cfg.ev_threshold,
+            winrate_threshold=cfg.winrate_threshold,
+            max_bots=cfg.max_bots,
             existing_symbols=existing_symbols,
             active_count=active_count,
             sentiment_min_score=settings.SENTIMENT_MIN_SCORE,
@@ -178,7 +182,7 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
             approved, rejected = plan_capital(
                 planned,
                 available_cash=available_cash,
-                cash_per_bot=settings.AUTO_DEPLOY_CASH_PER_BOT,
+                cash_per_bot=cfg.cash_per_bot,
                 reserve_ratio=settings.PORTFOLIO_CASH_RESERVE_RATIO,
             )
 
@@ -198,7 +202,7 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
             m = rec.get("metrics") or {}
             # Phase 7 step-04：分數凱利依「OOS 勝率 + OOS 賠率」算部位（樣本不足/負期望 → 0）。
             #   查不到帳戶現金（離線）→ 退回固定配資當基數，行為仍保守。
-            base_cash = available_cash if available_cash is not None else settings.AUTO_DEPLOY_CASH_PER_BOT
+            base_cash = available_cash if available_cash is not None else cfg.cash_per_bot
             amount = kelly_trade_amount(
                 base_cash,
                 m.get("oos_win_rate_pct") or 0.0,
@@ -210,7 +214,7 @@ def run_auto_deploy(db=None, *, force: bool = False, dry_run: bool = False) -> d
             risk = assess_event_risk(rec.get("sentiment"))
             amount *= risk["size_factor"]
             # 仍受 Phase 6 step-05 既有「每檔配資上限」約束：凱利只會縮、不會超過固定天花板。
-            amount = min(amount, settings.AUTO_DEPLOY_CASH_PER_BOT)
+            amount = min(amount, cfg.cash_per_bot)
             if amount <= 0:
                 rejected.append({
                     "symbol": rec["symbol"], "strategy_key": rec["strategy_key"],
