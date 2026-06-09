@@ -15,7 +15,63 @@
 
 ## [未發布]
 
+### 待辦（後續 / TODO）
+
+> 本次 UX 兩批未做、留待後續的項目（依價值排序）：
+
+- **持倉 / 未實現損益視圖**（價值最高的缺口）：後端目前**無 `/positions` 端點**，
+  需先加端點再做前端持倉卡（現金/購買力之外，看得到手上部位與浮動損益）。
+- **亮色模式切換**：目前深色單一主題（`theme.js` + `index.css` 變數 + 各元件色都依深色調過），
+  要加 light/dark 雙主題需整體再過一遍對比。
+- **排行榜欄位排序**：`AutoBacktestPanel` 排行榜目前固定依 EV，可比照 `TradesTable` 加 `TableSortLabel`。
+- **骨架屏（Skeleton）全面化**：`AccountCard`/`BotList`/`TradesTable` 載入時可用 Skeleton 取代空白/純文字。
+- **工作台 resize 把手無障礙**：`StrategyWorkbench` 拖曳把手補 `focus-visible` + 鍵盤可調寬。
+- **元件測試持續補**：目前有 `ConfirmDialog`/`BotList`/`EditBotDialog` + 純函式工具，其餘元件待補。
+- **skill CLI**：`.claude/skills/ui-ux-pro-max` 未隨附 `search.py`/CSV（規則文字已夠用，CLI 查詢不可跑）。
+
 ### 新增
+
+- **前端改進 Batch 2（決策露出 / 安全閘 / 自動刷新 / 程式健康）**：
+  - **決策軌跡露出**：接後端既有 `GET /bots/{id}/decisions`（前端原本沒用）——新增 `api.getBotDecisions`、
+    `components/BotDecisionsDialog.jsx`（時間/訊號/動作/參考價/原因，`action` 中文化 + 晶片色），
+    `BotList` 每張卡加「決策軌跡」鈕。回答「為何某時點沒下單」（含觀望/休市/購買力不足/熔斷）。
+  - **改名/調參數改 Dialog**：新增 `components/EditPresetDialog.jsx`（名稱+策略+股票+JSON 參數即時驗證），
+    取代 `StrategyWorkbench` 的 `window.prompt`。
+  - `utils/number.js` 新增 `money()`（千分位金額，附測試）。
+  - 新增元件測試 `BotList.test.jsx`、`EditBotDialog.test.jsx`。`npm --prefix frontend run test` → **50 passed**。
+
+- **UX 稽核 + 工作流（套用 UI/UX Pro Max skill）**——把設計規則 skill 裝進專案並對前端做
+  優先序 1→10 稽核，落地 CRITICAL/HIGH 修補。
+  - 新增 `.claude/skills/ui-ux-pro-max/`（含「本專案是 React Web + MUI、非 React Native」的適配註記）。
+  - 新增 `docs/ux-audit-2026-06.md`（稽核報告，規則代號 + `file:line` + 處置）、
+    `docs/ux-workflow.md`（何時觸發 / 優先序閘門 / Web/MUI 交付前檢查表 / 驗證步驟）。
+  - `utils/number.js` 新增 `signOf` / `signedMoney`（漲跌數字補 `+/-`，不只靠顏色；附測試，41 passed）。
+
+### 變更
+
+- **前端一致性 + 對比修復（Batch 2）**：
+  - **修對比 bug**：`Stat.jsx` 數字寫死深色 hex（light-theme 殘留）→ 深色面板上幾乎看不清，
+    改用主題語意色（`text.primary`/`text.secondary`）+ `tabular-nums`；影響 `AccountCard`、`BacktestPanel`。
+    `AutoBacktestPanel` 冠軍金色 `#8a6a25`（深底對比不足）→ `NEON.magenta`。
+  - **策略名單一來源**：`constants.js` 新增 `strategyLabel()`，`RecommendationsPanel`（原印 `ma_crossover` 原碼）/
+    `AutoBacktestPanel`/`StrategyWorkbench` 改用，去重。
+  - **AI 推薦修正**：`RecommendationsPanel` 的 EV 改帶正負號 + 漲跌上色、防 `undefined`（不再印 `NaN`）。
+- **儀表板自動刷新 + 安全閘（Batch 2）**：
+  - `useDashboardData` 改背景每 30 秒靜默輪詢（分頁背景時暫停、切回前景立即刷新）、bots/trades 改平行抓、加卸載守衛。
+  - 實盤模式（`live_armed`）下 AI「一鍵部署」加二次確認（避免直接動真錢）。
+  - 交易表 `TradesTable` 欄位可排序（`TableSortLabel` + `aria-sort`，時間預設新→舊）。
+- **前端 UX 強化（無障礙 / 回饋 / 表單 / 表格 / 圖表）**——對齊 UI/UX Pro Max 規則：
+  - **無障礙**：圖示鈕補 `aria-label`（`BotList`、`StrategyWorkbench`）；損益/EV 改帶 `+/-` 號
+    （`BotList`、`BacktestPanel`、`AutoBacktestPanel`、`StrategyWorkbench`）；`index.css` 加
+    `prefers-reduced-motion` 全域弱化動畫。
+  - **危險動作**：停 Bot 改走 `ConfirmDialog`（實盤文案加強）；刪策略方案由 `window.confirm`
+    改站內 `ConfirmDialog`（`App.jsx`、`StrategyWorkbench`）。
+  - **回饋**：成功訊息改 `Snackbar`（4s 自動消失、`role="status"` 不偷焦點），錯誤維持常駐 Alert。
+  - **emoji→向量圖示**：`StrategyWorkbench` 動作鈕（★☆✎🗑▶📊💬◀）改 `@mui/icons-material`。
+  - **表單**：`EditBotDialog`、`BacktestPanel` 加 `required` + 即時驗證 + `helperText`，無效時停用送出。
+  - **表格/圖表**：`TradesTable` 加 `stickyHeader` + 數字右對齊 + `tabular-nums`；
+    `LightweightChart` 加載入中/查無資料/錯誤覆蓋提示。
+  - 驗證：`npm --prefix frontend run test`（41 passed）+ `lint`（0 error）+ `build`（成功）。
 
 - **工作流視覺化文件**——新增 `docs/workflow-diagrams.md`，用 Mermaid 畫 4 張圖整理系統思緒：
   ① 高層全景（研究/實盤/驗證三軌 + 共用底座）、② 即時/自動交易決策流水線（照

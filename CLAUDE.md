@@ -52,7 +52,9 @@ Albee_Stock/
 ├── docs/
 │   ├── skill-guidelines.md    # 撰寫 Skill 的守則
 │   ├── workflow-diagrams.md   # 系統工作流圖（Mermaid：全景/決策流水線/回測EV/層驗證）
-│   └── how-to-add-strategy.md # 新增策略 runbook
+│   ├── how-to-add-strategy.md # 新增策略 runbook
+│   ├── ux-workflow.md         # UX 工作流（何時觸發 skill + 優先序閘門 + 交付前檢查表）
+│   └── ux-audit-2026-06.md    # 前端 UX 稽核報告（UI/UX Pro Max 規則 1→10）
 ├── scripts/
 │   └── validate_layers.py     # 層驗證 CLI（Phase 7：跑 watchlist 印各層 verdict 表）
 ├── backend/

@@ -6,6 +6,7 @@
 
 import { Card, CardContent, Typography, Box } from "@mui/material";
 import Stat from "./Stat";
+import { money } from "../utils/number";
 
 export default function AccountCard({ account }) {
   return (
@@ -23,18 +24,9 @@ export default function AccountCard({ account }) {
             }}
           >
             <Stat label="狀態" value={account.status} />
-            <Stat
-              label="現金"
-              value={`$${Number(account.cash).toLocaleString()}`}
-            />
-            <Stat
-              label="購買力"
-              value={`$${Number(account.buying_power).toLocaleString()}`}
-            />
-            <Stat
-              label="總值"
-              value={`$${Number(account.portfolio_value).toLocaleString()}`}
-            />
+            <Stat label="現金" value={money(account.cash)} />
+            <Stat label="購買力" value={money(account.buying_power)} />
+            <Stat label="總值" value={money(account.portfolio_value)} />
           </Box>
         ) : (
           <Typography color="text.secondary">

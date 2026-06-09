@@ -24,6 +24,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   LinearProgress,
+  Snackbar,
 } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
@@ -47,6 +48,7 @@ import AutoBacktestPanel from "./components/AutoBacktestPanel";
 import TradesTable from "./components/TradesTable";
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
+import BotDecisionsDialog from "./components/BotDecisionsDialog";
 import StrategyWorkbench from "./components/StrategyWorkbench";
 import LiveQuote from "./components/LiveQuote";
 import FundamentalsPanel from "./components/FundamentalsPanel";
@@ -108,6 +110,13 @@ function App() {
 
   // 準備要刪除的 Bot（null = 沒有打開刪除確認視窗）
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // 準備要停止的 Bot（null = 沒有打開停止確認視窗）
+  // 停止 = 危險動作（尤其實盤會停掉監聽/出場），故與刪除一樣走二次確認。
+  const [stopTarget, setStopTarget] = useState(null);
+
+  // 正在查看決策軌跡的 Bot（null = 沒有打開決策視窗）
+  const [decisionsBot, setDecisionsBot] = useState(null);
 
   // 一鍵部署：把 AI 推薦的策略直接變成一個啟用中的 Bot
   // （重用既有 createBot + startBot 流程，不另造邏輯）
@@ -180,19 +189,34 @@ function App() {
   }
 
   // 啟動 / 停止 Bot（依目前狀態切換）
+  // 啟動：直接做（無風險）。停止：危險動作 → 先開確認視窗，由 confirmStop 真正執行。
   async function handleToggleActive(bot) {
     setError("");
     setMessage("");
+    if (bot.is_active) {
+      setStopTarget(bot); // 開「停止 Bot」確認視窗
+      return;
+    }
     try {
-      if (bot.is_active) {
-        await api.stopBot(bot.id);
-        setMessage(`已停止 Bot：${bot.name}`);
-      } else {
-        await api.startBot(bot.id);
-        setMessage(
-          `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
-        );
-      }
+      await api.startBot(bot.id);
+      setMessage(
+        `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
+      );
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 真正執行停止（由停止確認視窗的「停止」鈕觸發）
+  async function confirmStop() {
+    const bot = stopTarget;
+    setStopTarget(null); // 先關視窗
+    setError("");
+    setMessage("");
+    try {
+      await api.stopBot(bot.id);
+      setMessage(`已停止 Bot：${bot.name}`);
       reload();
     } catch (e) {
       setError(e.message);
@@ -269,15 +293,11 @@ function App() {
             animation: "albeeFadeUp .5s ease both",
           }}
         >
-        {/* 訊息提示：操作錯誤(error) 與 資料載入錯誤(loadError) 都顯示出來 */}
+        {/* 錯誤提示常駐顯示（操作錯誤 error 與資料載入錯誤 loadError）：
+            錯誤需要使用者看清楚並處理，故不自動消失。成功訊息改用下方 Snackbar。 */}
         {(error || loadError) && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error || loadError}
-          </Alert>
-        )}
-        {message && (
-          <Alert severity="success" sx={{ mb: 2 }}>
-            {message}
           </Alert>
         )}
 
@@ -320,6 +340,7 @@ function App() {
                 })
               }
               onDelete={setDeleteTarget}
+              onShowDecisions={setDecisionsBot}
             />
             {/* 全自動掃描最佳策略（一鍵最強）：放在手動回測上方當主打 */}
             <AutoBacktestPanel />
@@ -335,7 +356,12 @@ function App() {
         )}
 
         {/* ===== AI 探勘分頁 ===== */}
-        {tab === 1 && <RecommendationsPanel onDeploy={handleDeploy} />}
+        {tab === 1 && (
+          <RecommendationsPanel
+            onDeploy={handleDeploy}
+            liveArmed={status?.live_armed}
+          />
+        )}
 
         {/* ===== K 線圖分頁 ===== */}
         {tab === 2 && (
@@ -450,6 +476,48 @@ function App() {
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
       />
+
+      {/* 停止 Bot 的確認視窗（停止 = 危險動作；實盤時文案加強提醒） */}
+      <ConfirmDialog
+        open={!!stopTarget}
+        title="停止 Bot"
+        message={
+          stopTarget
+            ? `確定要停止「${stopTarget.name}」嗎？停止後它將不再依排程監聽、也不會自動執行出場。${
+                status?.live_armed ? "（目前為實盤模式，請特別確認手上部位。）" : ""
+              }`
+            : ""
+        }
+        confirmText="停止"
+        confirmColor="warning"
+        onConfirm={confirmStop}
+        onClose={() => setStopTarget(null)}
+      />
+
+      {/* Bot 決策軌跡視窗（露出後端 DecisionLog 審計紀錄） */}
+      <BotDecisionsDialog
+        bot={decisionsBot}
+        onClose={() => setDecisionsBot(null)}
+      />
+
+      {/* 成功訊息：浮層 Snackbar，4 秒自動消失，不偷走鍵盤焦點。
+          role="status"（aria-live polite）讓螢幕報讀也會念出，但不打斷使用者。 */}
+      <Snackbar
+        open={!!message}
+        autoHideDuration={4000}
+        onClose={() => setMessage("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          role="status"
+          onClose={() => setMessage("")}
+          sx={{ width: "100%" }}
+        >
+          {message}
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 }

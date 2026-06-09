@@ -30,19 +30,28 @@ import {
   CircularProgress,
   Tooltip,
 } from "@mui/material";
-import { STRATEGIES } from "../constants";
+import { STRATEGIES, strategyLabel } from "../constants";
 import { NEON } from "../theme";
 import { api } from "../api";
+import { signOf } from "../utils/number";
+import ConfirmDialog from "./ConfirmDialog";
+import EditPresetDialog from "./EditPresetDialog";
+// 圖示鈕改用 MUI 向量圖示（取代 emoji ★☆✎🗑▶📊💬◀）：跨平台一致、可主題化、可加 aria-label
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import StarIcon from "@mui/icons-material/Star";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import AddIcon from "@mui/icons-material/Add";
+import AssessmentIcon from "@mui/icons-material/Assessment";
+import RateReviewIcon from "@mui/icons-material/RateReview";
 
 // localStorage 的鍵名（存面板寬度）
 const WIDTH_KEY = "workbench_width";
 const MIN_W = 320;
 const MAX_W = 720;
-
-// 把策略代號轉成中文標籤
-function strategyLabel(key) {
-  return STRATEGIES.find((s) => s.value === key)?.label || key;
-}
 
 export default function StrategyWorkbench() {
   // ----- 版面狀態：寬度 + 收合 -----
@@ -83,6 +92,12 @@ export default function StrategyWorkbench() {
   const [runs, setRuns] = useState([]);
   const [favOnly, setFavOnly] = useState(false);
   const [err, setErr] = useState("");
+
+  // 準備要刪除的方案（null = 沒有打開確認視窗）。取代原本的 window.confirm，跟全站一致。
+  const [delPreset, setDelPreset] = useState(null);
+
+  // 正在編輯（改名/調參數）的方案（null = 沒打開編輯視窗）。取代原本的 window.prompt。
+  const [editTarget, setEditTarget] = useState(null);
 
   // 新增方案表單
   const [newPreset, setNewPreset] = useState({
@@ -149,31 +164,15 @@ export default function StrategyWorkbench() {
     }
   }
 
-  // 改名 + 調參數（用 prompt 做最簡版；日後可換成 Dialog）
-  async function handleEditPreset(p) {
-    const name = window.prompt("方案名稱：", p.name);
-    if (name === null) return;
-    const paramsStr = window.prompt(
-      "策略參數（JSON，例如 {\"period\": 14}）：",
-      JSON.stringify(p.params || {})
-    );
-    if (paramsStr === null) return;
-    let params;
+  // 改名／調參數：開站內 Dialog（取代 window.prompt），存檔由 saveEditPreset 處理
+  function handleEditPreset(p) {
+    setEditTarget(p);
+  }
+
+  async function saveEditPreset(payload) {
     try {
-      params = JSON.parse(paramsStr || "{}");
-    } catch {
-      setErr("參數不是合法 JSON");
-      return;
-    }
-    try {
-      await api.updatePreset(p.id, {
-        name,
-        strategy_key: p.strategy_key,
-        symbol: p.symbol,
-        params,
-        is_favorite: p.is_favorite,
-        notes: p.notes,
-      });
+      await api.updatePreset(editTarget.id, payload);
+      setEditTarget(null);
       loadPresets();
     } catch (e) {
       setErr(e.message);
@@ -189,8 +188,14 @@ export default function StrategyWorkbench() {
     }
   }
 
-  async function handleDeletePreset(p) {
-    if (!window.confirm(`確定刪除方案「${p.name}」？（回測歷史會保留）`)) return;
+  // 刪方案：開站內確認視窗（取代 window.confirm），由 confirmDeletePreset 真正執行
+  function handleDeletePreset(p) {
+    setDelPreset(p);
+  }
+
+  async function confirmDeletePreset() {
+    const p = delPreset;
+    setDelPreset(null);
     try {
       await api.deletePreset(p.id);
       loadPresets();
@@ -283,8 +288,12 @@ export default function StrategyWorkbench() {
         }}
       >
         <Tooltip title="展開策略工作台" placement="left">
-          <IconButton onClick={() => setCollapsed(false)} sx={{ color: NEON.cyan }}>
-            ◀
+          <IconButton
+            onClick={() => setCollapsed(false)}
+            aria-label="展開策略工作台"
+            sx={{ color: NEON.cyan }}
+          >
+            <ChevronLeftIcon />
           </IconButton>
         </Tooltip>
         <Typography
@@ -341,8 +350,12 @@ export default function StrategyWorkbench() {
             策略工作台
           </Typography>
           <Tooltip title="收合面板">
-            <IconButton size="small" onClick={() => setCollapsed(true)}>
-              ▶
+            <IconButton
+              size="small"
+              aria-label="收合策略工作台"
+              onClick={() => setCollapsed(true)}
+            >
+              <ChevronRightIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -389,8 +402,13 @@ export default function StrategyWorkbench() {
                 onChange={(e) => setNewPreset({ ...newPreset, symbol: e.target.value })}
               />
             </Stack>
-            <Button variant="contained" size="small" onClick={handleCreatePreset}>
-              ＋ 新增方案
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={handleCreatePreset}
+            >
+              新增方案
             </Button>
           </Stack>
         </Paper>
@@ -415,18 +433,34 @@ export default function StrategyWorkbench() {
                 </Box>
                 <Stack direction="row" spacing={0.5}>
                   <Tooltip title="收藏">
-                    <IconButton size="small" onClick={() => toggleFavoritePreset(p)}>
-                      {p.is_favorite ? "★" : "☆"}
+                    <IconButton
+                      size="small"
+                      aria-label={`${p.is_favorite ? "取消收藏" : "收藏"}方案 ${p.name}`}
+                      onClick={() => toggleFavoritePreset(p)}
+                    >
+                      {p.is_favorite ? (
+                        <StarIcon fontSize="small" sx={{ color: NEON.magenta }} />
+                      ) : (
+                        <StarBorderIcon fontSize="small" />
+                      )}
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="改名／調參數">
-                    <IconButton size="small" onClick={() => handleEditPreset(p)}>
-                      ✎
+                    <IconButton
+                      size="small"
+                      aria-label={`改名或調整方案 ${p.name} 的參數`}
+                      onClick={() => handleEditPreset(p)}
+                    >
+                      <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="刪除">
-                    <IconButton size="small" onClick={() => handleDeletePreset(p)}>
-                      🗑
+                    <IconButton
+                      size="small"
+                      aria-label={`刪除方案 ${p.name}`}
+                      onClick={() => handleDeletePreset(p)}
+                    >
+                      <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 </Stack>
@@ -436,10 +470,17 @@ export default function StrategyWorkbench() {
                 variant="outlined"
                 fullWidth
                 sx={{ mt: 1 }}
+                startIcon={
+                  btRunningId === p.id ? (
+                    <CircularProgress size={14} color="inherit" />
+                  ) : (
+                    <PlayArrowIcon />
+                  )
+                }
                 disabled={btRunningId === p.id}
                 onClick={() => handleBacktest(p)}
               >
-                {btRunningId === p.id ? "回測中…" : "▶ 跑回測（Python）"}
+                {btRunningId === p.id ? "回測中…" : "跑回測（Python）"}
               </Button>
             </Paper>
           ))}
@@ -488,9 +529,10 @@ export default function StrategyWorkbench() {
               {btResult.run_id && (
                 <Button
                   size="small"
+                  startIcon={<AssessmentIcon />}
                   onClick={() => window.open(api.reportUrl(btResult.run_id), "_blank")}
                 >
-                  📊 開啟完整績效報表
+                  開啟完整績效報表
                 </Button>
               )}
               {btResult.expected_value < 0 && (
@@ -527,7 +569,8 @@ export default function StrategyWorkbench() {
                         fontWeight: 700,
                       }}
                     >
-                      EV {run.expected_value ?? "—"}
+                      {/* EV 補正負號，漲跌不只靠綠/紅顏色表達 */}
+                      EV {signOf(run.expected_value)}{run.expected_value ?? "—"}
                     </span>
                     {"  "}
                     <Typography component="span" variant="caption" color="text.secondary">
@@ -541,21 +584,34 @@ export default function StrategyWorkbench() {
                 </Box>
                 <Stack direction="row" spacing={0.5}>
                   <Tooltip title="收藏為好策略">
-                    <IconButton size="small" onClick={() => toggleFavoriteRun(run)}>
-                      {run.is_good ? "★" : "☆"}
+                    <IconButton
+                      size="small"
+                      aria-label={`${run.is_good ? "取消收藏" : "收藏為好策略"}：回測 ${run.id}`}
+                      onClick={() => toggleFavoriteRun(run)}
+                    >
+                      {run.is_good ? (
+                        <StarIcon fontSize="small" sx={{ color: NEON.magenta }} />
+                      ) : (
+                        <StarBorderIcon fontSize="small" />
+                      )}
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="開啟績效報表">
                     <IconButton
                       size="small"
+                      aria-label={`開啟回測 ${run.id} 的績效報表`}
                       onClick={() => window.open(api.reportUrl(run.id), "_blank")}
                     >
-                      📊
+                      <AssessmentIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="總結這次錯在哪">
-                    <IconButton size="small" onClick={() => handlePostmortem(run)}>
-                      💬
+                    <IconButton
+                      size="small"
+                      aria-label={`請 Claude 檢討回測 ${run.id}`}
+                      onClick={() => handlePostmortem(run)}
+                    >
+                      <RateReviewIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 </Stack>
@@ -625,6 +681,27 @@ export default function StrategyWorkbench() {
           </Stack>
         </Paper>
       </Box>
+
+      {/* 刪除方案的確認視窗（取代 window.confirm，與全站一致） */}
+      <ConfirmDialog
+        open={!!delPreset}
+        title="刪除方案"
+        message={
+          delPreset
+            ? `確定刪除方案「${delPreset.name}」嗎？（已產生的回測歷史會保留）`
+            : ""
+        }
+        confirmText="刪除"
+        onConfirm={confirmDeletePreset}
+        onClose={() => setDelPreset(null)}
+      />
+
+      {/* 改名／調參數視窗（取代 window.prompt） */}
+      <EditPresetDialog
+        preset={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={saveEditPreset}
+      />
     </Box>
   );
 }

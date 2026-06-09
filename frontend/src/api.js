@@ -46,6 +46,10 @@ export const api = {
   // 讓某個 Bot 立刻跑一次策略
   runBot: (id) => request(`/bots/${id}/run`, { method: "POST" }),
 
+  // 取某個 Bot 最近的決策審計軌跡（Phase 6 step-08；含觀望/跳過/熔斷等沒成交的時點）
+  getBotDecisions: (id, limit = 50) =>
+    request(`/bots/${id}/decisions?limit=${limit}`),
+
   // 取得交易紀錄
   getTrades: () => request("/trades"),
 
