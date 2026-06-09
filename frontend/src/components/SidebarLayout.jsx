@@ -15,7 +15,7 @@
 //   context  — 傳給各路由頁的共享資料/動作（頁面用 useOutletContext() 取）
 //   workbench — 右側策略工作台元件（暫時保留，step-08 才移除）
 
-import { Box, Container, Alert, LinearProgress, Typography } from "@mui/material";
+import { Box, Container, Alert, LinearProgress, Typography, Snackbar } from "@mui/material";
 import { NavLink, Outlet } from "react-router-dom";
 import Header from "./Header";
 import AssistantDrawer from "./AssistantDrawer";
@@ -81,6 +81,7 @@ export default function SidebarLayout({
   loading,
   error,
   message,
+  onClearMessage,
   loadError,
   context,
 }) {
@@ -143,14 +144,10 @@ export default function SidebarLayout({
             animation: "albeeFadeUp .5s ease both",
           }}
         >
+          {/* 錯誤常駐顯示（需要使用者看清楚並處理）；成功訊息改用下方 Snackbar */}
           {(error || loadError) && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error || loadError}
-            </Alert>
-          )}
-          {message && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {message}
             </Alert>
           )}
 
@@ -159,6 +156,24 @@ export default function SidebarLayout({
         </Container>
 
       </Box>
+
+      {/* 成功訊息：浮層 Snackbar，4 秒自動消失、不偷鍵盤焦點；role=status（aria-live polite） */}
+      <Snackbar
+        open={!!message}
+        autoHideDuration={4000}
+        onClose={onClearMessage}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          role="status"
+          onClose={onClearMessage}
+          sx={{ width: "100%" }}
+        >
+          {message}
+        </Alert>
+      </Snackbar>
 
       {/* 全站思考助手抽屜（右下浮動鈕開關，取代原右側策略工作台） */}
       <AssistantDrawer />

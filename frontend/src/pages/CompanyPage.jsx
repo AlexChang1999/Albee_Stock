@@ -254,7 +254,7 @@ export default function CompanyPage() {
               <Stack spacing={0.5}>
                 {opportunities.slice(0, 5).map((o) => (
                   <Typography key={o.id} variant="caption" color="text.secondary">
-                    {o.symbol} · {o.strategy_key}　OOS EV {o.oos_expected_value ?? "—"}
+                    {o.symbol} · {o.strategy_key}{"　"}OOS EV {o.oos_expected_value ?? "—"}
                   </Typography>
                 ))}
               </Stack>

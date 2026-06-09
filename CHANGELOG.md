@@ -15,6 +15,18 @@
 
 ## [未發布]
 
+### 待辦（後續 / TODO）
+
+> 前端 UX 兩批未做、留待後續的項目（依價值排序）：
+
+- **持倉 / 未實現損益視圖**（價值最高的缺口）：後端目前**無 `/positions` 端點**，
+  需先加端點再做前端持倉卡（現金/購買力之外，看得到手上部位與浮動損益）。
+- **亮色模式切換**：目前深色單一主題，要加 light/dark 雙主題需整體再過一遍對比。
+- **排行榜欄位排序**：`AutoBacktestPanel` 排行榜目前固定依 EV，可比照 `TradesTable` 加 `TableSortLabel`。
+- **骨架屏（Skeleton）全面化**：`AccountCard`/`BotList`/`TradesTable` 載入時可用 Skeleton 取代空白/純文字。
+- **元件測試持續補**：目前有 `ConfirmDialog`/`BotList`/`EditBotDialog` + 純函式工具，其餘元件待補。
+- **skill CLI**：`.claude/skills/ui-ux-pro-max` 未隨附 `search.py`/CSV（規則文字已夠用，CLI 查詢不可跑）。
+
 ### 移除
 
 - **清理：刪除被取代的舊藍圖 `docs/blueprint-ai-terminal.md`**——它是「AI 終端機改版」的舊單檔藍圖，
@@ -23,6 +35,19 @@
   `tests/_tmp_expl_*`，皆 git-ignored、不影響版控）。
 
 ### 變更
+
+- **前端 UX 強化（套用 UI/UX Pro Max skill，無障礙 / 回饋 / 表單 / 表格）**——對齊 skill 規則：
+  - **無障礙**：圖示鈕補 `aria-label`（`BotList`）；損益/EV 改帶 `+/-` 號（`utils/number.js` 新增
+    `signOf`/`signedMoney`/`money`，套到 `BotList`/`BacktestPanel`/`AutoBacktestPanel`/`RecommendationsPanel`）；
+    `index.css` 加 `prefers-reduced-motion` 全域弱化動畫。
+  - **回饋**：成功訊息改 `Snackbar`（4s 自動消失、`role="status"` 不偷焦點，`SidebarLayout`），錯誤維持常駐。
+  - **危險動作**：停 Bot 加二次確認（`App.jsx` + `ConfirmDialog`）；實盤模式 AI 一鍵部署加二次確認（`RecommendationsPanel`）。
+  - **表單**：`EditBotDialog`/`BacktestPanel` 加 `required` + 即時驗證 + `helperText`，無效時停用送出。
+  - **表格**：`TradesTable` 欄位可排序（`TableSortLabel`+`aria-sort`）、`stickyHeader`、數字右對齊 + `tabular-nums`。
+  - **一致性**：`constants.js` 新增 `strategyLabel()` 單一來源（`RecommendationsPanel`/`AutoBacktestPanel` 改用）；
+    AI 推薦 EV 上色 + 防 `NaN`。
+  - 裝 skill 進 `.claude/skills/ui-ux-pro-max`；新增 `docs/ux-audit-2026-06.md` + `docs/ux-workflow.md`；
+    新增 `BotList`/`EditBotDialog` 元件測試。
 
 - **README.md / CLAUDE.md 對齊實情（文件同步，無程式變更）**——比對發現 `README.md` 嚴重過期：
   - 進度表把已完成的 **Phase 8（step-01~06）/ Phase 9（step-01~08）仍標「📋 構想藍圖」**，改為 ✅ 完成；

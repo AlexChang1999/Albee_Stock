@@ -41,6 +41,7 @@ export default function DashboardPage() {
         onRun={onRun}
         onEdit={onEdit}
         onDelete={onDelete}
+        onShowDecisions={() => navigate("/decisions")}
       />
     </Box>
   );

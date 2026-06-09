@@ -24,10 +24,18 @@ import StopIcon from "@mui/icons-material/Stop";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import BotAvatar from "../BotAvatar";
 import { statRows, formatCheckedAgo, holdingText } from "../utils/botStats";
 
-export default function BotList({ bots, onToggle, onRun, onEdit, onDelete }) {
+export default function BotList({
+  bots,
+  onToggle,
+  onRun,
+  onEdit,
+  onDelete,
+  onShowDecisions,
+}) {
   return (
     <Card sx={{ mb: 3 }}>
       <CardContent>
@@ -121,10 +129,13 @@ export default function BotList({ bots, onToggle, onRun, onEdit, onDelete }) {
 
                 {/* 操作 */}
                 <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                  {/* 圖示鈕都補 aria-label：Tooltip 只在 hover/focus 時提供無障礙名稱，
+                      平時螢幕報讀會讀成「button」讀不出用途，故額外標明（含 Bot 名）。 */}
                   <Tooltip title={b.is_active ? "停止" : "啟動"}>
                     <IconButton
                       size="small"
                       color={b.is_active ? "warning" : "success"}
+                      aria-label={`${b.is_active ? "停止" : "啟動"} ${b.name}`}
                       onClick={() => onToggle(b)}
                     >
                       {b.is_active ? (
@@ -135,12 +146,29 @@ export default function BotList({ bots, onToggle, onRun, onEdit, onDelete }) {
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="執行一次">
-                    <IconButton size="small" onClick={() => onRun(b.id)}>
+                    <IconButton
+                      size="small"
+                      aria-label={`立即執行一次 ${b.name}`}
+                      onClick={() => onRun(b.id)}
+                    >
                       <RefreshIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
+                  <Tooltip title="決策軌跡">
+                    <IconButton
+                      size="small"
+                      aria-label={`查看 ${b.name} 的決策軌跡`}
+                      onClick={() => onShowDecisions(b)}
+                    >
+                      <ReceiptLongIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                   <Tooltip title="編輯">
-                    <IconButton size="small" onClick={() => onEdit({ ...b })}>
+                    <IconButton
+                      size="small"
+                      aria-label={`編輯 ${b.name}`}
+                      onClick={() => onEdit({ ...b })}
+                    >
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -148,6 +176,7 @@ export default function BotList({ bots, onToggle, onRun, onEdit, onDelete }) {
                     <IconButton
                       size="small"
                       color="error"
+                      aria-label={`刪除 ${b.name}`}
                       onClick={() => onDelete(b)}
                     >
                       <DeleteIcon fontSize="small" />
