@@ -15,6 +15,21 @@
 
 ## [未發布]
 
+### 修正
+
+- **修復後端啟動報錯 `no such column: bots.promotion_status`（DB schema 漂移）**——本機 SQLite 的
+  `alembic_version` 停在 `f6a7b8c9d0e1`，但實際 DB 已被 `create_all` 建出後續所有「表」
+  （automation_config / opportunities / factor_snapshots / raw_strategy_finds / political_events），
+  唯獨後續遷移對「既有表」的 `ALTER add_column` 從沒跑過，導致 `bots` 缺 `promotion_status` /
+  `promotion_proposed_at` / `promotion_reason` 三欄、查詢即炸。因 `upgrade head` 會撞「表已存在」無法直跑，
+  改為**對帳補欄**：冪等補上缺的 3 欄（比照遷移 `c9d0e1f2a3b4`，`promotion_status` 以 `DEFAULT 'paper'` 回填）
+  後 `alembic stamp head` 讓版本與實況一致。已驗 `db.query(Bot).all()` 可正常讀 `promotion_status`。
+  （`scan_interval_min` 經查已存在，未重複加。）
+- **修復 `.bat` 一鍵腳本在 UTF-8 下「command 無法辨識」**——`setup.bat` / `start_backend.bat` /
+  `start_frontend.bat` / `background.bat` 含中文但存成 **UTF-8 無 BOM**；搭配 `chcp 65001` 時 cmd.exe 有
+  已知的檔案讀取位移 bug（多位元組字後偏移算錯，把後面行攪成亂碼指令 → not recognized）。改存成
+  **UTF-8 with BOM**（Windows 11 cmd 認 BOM 後位移正確），內容與 CRLF 不動。已用同模式煙霧測試確認中文正常顯示、無報錯。
+
 ### 移除
 
 - **清理：刪除被取代的舊藍圖 `docs/blueprint-ai-terminal.md`**——它是「AI 終端機改版」的舊單檔藍圖，
