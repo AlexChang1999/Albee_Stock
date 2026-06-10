@@ -36,6 +36,9 @@ export const api = {
   // 取得帳戶資訊
   getAccount: () => request("/account"),
 
+  // 取得目前所有持倉（含浮動損益）。無金鑰/失敗時後端回空陣列。
+  getPositions: () => request("/positions"),
+
   // 取得所有 Bot
   getBots: () => request("/bots"),
 

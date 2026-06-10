@@ -10,6 +10,7 @@
 import { Box, Alert, Button } from "@mui/material";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import AccountCard from "../components/AccountCard";
+import PositionsCard from "../components/PositionsCard";
 import BotList from "../components/BotList";
 import AutomationPanel from "../components/AutomationPanel";
 
@@ -21,6 +22,7 @@ export default function DashboardPage() {
   return (
     <Box>
       <AccountCard account={account} />
+      <PositionsCard />
       {/* AI 市場燈號：引導去「AI 探勘」一鍵部署（原 setTab(1) 改 navigate） */}
       <Alert
         severity="info"

@@ -98,6 +98,16 @@ class AlpacaClient:
         except Exception:
             return None
 
+    def list_positions(self):
+        """
+        列出目前所有持倉。
+        連線/金鑰失敗（離線、沒設 .env、CI）時回空清單，讓上層優雅降級、不崩。
+        """
+        try:
+            return self.trading.get_all_positions()
+        except Exception:
+            return []
+
     # ---------- 下單 ----------
     def submit_market_order(self, symbol: str, qty: float, side: str):
         """

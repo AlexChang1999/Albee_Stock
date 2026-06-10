@@ -17,6 +17,17 @@
 
 ### 新增
 
+- **Backlog B：`GET /positions` 端點 + 前端持倉卡（填掉最大缺口）**——原本只有
+  `alpaca_client.get_position(symbol)`（單檔），前端看不到手上部位與浮動損益：
+  - `services/alpaca_client.py`：新增 `list_positions()`（包 `trading.get_all_positions()`，
+    連線/金鑰失敗回 `[]`，優雅降級）。
+  - 新增 `routers/positions.py`（唯讀 `GET /positions`）：把每個 Position 映成
+    `symbol/qty/avg_entry_price/current_price/market_value/unrealized_pl/unrealized_plpc`
+    （數字轉 float），無金鑰/失敗回空清單、不丟 500；掛進 `main.py`。
+  - 前端 `api.getPositions()` + `components/PositionsCard.jsx`（自含資料、掛上 Dashboard，
+    損益用 `signedMoney`/`signOf` 帶 +/- 號 + `NEON` 紅綠雙重編碼，不寫死 hex）。
+  - 測試：`tests/test_positions.py`（2 測，monkeypatch 假持倉，不連網）；
+    `PositionsCard.test.jsx`（3 測：有持倉/無持倉/API 失敗降級）。
 - **Phase 11 step-04：回測引擎吃環境 `features` + 接線 bar_cache**——把 step-02/03 的快取與環境
   特徵真正接進回測管線（前三步只交付模組，本步「接線」）：
   - `services/backtest_engine.py`：`_run_on_df` / `run_backtest` 各加**選用** `features` 參數。
@@ -104,6 +115,12 @@
     並要求新增文件後補 `docs/README.md` 索引、搬檔用 `git mv`。防止日後又把檔亂塞回 docs/ 根。
 
 ### 修正
+
+- **Backlog C：修 `tests/test_automation.py::test_run_dry_run` 的 pre-existing 失敗**（清掉「353 過/1 失敗」
+  那 1 個，全測達 0 失敗）。**根因不是 automation bug，是測試對 dev DB 有隱性依賴**：`run_auto_deploy`
+  會 `db.query(Bot).all()` 取 `existing_symbols` 去重，而 dev DB 剛好有同名 `AAPL` Bot → 候選被去重剔除 →
+  `planned=[]`。修法（沿用 `test_promotion._isolated_client` 模式）：注入臨時空 SQLite（`dependency_overrides[get_db]`，
+  Bot 表空）+ stub `get_account` 丟例外（跳過資金閘，不依賴真帳戶餘額），讓結果只取決於 stub 的海選/門檻、完全確定性。
 
 - **修正 PostgreSQL 全新資料庫遷移失敗**：將 `bots.adaptive` migration 的布林預設值從 SQLite 風格
   `0` 改為跨資料庫相容的 `sa.false()`，避免 PostgreSQL 出現 `BOOLEAN DEFAULT 0` 型別錯誤。

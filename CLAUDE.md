@@ -68,6 +68,7 @@ Albee_Stock/
 │   │   ├── bots.py        # Bot 管理（CRUD/啟停/執行/績效）
 │   │   ├── backtest.py    # 回測 API
 │   │   ├── orders.py      # 交易紀錄 API
+│   │   ├── positions.py   # 持倉清單 API（GET /positions，含浮動損益；無金鑰優雅回 []）
 │   │   ├── presets.py     # 策略方案 CRUD + 一鍵回測 + 回測歷史（依 EV 排序）
 │   │   ├── chat.py        # 本機 LLM 思考助手（對話 + 兩段式事後檢討）
 │   │   └── strategies.py  # 策略清單單一來源（GET /strategies，Phase 6 step-10）
@@ -123,7 +124,7 @@ Albee_Stock/
 │       ├── components/        # 畫面區塊元件
 │       │   ├── SidebarLayout  # 左側導覽外殼（Phase 9 step-01）
 │       │   ├── AssistantDrawer  # 思考助手全站抽屜（Phase 9 step-08，右下浮動鈕）
-│       │   ├── Header / AccountCard / BotList / Stat / ConfirmDialog
+│       │   ├── Header / AccountCard / PositionsCard / BotList / Stat / ConfirmDialog
 │       │   ├── BacktestPanel / TradesTable / EditBotDialog / KnowledgeCard
 │       │   ├── RecommendationsPanel / AutomationPanel  # AI 海選推薦 / 模式 B 自動化規則（redesign P2/P4）
 │       │   ├── ChartGrid / LiveQuote / EquitySparkline / BacktestResultCard
