@@ -140,6 +140,40 @@ Albee_Stock/
 │   └── test_api.py
 ```
 
+## 檔案放置規範（新增檔案放哪 — Claude 與人都遵守）
+
+> docs/ 已依用途分四夾（2026-06 重整，零刪除）。**新增任何檔前先想清楚歸哪夾**，
+> 別再丟回 docs/ 根或亂塞，否則很快又積成一坨找不到。命名沿用既有風格（kebab-case、Phase 用 `phase-N-主題/`）。
+
+### 文件（docs/）
+
+| 要新增的東西 | 放這裡 | 例 |
+|--------------|--------|-----|
+| 某 Phase 的開工藍圖 / step 契約 | `docs/history/phase-N-主題/`（含 in-progress；做完不用搬） | `docs/history/phase-12-strategy-discovery/README.md` |
+| 「AI 終端機改版」子軌文件 | `docs/history/redesign/` | `docs/history/redesign/phase-5-xxx.md` |
+| 操作教學 / runbook / 安裝 / 使用說明 / 上線檢查表 | `docs/guides/` | `docs/guides/how-to-deploy.md` |
+| 概念 / 規格 / 路線圖 / 工作流圖 / 個別策略筆記 | `docs/reference/`（策略筆記進 `reference/strategies/`） | `docs/reference/strategies/macd.md` |
+| 前端 UX 稽核 / 工作流 | `docs/ux/` | `docs/ux/ux-audit-2026-12.md` |
+| 反 slop 開工合約、進行中 backlog | **docs/ 根**（只有這兩類留根，最常讀） | — |
+
+- **新增文件後**：更新 [`docs/README.md`](docs/README.md) 索引表那一列（它是文件地圖，漏了就等於沒人找得到）。
+- **連結用相對路徑**並確認解析得到；搬移既有檔一律 `git mv`（保歷史血緣），改完 grep 驗證無殘斷連結。
+
+### 程式碼（backend/ · frontend/ · tests/ · scripts/）
+
+| 要新增的東西 | 放這裡 |
+|--------------|--------|
+| 交易策略模組（一策略一檔，鬆耦合） | `backend/strategies/<name>.py`（+ 註冊 + 前端 `constants.js` 清單 + 測試） |
+| 業務邏輯 / 服務 | `backend/services/<name>.py` |
+| API 路由（依功能拆檔） | `backend/routers/<name>.py`，並在 `backend/main.py` 掛上 router |
+| SQLAlchemy 資料模型 | `backend/models/<name>.py`（改欄位走 Alembic，**勿手動 ALTER**） |
+| 前端頁面 / 區塊元件 / Hook / 純函式工具 | `frontend/src/{pages,components,hooks,utils}/`（元件測試同層 `*.test.jsx`） |
+| 測試 | `tests/test_<主題>.py`（**扁平結構**，勿建子資料夾） |
+| 維運 / CLI 腳本 | `scripts/` |
+
+- **root 維持乾淨**：只放慣例頂層檔（`CLAUDE.md`/`README.md`/`CHANGELOG.md`/`*.bat`/設定檔）。
+  `.bat` 用 `%~dp0` 錨定 root，**不要搬進子資料夾**（雙擊路徑會壞）。新文件一律進 `docs/`、新腳本進 `scripts/`。
+
 ## 開發階段
 
 | 階段 | 內容 | 狀態 |

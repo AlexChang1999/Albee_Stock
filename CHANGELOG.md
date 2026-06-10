@@ -99,6 +99,9 @@
   - 同步修好受影響連結：docs 內 121 條相對連結、`CLAUDE.md`/`AGENTS.md`/`README.md` 的結構樹與路徑、
     `.claude/skills/`（ui-ux-pro-max、strategy-builder）的 doc 路徑、`CHANGELOG` 內 2 條已搬檔的 markdown 連結。
     全 docs 相對連結經程式驗證 **0 殘斷**。CHANGELOG 歷史條目的純文字路徑維持原樣（歷史紀錄不竄改）。
+  - **新增 `CLAUDE.md`「檔案放置規範」章節**：把「新增檔案放哪」寫成 Claude 與人都遵守的對照表
+    （文件分 history/guides/reference/ux 四夾 + root 只留兩份；程式分 backend 各層／tests 扁平／scripts），
+    並要求新增文件後補 `docs/README.md` 索引、搬檔用 `git mv`。防止日後又把檔亂塞回 docs/ 根。
 
 ### 修正
 
