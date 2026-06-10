@@ -17,6 +17,31 @@
 
 ### 新增
 
+- **Phase 11 step-04：回測引擎吃環境 `features` + 接線 bar_cache**——把 step-02/03 的快取與環境
+  特徵真正接進回測管線（前三步只交付模組，本步「接線」）：
+  - `services/backtest_engine.py`：`_run_on_df` / `run_backtest` 各加**選用** `features` 參數。
+    `features` 與價格 df 等長、位置對齊，**只併進「訊號層」**（`generate_signal` 讀得到 macro/買賣壓
+    欄）；`features=None`（預設）→ 行為**逐位元組不變**（舊策略/舊呼叫端零改動）。
+  - **成交鐵則不動**：`_simulate_from_signals` 仍只收 price-only df，環境特徵**不得碰成交價**
+    （成交永遠次根開盤含成本，守「回測=實盤」核心）。
+  - **多年回測走快取**：`run_backtest` / `optimizer` / `screener` 的 `market_data.get_bars`
+    改呼 `bar_cache.get_bars_cached`（簽章相容、純效能替換、嚴格 ⊆ 請求區間不洩漏未來），
+    討回 step-02 遞延的接線。`requirements.txt` 的 `pyarrow` 補裝（parquet 引擎，快取落盤需要）。
+  - `tests/test_backtest.py`：+3 測（features 到得了策略、features 不碰成交價、舊策略帶/不帶
+    features 結果完全相同）；`tests/test_oos.py` 改 patch 新資料 seam（`bar_cache.get_bars_cached`）。
+- **Phase 11 step-05：macro 層 OOS 加分驗證（沒加分就誠實砍）**——用 walk-forward 樣本外比
+  「純價量 baseline」vs「+環境覆蓋 candidate」，證明 macro 層有沒有真加分：
+  - `services/layer_validation.py`：新增 `MacroOverlayStrategy`（**環境風險煞車**：risk-off 時 BUY→HOLD，
+    只煞車不猜方向）、`_macro_risk_off`（**a-priori 固定可解釋門檻**，不在任何資料上 fit：VIX>30／
+    殖利率倒掛／失業上升／賣壓>買壓；NaN 一律不煞車）、`_build_features`（macro+orderflow 組欄）、
+    `validate_macro_layer(df, db)`；接進 `validate_symbol`/`validate_layers`（開 DB session 取 FRED）。
+  - `scripts/validate_layers.py`：印表加 `macro` 一列（`worth | folds | improvement`）。
+  - `tests/test_macro_layer.py`（6 測，純合成、不碰外部 API）：OOS 殺手（in-sample 漂亮、OOS 崩 →
+    判不值得）、覆蓋煞車邏輯、NaN 不煞車（優雅降級）、四門檻、端到端 verdict 結構、`_build_features` 對齊。
+  - **誠實結論（首跑 SPY，無 FRED 資料）**：macro-overlay 層 **`worth=False`（36 folds，Δ=−132.6）**——
+    沒填 `FRED_API_KEY` 時 macro 欄全 NaN、煞車只靠 orderflow `pressure_ratio<0.5`，在每根下跌後
+    過度抑制進場 → 拖垮 EV。**目前判該砍/待真資料驗證**：要真評估 macro 價值，須先填 `FRED_API_KEY`
+    + `POST /macro/refresh` 灌入序列再跑。這正是 step-05 的本職——殺掉沒在 OOS 加分的層，不美化績效。
 - **Phase 11 step-02：多年 OHLCV 本機快取（少打外部 API）**——讓「整個歷史」回測（如 `days=3650`）
   跑得起來、又不每次都向 Alpaca/yfinance 重抓。新增 `services/bar_cache.py`，**包在
   `market_data.get_bars` 外層**（不改其簽章、不繞過它，維持單一抓取路徑）：

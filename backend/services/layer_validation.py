@@ -23,10 +23,14 @@ regime_features / regime / strategy_selector.build_map_from_df + select_strategy
 meta_label.should_take、sizing.kelly_fraction、market_data.get_bars。
 """
 
+import pandas as pd
+
 from backend.config import settings
 from backend.services import market_data
 from backend.services.backtest_engine import _run_on_df
+from backend.services.macro_features import attach_macro_features
 from backend.services.meta_label import should_take
+from backend.services.orderflow_proxy import compute_orderflow
 from backend.services.regime import classify_regime
 from backend.services.regime_features import compute_features
 from backend.services.sizing import kelly_fraction
@@ -35,6 +39,15 @@ from backend.services.validation import is_layer_worth_it, walk_forward_splits
 from backend.strategies import STRATEGY_REGISTRY, Signal, get_strategy
 
 _INITIAL_CASH = 10000.0
+
+# 環境特徵欄（step-04 features 管線傳給訊號層的欄位）：
+# macro 6 欄（同 macro_features._FEATURE_COLS）+ orderflow 4 欄（同 compute_orderflow 產出）。
+_MACRO_FEATURE_COLS = [
+    "fed_funds_level", "fed_funds_3m_chg", "unemployment_trend",
+    "cpi_yoy", "yield_curve", "vix_level",
+]
+_ORDERFLOW_COLS = ["buy_vol_proxy", "sell_vol_proxy", "net_pressure", "pressure_ratio"]
+_ENV_FEATURE_COLS = _MACRO_FEATURE_COLS + _ORDERFLOW_COLS
 
 
 def _cost():
@@ -84,6 +97,73 @@ class AdaptiveMappedStrategy:
             return get_strategy(self.fallback_key, {}).generate_signal(df)
         strat = get_strategy(pick["strategy"], pick["params"])
         return strat.generate_signal(df)
+
+
+class MacroOverlayStrategy:
+    """step-11（Phase 11）：環境風險煞車。
+
+    base 策略出 BUY 時，若 a-priori 固定門檻判「risk-off」（恐慌 / 衰退預警 / 賣壓），
+    把 BUY 縮回 HOLD——**只煞車、不猜方向**（對齊 Phase 11 鐵則 3 + step-06 event 精神）。
+    SELL / HOLD 一律原樣放行（煞車不該擋出場）。
+
+    讀的是 step-04 features 管線併進訊號層 df 的環境特徵欄；缺欄 / NaN（沒 FRED 資料）
+    → 視為「不煞車」，candidate 退化成 baseline（優雅降級，誠實顯示「無加分」）。
+    """
+
+    def __init__(self, base):
+        self.base = base
+
+    def generate_signal(self, df):
+        sig, reason = self.base.generate_signal(df)
+        if sig == Signal.BUY and _macro_risk_off(df.iloc[-1]):
+            return Signal.HOLD, "環境 risk-off 煞車"
+        return sig, reason
+
+
+def _macro_risk_off(row) -> bool:
+    """a-priori 固定可解釋門檻（**不在任何資料上 fit**）；任一觸發即 risk-off。
+
+    NaN / 缺欄一律當「未觸發」（公布前沒值、沒 FRED 資料時不亂煞車）。
+    - vix_level > 30          ：恐慌（risk-off）
+    - yield_curve < 0         ：殖利率倒掛（衰退預警）
+    - unemployment_trend > 0  ：失業率上升（衰退傾向）
+    - pressure_ratio < 0.5    ：賣壓 > 買壓（orderflow 代理偏空）
+    """
+    def _hot(key: str, lo: float | None, hi: float | None) -> bool:
+        v = row.get(key)
+        if v is None or pd.isna(v):
+            return False
+        if lo is not None and v > lo:
+            return True
+        if hi is not None and v < hi:
+            return True
+        return False
+
+    return (
+        _hot("vix_level", lo=30.0, hi=None)
+        or _hot("yield_curve", lo=None, hi=0.0)
+        or _hot("unemployment_trend", lo=0.0, hi=None)
+        or _hot("pressure_ratio", lo=None, hi=0.5)
+    )
+
+
+def _build_features(df, db) -> pd.DataFrame:
+    """組環境特徵欄（macro + orderflow），回「只含特徵欄」的 DataFrame 餵給 _run_on_df(features=...)。
+
+    db=None（或沒 FRED 資料）→ macro 欄全 NaN（優雅降級）；orderflow 只要有 close/volume 就算得出。
+    保證回傳含 _ENV_FEATURE_COLS 全部欄（缺的補 NaN），與 df 等長、位置對齊。
+    """
+    if db is not None:
+        enriched = attach_macro_features(df, db)
+    else:
+        enriched = df.copy()
+        for c in _MACRO_FEATURE_COLS:
+            enriched[c] = float("nan")
+    enriched = compute_orderflow(enriched)
+    for c in _ENV_FEATURE_COLS:
+        if c not in enriched.columns:
+            enriched[c] = float("nan")
+    return enriched[_ENV_FEATURE_COLS].reset_index(drop=True)
 
 
 # ============================================================
@@ -222,6 +302,32 @@ def validate_kelly_layer(df) -> dict:
             "verdict": is_layer_worth_it(base_oos, cand_oos)}
 
 
+def validate_macro_layer(df, db) -> dict:
+    """step-11（Phase 11）：每 fold × 每策略，比「純價量 baseline」與「+環境覆蓋 candidate」的 EV。
+
+    candidate 唯一差別 = 多吃 step-03 的 macro / 買賣壓特徵（透過 step-04 的 features 管線），
+    並以 a-priori 固定門檻在 risk-off 時煞車進場。沒 FRED 資料時 candidate 退化成 baseline →
+    improvement≈0 → worth=False（誠實標「無加分」）。
+    """
+    comm, slip = _cost()
+    base_oos, cand_oos = [], []
+    for fold in walk_forward_splits(len(df)):
+        test = df.iloc[fold["test_start"]: fold["test_end"]].reset_index(drop=True)
+        feats = _build_features(test, db)
+        for key in STRATEGY_REGISTRY:
+            b = _run_on_df(get_strategy(key, {}), test, _INITIAL_CASH,
+                           commission_bps=comm, slippage_bps=slip)
+            c = _run_on_df(MacroOverlayStrategy(get_strategy(key, {})), test, _INITIAL_CASH,
+                           commission_bps=comm, slippage_bps=slip, features=feats)
+            # 兩邊都沒交易 → 環境覆蓋沒東西可煞，跳過（不灌 0 進樣本）
+            if b["num_round_trips"] == 0 and c["num_round_trips"] == 0:
+                continue
+            base_oos.append(b["expected_value"])
+            cand_oos.append(c["expected_value"])
+    return {"layer": "step-11 macro-overlay", "baseline_oos": base_oos, "candidate_oos": cand_oos,
+            "verdict": is_layer_worth_it(base_oos, cand_oos)}
+
+
 # step-06：誠實的「不可 OOS 驗證」結論（不產生假數字）
 _EVENT_NOTE = {
     "layer": "step-06 event-risk",
@@ -233,12 +339,17 @@ _EVENT_NOTE = {
 }
 
 
-def validate_symbol(df) -> dict:
-    """對單一檔的 K 線跑三層可驗證的層 + step-06 誠實註記。"""
+def validate_symbol(df, db=None) -> dict:
+    """對單一檔的 K 線跑四層可驗證的層 + step-06 誠實註記。
+
+    :param db: macro 層用的 DB session（取 FRED 序列做 point-in-time 對齊）；
+               None → macro 特徵全 NaN，candidate 退化成 baseline（優雅降級）。
+    """
     return {
         "meta": validate_meta_layer(df),
         "adaptive": validate_adaptive_layer(df),
         "kelly": validate_kelly_layer(df),
+        "macro": validate_macro_layer(df, db),
         "event": dict(_EVENT_NOTE),
     }
 
@@ -256,26 +367,32 @@ def validate_layers(symbols=None, source: str = "yfinance", days: int = 730) -> 
         from backend.services import screener
         symbols = screener.parse_watchlist(settings.SCREENER_WATCHLIST)
 
-    pools = {"meta": ([], []), "adaptive": ([], []), "kelly": ([], [])}
-    used, skipped = [], []
-    for sym in symbols:
-        try:
-            df = market_data.get_bars(sym.upper(), days=days, source=source)
-        except Exception as e:
-            skipped.append({"symbol": sym, "reason": str(e)})
-            continue
-        if df.empty or len(df) < settings.VALIDATION_TRAIN_WINDOW + settings.VALIDATION_TEST_WINDOW:
-            skipped.append({"symbol": sym, "reason": "資料不足，湊不出 fold"})
-            continue
-        res = validate_symbol(df)
-        for layer in pools:
-            pools[layer][0].extend(res[layer]["baseline_oos"])
-            pools[layer][1].extend(res[layer]["candidate_oos"])
-        used.append(sym.upper())
+    # macro 層要 DB session 取 FRED 序列做 point-in-time 對齊；開一次、用完關。
+    from backend.database import SessionLocal
+    db = SessionLocal()
+    try:
+        pools = {"meta": ([], []), "adaptive": ([], []), "kelly": ([], []), "macro": ([], [])}
+        used, skipped = [], []
+        for sym in symbols:
+            try:
+                df = market_data.get_bars(sym.upper(), days=days, source=source)
+            except Exception as e:
+                skipped.append({"symbol": sym, "reason": str(e)})
+                continue
+            if df.empty or len(df) < settings.VALIDATION_TRAIN_WINDOW + settings.VALIDATION_TEST_WINDOW:
+                skipped.append({"symbol": sym, "reason": "資料不足，湊不出 fold"})
+                continue
+            res = validate_symbol(df, db)
+            for layer in pools:
+                pools[layer][0].extend(res[layer]["baseline_oos"])
+                pools[layer][1].extend(res[layer]["candidate_oos"])
+            used.append(sym.upper())
+    finally:
+        db.close()
 
     out = {"symbols": used, "skipped": skipped, "event": dict(_EVENT_NOTE)}
     layer_names = {"meta": "step-05 meta-labeling", "adaptive": "step-03 adaptive-selection",
-                   "kelly": "step-04 kelly-sizing"}
+                   "kelly": "step-04 kelly-sizing", "macro": "step-11 macro-overlay"}
     for layer, (base_oos, cand_oos) in pools.items():
         out[layer] = {"layer": layer_names[layer], "baseline_oos": base_oos, "candidate_oos": cand_oos,
                       "verdict": is_layer_worth_it(base_oos, cand_oos)}

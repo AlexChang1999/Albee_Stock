@@ -17,7 +17,7 @@
 from itertools import product
 
 from backend.config import settings
-from backend.services import market_data
+from backend.services import bar_cache
 from backend.services.backtest_engine import _run_on_df
 from backend.services.vectorized_engine import is_vectorized, run_vectorized
 from backend.strategies import get_strategy
@@ -136,8 +136,8 @@ def run_auto_backtest(
     commission_bps = settings.BACKTEST_COMMISSION_BPS
     slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
 
-    # 1) 資料只抓一次，之後所有組合共用（關鍵效能設計）
-    df = market_data.get_bars(symbol, days=days, source=source)
+    # 1) 資料只抓一次，之後所有組合共用（關鍵效能設計）；多年區間走本機快取（Phase 11 step-04）
+    df = bar_cache.get_bars_cached(symbol, days=days, source=source)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
     data_points = len(df)

@@ -21,7 +21,7 @@ AI 策略探勘 — 漏斗式篩選（改版 Phase 2）
 import json
 
 from backend.config import settings
-from backend.services import market_data, fundamentals, llm
+from backend.services import bar_cache, fundamentals, llm
 from backend.services.optimizer import run_auto_backtest
 
 
@@ -128,7 +128,7 @@ def _layer1_volume(symbols: list[str], days: int, source: str) -> list[dict]:
     picks = []
     for sym in symbols:
         try:
-            df = market_data.get_bars(sym, days=days, source=source)
+            df = bar_cache.get_bars_cached(sym, days=days, source=source)
         except Exception:
             continue  # 單檔抓失敗不影響整體
         ratio = volume_ratio(df)
