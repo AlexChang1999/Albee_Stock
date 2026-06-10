@@ -38,6 +38,9 @@ sqlalchemy==2.0.45
 # --- 資料庫遷移（schema 變更版本化，取代手動 ALTER；未來換 Postgres 也通用） ---
 alembic==1.18.4
 
+# --- PostgreSQL 驅動（雲端共用 DB 兩台同步用；SQLite 不需要、留著無害。見 docs/setup-postgres-sync.md） ---
+psycopg2-binary==2.9.12
+
 # --- 任務排程（讓 Bot 定時跑策略） ---
 apscheduler==3.11.0
 
