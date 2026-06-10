@@ -1,5 +1,7 @@
 # 環境變數（含 API Key，絕對不可提交）
 .env
+.env.bak
+*.bak
 
 # Python
 __pycache__/

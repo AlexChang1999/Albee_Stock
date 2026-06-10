@@ -62,3 +62,5 @@ discord.py==2.7.1
 # --- 測試（開發/CI 用） ---
 pytest==9.0.3
 httpx==0.28.1
+
+psycopg2-binary==2.9.10
