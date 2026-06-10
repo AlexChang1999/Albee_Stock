@@ -12,7 +12,7 @@
 - **資料庫**: SQLite (開發) → 未來可換 PostgreSQL
 - **交易 API**: Alpaca Markets API (免費版)
 - **即時報價**: Alpaca WebSocket
-- **回測引擎**: backtrader
+- **回測引擎**: 自寫引擎（`backend/services/backtest_engine.py`，隔日成交 + 含成本；原規劃 backtrader 未採用）
 - **通知**: LINE Notify → 未來擴充 Discord / Telegram
 - **任務排程**: APScheduler
 
@@ -24,7 +24,7 @@
 | 交易 API | alpaca-py（官方新版；舊的 alpaca-trade-api 已停止維護） |
 | 資料處理 | pandas, numpy |
 | 技術指標 | 用 pandas 自算（避開 ta-lib 在 Windows 難安裝的問題） |
-| 回測 | backtrader |
+| 回測 | 自寫 `backtest_engine.py`（pandas；未用 backtrader） |
 | 通知 | line-bot-sdk, requests |
 | 排程 | apscheduler |
 | 資料庫 ORM | sqlalchemy |
