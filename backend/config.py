@@ -65,6 +65,14 @@ class Settings:
     DATA_SOURCE: str = os.getenv("DATA_SOURCE", "alpaca")
 
     # ========================================================
+    # 多年 OHLCV 本機快取（Phase 11 step-02）
+    # ========================================================
+    # 「整個歷史」回測（如 days=3650）不該每次都向 Alpaca / yfinance 重抓：缺的區間才補抓、
+    # 抓回來寫進本機 parquet 快取，已有的命中快取不重打（services/bar_cache.py 包在 get_bars 外層）。
+    # 快取檔放這個資料夾（按 {source}/{symbol} 分開存，不混存），預設 data/cache/bars/（gitignore，不進版控）。
+    BAR_CACHE_DIR: str = os.getenv("BAR_CACHE_DIR", str(BASE_DIR / "data" / "cache" / "bars"))
+
+    # ========================================================
     # 總經 / 環境資料（Phase 11 step-01）— FRED 聯準會經濟數據
     # ========================================================
     # 讓回測吃得到「環境因子」（非農就業、失業率、聯邦基金利率、CPI、公債殖利率、VIX）。

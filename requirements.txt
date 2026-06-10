@@ -16,6 +16,9 @@ python-dotenv==1.2.2
 pandas==3.0.3
 numpy==2.4.6
 
+# --- parquet 引擎（Phase 11 step-02 本機 OHLCV 快取：pandas to_parquet/read_parquet 後端） ---
+pyarrow==24.0.0
+
 # --- 第二資料源（免費、無金鑰；OpenBB 底層也是用它） ---
 yfinance==1.4.1
 

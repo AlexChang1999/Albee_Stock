@@ -17,6 +17,33 @@
 
 ### 新增
 
+- **Phase 11 step-02：多年 OHLCV 本機快取（少打外部 API）**——讓「整個歷史」回測（如 `days=3650`）
+  跑得起來、又不每次都向 Alpaca/yfinance 重抓。新增 `services/bar_cache.py`，**包在
+  `market_data.get_bars` 外層**（不改其簽章、不繞過它，維持單一抓取路徑）：
+  - 缺的區間才補抓、抓回來寫進本機 **parquet** 快取（`{BAR_CACHE_DIR}/{source}/{symbol}.parquet`，
+    按 source 分開存不混存）；已涵蓋的命中快取、**0 次 API**。
+  - **關鍵設計取捨**：freshness 看 sidecar `meta.json` 記的「已涵蓋的請求區間」，**不看最後一根 bar
+    日期**——否則週末/假日/停牌時最後一根恆早於 today，會被誤判成缺口而無限重抓。
+  - **不可成偷看後門**：回傳區間嚴格 ⊆ 請求區間（不洩漏請求結束日之後的列）。`today` 可注入 → 缺口
+    邏輯有確定性（仿 step-01 的 `as_of` 縫）。
+  - `config.py`：`BAR_CACHE_DIR`（預設 `data/cache/bars/`）；`.gitignore`：加 `data/cache/`（不進版控）；
+    `requirements.txt`：加 `pyarrow`（parquet 引擎）。
+  - `tests/test_bar_cache.py`：5 個純單元測試（合成 K 線 + monkeypatch `get_bars`，不連網），驗
+    首抓 1 次/二抓 0 次/頭尾缺口只補對應段/回傳嚴格在請求區間內。
+  - ⚠️ 接線回測/optimizer/screener 改吃快取 = step-04 的事，本步只交付可用模組 + 測試。
+- **Phase 11 step-03：環境特徵 + 買賣壓代理（給回測當輸入特徵）**——把總經序列與「買賣壓」對齊成
+  「每根 K 棒一列」的特徵欄。新增兩個**純函式**模組：
+  - `services/macro_features.py`：`attach_macro_features(price_df, db)` 對每根 bar 的日期，各序列取
+    **`released_at <= bar_date` 的最後一筆** forward-fill，加 6 欄（`fed_funds_level`/`fed_funds_3m_chg`/
+    `unemployment_trend`/`cpi_yoy`/`yield_curve`/`vix_level`）。**as-of 一律用 `released_at`**（嚴禁
+    `period_date` 偷看未公布未來，守門延續 step-01）；沒總經資料 → 各欄 NaN，不崩。重用
+    `macro_data.get_macro_series`。
+  - `services/orderflow_proxy.py`：`compute_orderflow(price_df)` 用 **tick 規則**（漲跌方向 × 總量）
+    近似買/賣量，加 4 欄（`buy_vol_proxy`/`sell_vol_proxy`/`net_pressure`/`pressure_ratio`）。守恆等式
+    `buy+sell==volume`（平盤/首根對半、零量 ratio 給中性 0.5）。**誠實標註：tick 代理、非真實逐筆
+    order flow**（真值需付費源 Polygon/Databento，列範圍外，不包裝成真 order flow 行銷）。
+  - 兩者皆**無未來函數**（第 i 根只看 `df.iloc[:i+1]`）。`tests/test_orderflow.py`（6 測）+
+    `tests/test_macro_features.py`（6 測）：純函式 + 記憶體 SQLite，驗對齊不洩漏/恆等式/方向/無未來函數。
 - **Phase 11 step-01：總經/環境資料地基（FRED 接入 + 本機快取 + point-in-time）**——補上專案最大缺口
   「環境資料的大腦」（先前 `grep` 整個 `backend/` 找不到 FRED/非農/利率/CPI）。新增：
   - `services/fred_client.py`：薄 FRED client（聖路易聯準會，免費 API）。仿 `llm.py` 優雅降級——

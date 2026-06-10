@@ -1,6 +1,19 @@
 # 步驟 2 — 多年 OHLCV 本機快取
 
-> 讓「整個歷史」回測跑得起來、又不每次重抓外部 API。回到 [Phase 11 索引](README.md)。
+> 讓「整個歷史」回測跑得起來、又不每次重抓外部 API。**狀態：已落地 ✅**。回到 [Phase 11 索引](README.md)。
+
+## 已落地的檔（as-built）
+
+| 檔 | 職責 |
+|----|------|
+| `backend/services/bar_cache.py` | `get_bars_cached(symbol, days, source, today=None)`：包在 `market_data.get_bars` 外層。缺口才補抓、寫進 parquet；命中快取 0 次 API。`today` 可注入（測試確定性）。內部 `_read/_write_cache`（parquet + `meta.json`）、`_merge`（去重保最新、升冪）、`_slice`（嚴格 ⊆ 請求區間） |
+| `backend/config.py` | `BAR_CACHE_DIR`（預設 `data/cache/bars/`，按 `{source}/{symbol}` 分開存不混存） |
+| `.gitignore` / `requirements.txt` | 加 `data/cache/`（快取不進版控）；加 `pyarrow`（parquet 引擎） |
+| `tests/test_bar_cache.py` | 5 個純單元測試（合成 K 線 + monkeypatch `get_bars`，不連網） |
+
+> **設計取捨（最關鍵）**：freshness 看 sidecar `meta.json` 的「已涵蓋的請求區間」，**不看最後一根 bar 日期**——
+> 否則週末/假日/停牌時最後一根恆早於 today，會被誤判成缺口而無限重抓（DoD「第二次同請求 0 次 API」會破）。
+> 接線回測/optimizer/screener 改吃快取 = **step-04** 的事，本步只交付可用模組 + 測試。
 
 ## 目標
 

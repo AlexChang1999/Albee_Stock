@@ -29,6 +29,9 @@ desktop.ini
 *.db
 *.sqlite3
 
+# 本機 OHLCV 快取（Phase 11 step-02：parquet + meta，少打外部 API，不進版控）
+data/cache/
+
 # 測試 / 覆蓋率
 .coverage
 htmlcov/
