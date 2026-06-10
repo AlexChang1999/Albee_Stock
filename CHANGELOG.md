@@ -103,6 +103,9 @@
 
 ### 待辦（後續 / TODO）
 
+> **完整詳細 backlog（餵 AI 實作用）**：[`docs/remaining-work-backlog.md`](docs/remaining-work-backlog.md)——
+> A~G 七項各含現況/檔案路徑/函式簽章/step/DoD/測試指令，依價值排序（建議序 B→C→A→其餘）。下方為摘要。
+
 - **Phase 11 macro 層待真資料驗證**（step-05 收尾）：首跑 SPY 判 `worth=False`（無 FRED 資料、
   煞車只靠 orderflow 過度抑制進場）。要真評估 macro 價值，須先填 `FRED_API_KEY` →
   `POST /macro/refresh` 灌入序列 → 重跑 `venv\Scripts\python.exe scripts\validate_layers.py SPY`。
