@@ -11,6 +11,40 @@
 盤點後的真相：執行機器（海選→回測→部署→董事會→實盤雙閘）大致蓋好了，但**「環境資料的大腦」整個缺**——
 `grep` 整個 `backend/` 找不到 FRED / 非農 / 利率 / CPI。現況只有 OHLCV + 公司基本面。Phase 11 補這塊。
 
+## 背景：盤點與決策（CEO 開工討論摘要）
+
+### 鎖定決策
+
+- **Phase 11 = 先補「環境資料大腦」**（總經地基）；策略自動探勘入庫記錄、排 Phase 12（見下方「不在本 Phase 範圍」）。
+- **買賣量 = 總量 + 漲跌 tick 代理**（免費資料源沒有真實買 / 賣拆分）。
+- **總經源 = FRED + yfinance max + 本機快取**（多年歷史走 yfinance；實盤仍走 `settings.DATA_SOURCE`）。
+
+### 願景 vs 現況落差（本期主攻＝粗體）
+
+| 願景 | 現況 | 本期做法 |
+|------|------|----------|
+| **總經因子（非農 / 失業 / 利率 / CPI）** | ❌ 完全沒有 | 接 FRED（step-01 ✅） |
+| **買入量 vs 賣出量** | ❌ 免費只有總量 | 漲跌 tick 代理（step-03） |
+| **抓整個歷史回測** | ⚠️ 預設 60–365 天、每次重抓 | yfinance max + 本機快取（step-02） |
+| **環境因子進回測** | ❌ 引擎純價量 | 引擎吃 `features` 欄（step-04） |
+| 爬網路策略 → 入庫 | ⚠️ 半手動、開關關 | 記錄到 Phase 12 |
+| 機器人實盤獲利 | ✅ 管線齊、paper 安全 | 不動 |
+
+> 文件漂移（另案處理，非本資料夾）：`docs/workflow-diagrams.md` 與 `CLAUDE.md` 結構樹仍停在 Phase 6–7，
+> 漏畫 / 漏列 Phase 8–10 已落地的模組。
+
+### 團隊編組（職能 → 擁有模組 → 本期交付）
+
+| 角色 | 擁有模組 | 本期交付 |
+|------|----------|----------|
+| 總經資料工程師 | `fred_client` / `macro_data` / `macro_series` / `bar_cache` | FRED 接通 + 多年快取 + point-in-time（step-01~02） |
+| 狀態訊號科學家 | `macro_features` / `orderflow_proxy` / `regime` | 環境因子 + 買賣壓代理 → 對齊 K 線特徵（step-03） |
+| 回測工程師 | `backtest_engine` / `optimizer` / `screener` | 引擎吃 `features` + 多年回測走快取（step-04） |
+| 驗證 QA | `validation` / `layer_validation` | macro 層 OOS 加分驗證 + 防洩漏單測（step-05） |
+| 風控合規官 | `capital` / `circuit_breaker` / `promotion` / 雙閘 | 維持「只煞車不猜方向」，不動安全閥 |
+| 量化探勘員 | `collector` / `strategy_generator` / `evolution` | Phase 12（本期僅記錄藍圖） |
+| 前端戰情 | `pages/` / factors UI | 本期末選做：macro 面板（可延 Phase 12） |
+
 ## Phase 11 專屬鐵則（在通用鐵則之上）
 
 1. **point-in-time（最重要）**：經濟數據公布有遞延（非農 M 月數據約 M+1 月第一個週五才公布）。
@@ -25,11 +59,27 @@
 
 | step | 目標 | 關鍵檔（新增/改） | 驗收 | 狀態 |
 |------|------|------------------|------|------|
-| **01** | 總經資料接入 + 本機快取 + point-in-time | `services/fred_client.py`、`services/macro_data.py`、`models/macro_series.py`、`routers/macro.py`、`config.py`、Alembic | 防洩漏單測（公布前看不到）+ 無 key 優雅降級 | 🚧 |
+| **01** | 總經資料接入 + 本機快取 + point-in-time | `services/fred_client.py`、`services/macro_data.py`、`models/macro_series.py`、`routers/macro.py`、`config.py`、Alembic | 防洩漏單測（公布前看不到）+ 無 key 優雅降級 | ✅ |
 | **02** | 多年 OHLCV 本機快取（避免每次重抓） | `services/bar_cache.py`、`config.py` | 缺區間補抓、命中快取不重打 + 單測 | ⬜ |
 | **03** | 環境特徵 + 買賣壓代理 | `services/macro_features.py`、`services/orderflow_proxy.py` | as-of 用 `released_at` 對齊；`buy+sell==volume`、方向符合漲跌 + 單測 | ⬜ |
 | **04** | 回測引擎吃 `features` | `services/backtest_engine.py`（加選用參數） | 舊策略忽略 features 照跑（向後相容）+ 單測 | ⬜ |
 | **05** | macro 層 OOS 加分驗證 | `services/layer_validation.py`、`scripts/validate_layers.py` | 印出 `worth/folds/improvement`；沒加分如實標記 + 單測 | ⬜ |
+
+## 施工路線（step 藍圖檔）
+
+每個 step = 一份契約文件：開工前讀「目標 / 改動構想 / 重用現有 / 風險 / 驗收（DoD）」，
+一次一步、對齊原目標（體例同 [Phase 7](../phase-7-adaptive-regime/README.md)）。
+
+| step | 文件 | 主題 | 狀態 |
+|------|------|------|------|
+| 1 | [step-01-macro-data-ingestion.md](step-01-macro-data-ingestion.md) | 總經接入 + 本機快取 + point-in-time | ✅ 已落地 |
+| 2 | [step-02-bar-cache.md](step-02-bar-cache.md) | 多年 OHLCV 本機快取 | ⬜ |
+| 3 | [step-03-macro-features-orderflow.md](step-03-macro-features-orderflow.md) | 環境特徵 + 買賣壓代理 | ⬜ |
+| 4 | [step-04-backtest-features.md](step-04-backtest-features.md) | 回測引擎吃 `features` | ⬜ |
+| 5 | [step-05-macro-layer-validation.md](step-05-macro-layer-validation.md) | ★macro 層 OOS 加分驗證 | ⬜ |
+
+> 建議順序：**1（已完成）→ 2（多年快取）→ 3（特徵）→ 4（引擎接 features）→ 5（OOS 驗證，盡早建）**。
+> step-5 是「能不能信」的關鍵——沒它，前 4 步只是用總經數據更精緻地騙自己。
 
 ### step 契約細節
 
