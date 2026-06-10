@@ -14,6 +14,7 @@
 > - 每次有意義變更更新 `CHANGELOG.md`「未發布」區塊。
 
 最後更新：2026-06-10。狀態基準：`origin/develop`（Phase 11 全落地，353 tests 過、1 個 pre-existing 失敗）。
+完成順序：B -> C -> A -> D -> E -> F -> G
 
 ---
 
@@ -177,7 +178,7 @@ Phase 12 = 把「raw 素材 → 候選策略 → 自動回測（OOS 閘）→ �
 skill 文件提到的 CLI 查詢無法實際跑。
 
 ### Step
-- 補 `.claude/skills/ui-ux-pro-max/search.py` + 規則 CSV，讓查詢 CLI 能跑（讀 `docs/skill-guidelines.md` 守則）。
+- 補 `.claude/skills/ui-ux-pro-max/search.py` + 規則 CSV，讓查詢 CLI 能跑（讀 `docs/guides/skill-guidelines.md` 守則）。
 - 低優先：純文字規則已可用，CLI 只是便利。
 
 ### DoD
@@ -188,12 +189,12 @@ skill 文件提到的 CLI 查詢無法實際跑。
 ## G. 文件漂移修正
 
 ### 現況
-`docs/workflow-diagrams.md` 與 `CLAUDE.md` 的「專案結構」樹仍停在 Phase 6–7，
+`docs/reference/workflow-diagrams.md` 與 `CLAUDE.md` 的「專案結構」樹仍停在 Phase 6–7，
 漏畫/漏列 Phase 8–11 已落地模組（知識庫/組合進化、前端工作站、AI 公司、總經資料地基）。
 
 ### Step
 - 補 Phase 8/9/10/11 的 services/models/routers/pages 到 `CLAUDE.md` 結構樹。
-- `docs/workflow-diagrams.md` 的 Mermaid 圖補上 Phase 8–11 的資料流節點。
+- `docs/reference/workflow-diagrams.md` 的 Mermaid 圖補上 Phase 8–11 的資料流節點。
 - 純文件、無程式變更。
 
 ### DoD

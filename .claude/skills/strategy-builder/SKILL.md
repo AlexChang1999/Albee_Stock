@@ -31,9 +31,9 @@ description: 把交易策略的描述/規則/數據，自動變成本專案能�
 3. **前端清單** `frontend/src/constants.js`
    - `STRATEGIES` 陣列加 `{ value: "<name>", label: "中文名" }`，`value` 必須==註冊鍵。
 
-4. **文件** `docs/strategies/<name>.md`
+4. **文件** `docs/reference/strategies/<name>.md`
    - 複製 [`assets/strategy_doc_template.md`](assets/strategy_doc_template.md) 填寫。
-   - （`docs/strategies/` 若不存在就建。）
+   - （`docs/reference/strategies/` 若不存在就建。）
 
 5. **測試** `tests/test_<name>.py`
    - 複製 [`assets/test_template.py`](assets/test_template.py) 改寫。

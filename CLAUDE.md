@@ -49,12 +49,14 @@ Albee_Stock/
 ├── alembic/               # 資料庫遷移
 │   ├── env.py             # 接專案 config 的 DATABASE_URL + model metadata
 │   └── versions/          # 每次 schema 變更一個遷移檔
-├── docs/
-│   ├── skill-guidelines.md    # 撰寫 Skill 的守則
-│   ├── workflow-diagrams.md   # 系統工作流圖（Mermaid：全景/決策流水線/回測EV/層驗證）
-│   ├── how-to-add-strategy.md # 新增策略 runbook
-│   ├── ux-workflow.md         # UX 工作流（何時觸發 skill + 優先序閘門 + 交付前檢查表）
-│   └── ux-audit-2026-06.md    # 前端 UX 稽核報告（UI/UX Pro Max 規則 1→10）
+├── docs/                  # 文件（依用途分四夾；打開先看 README.md 索引）
+│   ├── README.md              # 文件地圖（四大分組 + 各檔用途）
+│   ├── ai-implementation-guardrails.md  # 開工前必讀：反 slop / 對齊原目標合約
+│   ├── remaining-work-backlog.md        # 進行中未完成工作盤點（A~G，可餵 AI）
+│   ├── history/               # 完成過的開發藍圖（phase-6~11 + redesign，歷史報告素材）
+│   ├── guides/                # 操作教學（setup / 使用說明 / how-to-add-strategy / skill 守則…）
+│   ├── reference/             # 概念規格（workflow-diagrams / roadmap / human-vs-ai / strategies…）
+│   └── ux/                    # 前端 UX（ux-workflow / ux-audit）
 ├── scripts/
 │   └── validate_layers.py     # 層驗證 CLI（Phase 7：跑 watchlist 印各層 verdict 表）
 ├── backend/
@@ -146,19 +148,19 @@ Albee_Stock/
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成（前端 + TradingView 看板 + 回測引擎） |
 | Phase 3 | 多 Bot 管理 + 更多策略 | ✅ 完成（Bot CRUD/啟停、績效指標、8 種策略、分頁式 UI、CI） |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成（風控欄位 + 止盈/止損/追蹤止損出場、追蹤止損最高價持久化、開市判斷、實盤雙閘安全閥、Alembic 遷移、監聽狀態可視化、Discord 通知） |
-| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地：策略工作台 UI、Preset CRUD、EV 回測歷史、本機 Ollama 助手、explorations 檔案記憶；roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)） |
-| Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10，藍圖 [`docs/phase-6/`](docs/phase-6/README.md)） |
-| Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07：特徵/狀態分類/選策略/凱利/meta-labeling/事件風險閘/驗證框架，藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)；機制就位，各層 OOS 加分待 step-07 驗證後決定去留） |
-| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06：知識庫模型/LLM 提案/組合引擎/OOS 驗證管線/排行+使用時機/人在迴路審核，藍圖 [`docs/phase-8-strategy-evolution/`](docs/phase-8-strategy-evolution/README.md)） |
-| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08：sidebar+路由外殼/交易/回測歷史/方案/探討（+後端讀取端點）/決策/進化+知識庫/助手抽屜，藍圖 [`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)） |
-| Phase 10 | AI 交易公司（編排層 + 戰情頁：市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07：戰情頁/常駐機會清單/因子表/爬蟲蒐集員/Discord 政治員/董事會核准頁/開機常駐化，藍圖 [`docs/phase-10-ai-company/`](docs/phase-10-ai-company/README.md)；step-05 政治員為「煞車」且 bridge 預設關，連真 Discord 需先有同步川普貼文的鏡像頻道） |
+| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地：策略工作台 UI、Preset CRUD、EV 回測歷史、本機 Ollama 助手、explorations 檔案記憶；roadmap：[`docs/reference/roadmap-strategy-workbench.md`](docs/reference/roadmap-strategy-workbench.md)） |
+| Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10，藍圖 [`docs/history/phase-6/`](docs/history/phase-6/README.md)） |
+| Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07：特徵/狀態分類/選策略/凱利/meta-labeling/事件風險閘/驗證框架，藍圖 [`docs/history/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)；機制就位，各層 OOS 加分待 step-07 驗證後決定去留） |
+| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06：知識庫模型/LLM 提案/組合引擎/OOS 驗證管線/排行+使用時機/人在迴路審核，藍圖 [`docs/history/phase-8-strategy-evolution/`](docs/history/phase-8-strategy-evolution/README.md)） |
+| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08：sidebar+路由外殼/交易/回測歷史/方案/探討（+後端讀取端點）/決策/進化+知識庫/助手抽屜，藍圖 [`docs/history/phase-9-frontend-workstation/`](docs/history/phase-9-frontend-workstation/README.md)） |
+| Phase 10 | AI 交易公司（編排層 + 戰情頁：市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07：戰情頁/常駐機會清單/因子表/爬蟲蒐集員/Discord 政治員/董事會核准頁/開機常駐化，藍圖 [`docs/history/phase-10-ai-company/`](docs/history/phase-10-ai-company/README.md)；step-05 政治員為「煞車」且 bridge 預設關，連真 Discord 需先有同步川普貼文的鏡像頻道） |
 
-> **改版子軌**：[`docs/redesign/`](docs/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
-> **跑真錢前必讀**：[`docs/human-vs-ai-operation.md`](docs/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。
+> **改版子軌**：[`docs/history/redesign/`](docs/history/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
+> **跑真錢前必讀**：[`docs/reference/human-vs-ai-operation.md`](docs/reference/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。
 
 ## ⚠️ AI 自動 coding 前必讀
 
-任何 AI（或人）拿 `docs/phase-*/` 藍圖**自己 coding** 前，**必讀並遵守**
+任何 AI（或人）拿 `docs/history/phase-*/` 藍圖**自己 coding** 前，**必讀並遵守**
 [`docs/ai-implementation-guardrails.md`](docs/ai-implementation-guardrails.md)——防止「偏離原目標」與「產生 vibe slop」的合約：
 開工前讀原目標錨點 + 對應 step、coding 中守反 slop 規則、收工前對完成定義 DoD。一次一步、永遠對齊原目標。
 
@@ -292,5 +294,5 @@ cd frontend && npm run dev
 
 ## 撰寫 Skill
 
-要新增 Skill（放在 `.claude/skills/`）時，請先讀 [`docs/skill-guidelines.md`](docs/skill-guidelines.md)：
+要新增 Skill（放在 `.claude/skills/`）時，請先讀 [`docs/guides/skill-guidelines.md`](docs/guides/skill-guidelines.md)：
 避坑指南、漸進式揭露、記憶能力、按需觸發的危險操作 Hook 四大原則。

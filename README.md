@@ -31,7 +31,7 @@
 | Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08） |
 | Phase 10 | AI 交易公司（編排層 + 戰情頁 + 市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07） |
 
-> 另有「改版子軌（redesign）」Phase 1–4，是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），✅ 已落地，與上表主線編號不同（詳見下方說明與 [`docs/redesign/`](docs/redesign/README.md)）。
+> 另有「改版子軌（redesign）」Phase 1–4，是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），✅ 已落地，與上表主線編號不同（詳見下方說明與 [`docs/history/redesign/`](docs/history/redesign/README.md)）。
 
 **已完成**：專案骨架、**9 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標／ADX 趨勢）、
 Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）、walk-forward 回測引擎、
@@ -39,7 +39,7 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 **監聽狀態可視化**（最後檢查時間/持倉峰值）、Alembic 遷移、分頁式 React 前端（模組化）、
 前後端單元測試、GitHub Actions CI。
 
-**Phase 5 已落地**（roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)）：
+**Phase 5 已落地**（roadmap：[`docs/reference/roadmap-strategy-workbench.md`](docs/reference/roadmap-strategy-workbench.md)）：
 - 「**策略工作台**」（方案/回測/EV歷史/LLM助手）——Phase 9 已把內容拆進各自頁面（`/presets`、`/backtest-runs`）與助手抽屜，舊的右側 `StrategyWorkbench` 元件已移除
 - **策略方案（Preset）** CRUD + 一鍵 Python 回測，結果寫入 `backtest_runs`
 - 回測歷史用**期望值 EV**（非勝率）排序挑最優，含 profit factor、expectancy
@@ -47,7 +47,7 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **檔案化探討記憶** `explorations/`：每次檢討存一檔 + `INDEX.md` 路標，
   助手先掃路標挑相關舊探討再寫新檢討（兩段式、讀歷史越來越聰明）
 
-**Phase 6 已落地**（可信度地基，藍圖：[`docs/phase-6/`](docs/phase-6/README.md)）——讓「回測看到的 EV」
+**Phase 6 已落地**（可信度地基，藍圖：[`docs/history/phase-6/`](docs/history/phase-6/README.md)）——讓「回測看到的 EV」
 是「實盤拿得到的 EV」的誠實估計，且每筆自動決策可追溯、可熔斷：
 - **回測誠實化**：統一資料路徑（實盤 = 回測同源同回看）、成本模型（手續費 + 滑價）、隔日成交語意、
   **樣本外（OOS）EV** 排名挑冠軍（防過擬合）
@@ -56,7 +56,7 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **決策審計軌跡**：`DecisionLog` 留下每個時點「為何買/賣/不動」（含沒成交的觀望/跳過）
 - **排程每輪重查 Bot**：改風控/參數對執行中的 Bot 立即生效，不必重啟
 
-**Phase 7 已落地**（自適應市場狀態，藍圖：[`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)）——
+**Phase 7 已落地**（自適應市場狀態，藍圖：[`docs/history/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)）——
 讓系統先認市場「現在是什麼狀態」再決定怎麼打，並用防過擬合框架誠實檢查每層加分值不值得留：
 - **狀態辨識 → 選策略**（step-01~03）：`regime_features` 算特徵 → `regime.classify_regime` 分類 →
   `strategy_selector` 依「狀態→策略對照表」選當下最適策略
@@ -67,7 +67,7 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
   `layer_validation` 對每層做 baseline-vs-candidate 樣本外比較，`is_layer_worth_it` 誠實判決去留
   （實測：meta ✅ 過、adaptive ❌、kelly ❌、event ⚪ 不可驗證——機制就位，加分待續調）
 
-**Phase 8 已落地**（策略知識庫 + 組合進化，藍圖：[`docs/phase-8-strategy-evolution/`](docs/phase-8-strategy-evolution/README.md)）——
+**Phase 8 已落地**（策略知識庫 + 組合進化，藍圖：[`docs/history/phase-8-strategy-evolution/`](docs/history/phase-8-strategy-evolution/README.md)）——
 把「蒐集多策略 → 整合組合 → 驗證 → 人在迴路策展」串成閉環：
 - **策略知識庫**（step-01）：依理論/場景存策略說明，含 OOS 指標、狀態親和性、使用時機
 - **LLM 策略提案 + 組合引擎**（step-02~03）：本機 Ollama 提案候選 + 把多個已驗證子策略組成 `CompositeStrategy`
@@ -75,13 +75,13 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **排行 + 使用時機**（step-05）：依 OOS EV 排序，附「何時該用」說明
 - **人在迴路審核**（step-06）：AI 只負責提案/驗證/排序，**晉升（validated→curated）/ 退回一律使用者點按**，理由寫進 `explorations/`
 
-**Phase 9 已落地**（專業前端工作站，藍圖：[`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)）——
+**Phase 9 已落地**（專業前端工作站，藍圖：[`docs/history/phase-9-frontend-workstation/`](docs/history/phase-9-frontend-workstation/README.md)）——
 把「全擠在一個儀表板分頁 + 右側工作台」重構成左側 sidebar 分區的多頁終端機：
 - **導覽重構**（step-01）：上方 Tabs → 左側 sidebar + react-router 多頁；儀表板瘦身成純監控中心
 - **多頁面**（step-02~07）：交易紀錄 `/trades`、回測歷史 `/backtest-runs`、策略方案 `/presets`、探討檢討 `/explorations`（+ 新增 GET 端點）、決策審計 `/decisions`、進化實驗室 `/evolution`、策略知識庫 `/library`
 - **思考助手改全站抽屜**（step-08）：右下浮動鈕開關，並**拆除**舊的右側 `StrategyWorkbench`（內容已各自有家）
 
-**Phase 10 已落地**（AI 交易公司，藍圖：[`docs/phase-10-ai-company/`](docs/phase-10-ai-company/README.md)）——
+**Phase 10 已落地**（AI 交易公司，藍圖：[`docs/history/phase-10-ai-company/`](docs/history/phase-10-ai-company/README.md)）——
 把「編排層 + 多個 AI 專員 + 人在迴路核准」串成一條「找料 → 觀測 → 提案 → 核准上真錢」的前台：
 - **戰情頁 + 常駐機會掃描**（step-01~02）：戰情總覽頁 + 常駐機會清單，排程定時掃 watchlist 收機會與提醒
 - **因子數值表 + CSV 報表**（step-03）：把市場狀態 7 因子 + regime 標籤落成可查可匯出的 `factor_snapshots` 表（`GET /factors` + CSV）——**是觀測佐證報表，不是新交易訊號**
@@ -90,14 +90,14 @@ Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）
 - **董事會核准頁**（step-06）：偵測「某 Bot Paper 表現達標、建議上真錢」→ 提議 → 使用者一頁**核准 / 退回**（人在迴路，AI 不自己上真錢）
 - **開機常駐化**（step-07）：`schtasks` 註冊登入自啟（純 ops、零交易邏輯改動），常駐跑的仍是 Paper
 
-**改版子軌（redesign）已落地**（AI 終端機改版，藍圖：[`docs/redesign/`](docs/redesign/README.md)）——
+**改版子軌（redesign）已落地**（AI 終端機改版，藍圖：[`docs/history/redesign/`](docs/history/redesign/README.md)）——
 Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
 - **原生圖表**（P1）：`lightweight-charts` 取代 TradingView iframe，可畫進場/止損/追蹤止盈水位線（可拖曳連動 DB）+ 2x2 網格盯盤
 - **AI 推薦資料流**（P2）：漏斗式海選（量能 → 本機 LLM 情緒 → EV）+ `/ai-recommendations` + 一鍵 Deploy
 - **深藍主題**（P3）：深海軍藍沉浸金融風，移除手填「建立 Bot」表單，儀表板改純監控
 - **模式 B 全自動護欄**（P4）：EV 閾值排程自動建 Bot（總開關預設關、與實盤雙閘獨立、全程 Paper），前端 `AutomationPanel` 唯讀規則 + 手動試跑
 
-> 系統工作流全貌見 [`docs/workflow-diagrams.md`](docs/workflow-diagrams.md)（Mermaid 畫的 4 張圖：
+> 系統工作流全貌見 [`docs/reference/workflow-diagrams.md`](docs/reference/workflow-diagrams.md)（Mermaid 畫的 4 張圖：
 > 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
 
 **後續 / 未竟（非阻塞，未承諾時程）**：
@@ -110,7 +110,7 @@ Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
   「記憶預先注入 system 提示」、不再用 tool-use，無 tool_calls 可顯示）
 - **Phase 7 層加分續調**：`adaptive` / `kelly` 樣本外未加分、`event` 不可驗證——機制已就位，待更多資料/調參再決定去留
 - ~~**redesign 後續**：自動化規則由 `.env` 改 DB 表~~ ✅ 完成（`automation_config` 單列表 + `PUT /automation` 前端可編輯）
-- **實盤上線前必讀**：[`docs/human-vs-ai-operation.md`](docs/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）
+- **實盤上線前必讀**：[`docs/reference/human-vs-ai-operation.md`](docs/reference/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）
 
 ## 安裝與設定
 

@@ -83,6 +83,23 @@
   - `config.py` / `.env.example`：`FRED_API_KEY` / `MACRO_SERIES` / `MACRO_DEFAULT_LAG_DAYS`。
   - 藍圖 `docs/phase-11-macro-data/README.md`（含 step-01~05 契約）。
 
+### 變更
+
+- **docs/ 資料夾依用途重整（零刪除、純搬移 + 改連結）**——`docs/` 根目錄原積到 21 項
+  （8 個完成過的 phase/redesign 夾 + 13 個散落 .md），打開找不到當下要的檔。重整成語意四夾、
+  根目錄降到 ~7 項；所有檔用 `git mv` 保留歷史血緣，**一個都沒刪**（供日後歷史歷程報告查閱）：
+  - `docs/history/`：phase-6~11 + redesign 的開發藍圖（完成過的契約文件，歸檔備查）。
+  - `docs/guides/`：操作教學（`setup.md`〔原 root `SETUP.md` 移入〕/`使用說明.md`/`how-to-add-strategy.md`/
+    `setup-postgres-sync.md`/`phase4-paper-checklist.md`/`skill-guidelines.md`）。
+  - `docs/reference/`：概念規格（`workflow-diagrams.md`/`roadmap-strategy-workbench.md`/
+    `human-vs-ai-operation.md`/`financial-services-reference.md`/`strategies/`）。
+  - `docs/ux/`：`ux-workflow.md`/`ux-audit-2026-06.md`。根目錄只留 `ai-implementation-guardrails.md`
+    與 `remaining-work-backlog.md` 兩份最常讀。
+  - 新增 **`docs/README.md` 文件地圖**（四大分組 + 各檔用途，打開 docs 先看這頁）。
+  - 同步修好受影響連結：docs 內 121 條相對連結、`CLAUDE.md`/`AGENTS.md`/`README.md` 的結構樹與路徑、
+    `.claude/skills/`（ui-ux-pro-max、strategy-builder）的 doc 路徑、`CHANGELOG` 內 2 條已搬檔的 markdown 連結。
+    全 docs 相對連結經程式驗證 **0 殘斷**。CHANGELOG 歷史條目的純文字路徑維持原樣（歷史紀錄不竄改）。
+
 ### 修正
 
 - **修正 PostgreSQL 全新資料庫遷移失敗**：將 `bots.adaptive` migration 的布林預設值從 SQLite 風格
@@ -522,7 +539,7 @@
     - 註：本次只產生證據與結論，**未自動刪任何層**；adaptive 的降級/移除另開獨立提案。
   - 新增操作指南 `docs/how-to-add-strategy.md`（新增策略的 6 個落地點 + 怎麼用 + 怎麼驗 OOS）。
 
-- **Phase 7 step-04~06：分數凱利部位 + meta-labeling 二級過濾 + 事件驅動風險閘**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
+- **Phase 7 step-04~06：分數凱利部位 + meta-labeling 二級過濾 + 事件驅動風險閘**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)。
   - **step-04 分數凱利部位（區塊 3：可投多少量）**：新增純函式 `backend/services/sizing.py`：
     - `kelly_fraction(win_rate, avg_win, avg_loss)`：算 `f* = W − (1−W)/R`，乘分數凱利係數、再用硬上限夾住；
       負期望（f*≤0）或缺賠率原料 → 回 0（不下注）。三重保守：用 OOS 的 W/R + 分數凱利 + 上限。
@@ -544,7 +561,7 @@
   - 測試：新增 `tests/test_sizing.py`(6) / `tests/test_meta_label.py`(5) / `tests/test_event_risk.py`(6)。
     `pytest tests/ -q` → **218 passed**（乾淨 DB）。
 
-- **Phase 7 step-07：★防過擬合驗證框架（橫跨全部的鐵律）**——藍圖 [`docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md`](docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md)。
+- **Phase 7 step-07：★防過擬合驗證框架（橫跨全部的鐵律）**——藍圖 [`docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md`](docs/history/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md)。
   - 新增純函式 `backend/services/validation.py`：
     - `walk_forward_splits` / `walk_forward`：滾動前進驗證。每個 fold 只在「測試段」子 df 上跑含成本
       `_run_on_df`（與正式回測同路徑、與 optimizer OOS 語意一致），回每個 fold 的 OOS 績效。
@@ -559,7 +576,7 @@
   - 測試：新增 `tests/test_validation.py`（滾動切分正確、purged 無洩漏、`is_layer_worth_it` 能判死
     「in-sample 漂亮、OOS 崩」的假層、fold 不足不採信）。`pytest tests/ -q` → 201 passed（乾淨 DB）。
 
-- **Phase 7 step-01~03：自適應市場狀態（區塊 2：狀態→選策略）**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
+- **Phase 7 step-01~03：自適應市場狀態（區塊 2：狀態→選策略）**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)。
   - **step-01 市場狀態特徵工程**：新增純函式 `backend/services/regime_features.py`：`compute_features(df)`
     回 6 個可解釋特徵（`volume_ratio` 重用 `screener`、`return_5d/20d`、`volatility_20d` 年化、
     `trend_strength` 重用 `indicators.adx_components`、`atr_pct`、`range_position` 唐奇安%）。

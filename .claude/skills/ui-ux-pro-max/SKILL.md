@@ -16,7 +16,7 @@ trigger: /ux-pro
 > - **CLI 不可用**：原文的 `scripts/search.py` 與 CSV 資料**未隨附**，故
 >   `--design-system` / `--domain` 等查詢指令跑不起來。請直接讀本檔的
 >   **Quick Reference**（§1–§10）與 **Pre-Delivery Checklist** 當規則庫。
-> - **落地流程**：見 [`docs/ux-workflow.md`](../../../docs/ux-workflow.md)（何時觸發、
+> - **落地流程**：見 [`docs/ux/ux-workflow.md`](../../../docs/ux/ux-workflow.md)（何時觸發、
 >   優先序閘門、Web/MUI 版交付前檢查表、驗證步驟）。
 
 # UI/UX Pro Max - Design Intelligence
