@@ -15,6 +15,22 @@
 
 ## [未發布]
 
+### 新增
+
+- **Phase 11 step-01：總經/環境資料地基（FRED 接入 + 本機快取 + point-in-time）**——補上專案最大缺口
+  「環境資料的大腦」（先前 `grep` 整個 `backend/` 找不到 FRED/非農/利率/CPI）。新增：
+  - `services/fred_client.py`：薄 FRED client（聖路易聯準會，免費 API）。仿 `llm.py` 優雅降級——
+    沒設 `FRED_API_KEY` 或連不上 → 回 `None`、靜默跳過，不崩、不阻斷其他功能（不另設 `MACRO_ENABLED` 旗標）。
+  - `services/macro_data.py`：統一介面（仿 `market_data`）。本機快取 + **point-in-time 守門**——
+    每筆存 `period_date`（資料期間）與 `released_at = period + 發布落差`；回測讀取給 `as_of`
+    時只回 `released_at <= as_of` 的值，**杜絕偷看尚未公布的數據**（「回測=實盤」鐵則延伸）。
+  - `models/macro_series.py`（`macro_observations` 表，唯一鍵 series+period）+ Alembic 遷移。
+  - `routers/macro.py`：`GET /macro/series`（point-in-time 唯讀）、`GET /macro/series-list`、`POST /macro/refresh`。
+  - `tests/test_macro.py`：6 個純單元測試（記憶體 SQLite + monkeypatch，不連網），含**防洩漏**
+    （公布前看不到）與**無 key 優雅降級**。
+  - `config.py` / `.env.example`：`FRED_API_KEY` / `MACRO_SERIES` / `MACRO_DEFAULT_LAG_DAYS`。
+  - 藍圖 `docs/phase-11-macro-data/README.md`（含 step-01~05 契約）。
+
 ### 修正
 
 - **修復後端啟動報錯 `no such column: bots.promotion_status`（DB schema 漂移）**——本機 SQLite 的

@@ -65,6 +65,22 @@ class Settings:
     DATA_SOURCE: str = os.getenv("DATA_SOURCE", "alpaca")
 
     # ========================================================
+    # 總經 / 環境資料（Phase 11 step-01）— FRED 聯準會經濟數據
+    # ========================================================
+    # 讓回測吃得到「環境因子」（非農就業、失業率、聯邦基金利率、CPI、公債殖利率、VIX）。
+    # 資料源是 FRED（聖路易聯準會，免費，需自行申請免費 API key）。沿用「本機優先 / 免費」與
+    # LLM 一樣的「優雅降級」：沒填 key → 整個總經功能靜默跳過，不另設開關、也不影響其他功能。
+    #   - FRED_API_KEY：到 https://fred.stlouisfed.org/docs/api/api_key.html 免費申請。留空＝關閉。
+    #   - MACRO_SERIES：要追蹤的 FRED 序列代號（逗號分隔）。
+    #   - MACRO_DEFAULT_LAG_DAYS：未知序列的「發布落差」天數預設（point-in-time 防偷看未來；
+    #     各序列的精確落差在 services/macro_data.py 的對照表，這裡只當 fallback）。
+    FRED_API_KEY: str = os.getenv("FRED_API_KEY", "")
+    MACRO_SERIES: str = os.getenv(
+        "MACRO_SERIES", "PAYEMS,UNRATE,FEDFUNDS,CPIAUCSL,DGS10,DGS2,VIXCLS"
+    )
+    MACRO_DEFAULT_LAG_DAYS: int = int(os.getenv("MACRO_DEFAULT_LAG_DAYS", "35"))
+
+    # ========================================================
     # 資料庫
     # ========================================================
     # 預設用 SQLite，資料庫檔案放在專案根目錄（albee_stock.db）。
