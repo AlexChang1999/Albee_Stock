@@ -103,6 +103,11 @@
 
 ### 待辦（後續 / TODO）
 
+- **Phase 11 macro 層待真資料驗證**（step-05 收尾）：首跑 SPY 判 `worth=False`（無 FRED 資料、
+  煞車只靠 orderflow 過度抑制進場）。要真評估 macro 價值，須先填 `FRED_API_KEY` →
+  `POST /macro/refresh` 灌入序列 → 重跑 `venv\Scripts\python.exe scripts\validate_layers.py SPY`。
+  仍 `worth=False` 則如實砍掉 `MacroOverlayStrategy`（不硬留無加分的層，沿用 Phase 7 紀律）。
+
 > 前端 UX 兩批未做、留待後續的項目（依價值排序）：
 
 - **持倉 / 未實現損益視圖**（價值最高的缺口）：後端目前**無 `/positions` 端點**，
