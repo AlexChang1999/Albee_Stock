@@ -1,6 +1,17 @@
 # 步驟 3 — 環境特徵 + 買賣壓代理
 
-> 把總經序列與「買賣壓」對齊成回測吃得到的特徵欄。回到 [Phase 11 索引](README.md)。
+> 把總經序列與「買賣壓」對齊成回測吃得到的特徵欄。**狀態：已落地 ✅**。回到 [Phase 11 索引](README.md)。
+
+## 已落地的檔（as-built）
+
+| 檔 | 職責 |
+|----|------|
+| `backend/services/macro_features.py` | `attach_macro_features(price_df, db)`：對每根 bar 取各序列 `released_at <= bar_date` 的最後一筆 forward-fill，加 6 欄（`fed_funds_level`/`fed_funds_3m_chg`/`unemployment_trend`/`cpi_yoy`/`yield_curve`/`vix_level`）。內部 `_as_of_value(series_df, on_date, periods_back)` 是 point-in-time 取值核心。重用 `macro_data.get_macro_series` |
+| `backend/services/orderflow_proxy.py` | `compute_orderflow(price_df)`：tick 規則加 4 欄（`buy_vol_proxy`/`sell_vol_proxy`/`net_pressure`/`pressure_ratio`）。平盤/首根對半、零量 ratio 給中性 0.5；守恆等式 `buy+sell==volume` |
+| `tests/test_orderflow.py`（6 測）/ `tests/test_macro_features.py`（6 測） | 純函式 + 記憶體 SQLite，驗對齊不洩漏 / 恆等式 / 方向 / 無未來函數 |
+
+> **誠實標註**：買賣壓是 **tick 代理**（漲跌方向 × 總量），**不是**真實逐筆 order flow（真值需付費源
+> Polygon/Databento，列範圍外）。兩模組皆**純函式、無未來函數**；接線回測引擎吃 `features` = **step-04**。
 
 ## 目標
 

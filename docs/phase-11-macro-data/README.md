@@ -60,8 +60,8 @@
 | step | 目標 | 關鍵檔（新增/改） | 驗收 | 狀態 |
 |------|------|------------------|------|------|
 | **01** | 總經資料接入 + 本機快取 + point-in-time | `services/fred_client.py`、`services/macro_data.py`、`models/macro_series.py`、`routers/macro.py`、`config.py`、Alembic | 防洩漏單測（公布前看不到）+ 無 key 優雅降級 | ✅ |
-| **02** | 多年 OHLCV 本機快取（避免每次重抓） | `services/bar_cache.py`、`config.py` | 缺區間補抓、命中快取不重打 + 單測 | ⬜ |
-| **03** | 環境特徵 + 買賣壓代理 | `services/macro_features.py`、`services/orderflow_proxy.py` | as-of 用 `released_at` 對齊；`buy+sell==volume`、方向符合漲跌 + 單測 | ⬜ |
+| **02** | 多年 OHLCV 本機快取（避免每次重抓） | `services/bar_cache.py`、`config.py` | 缺區間補抓、命中快取不重打 + 單測 | ✅ |
+| **03** | 環境特徵 + 買賣壓代理 | `services/macro_features.py`、`services/orderflow_proxy.py` | as-of 用 `released_at` 對齊；`buy+sell==volume`、方向符合漲跌 + 單測 | ✅ |
 | **04** | 回測引擎吃 `features` | `services/backtest_engine.py`（加選用參數） | 舊策略忽略 features 照跑（向後相容）+ 單測 | ⬜ |
 | **05** | macro 層 OOS 加分驗證 | `services/layer_validation.py`、`scripts/validate_layers.py` | 印出 `worth/folds/improvement`；沒加分如實標記 + 單測 | ⬜ |
 
@@ -73,8 +73,8 @@
 | step | 文件 | 主題 | 狀態 |
 |------|------|------|------|
 | 1 | [step-01-macro-data-ingestion.md](step-01-macro-data-ingestion.md) | 總經接入 + 本機快取 + point-in-time | ✅ 已落地 |
-| 2 | [step-02-bar-cache.md](step-02-bar-cache.md) | 多年 OHLCV 本機快取 | ⬜ |
-| 3 | [step-03-macro-features-orderflow.md](step-03-macro-features-orderflow.md) | 環境特徵 + 買賣壓代理 | ⬜ |
+| 2 | [step-02-bar-cache.md](step-02-bar-cache.md) | 多年 OHLCV 本機快取 | ✅ 已落地 |
+| 3 | [step-03-macro-features-orderflow.md](step-03-macro-features-orderflow.md) | 環境特徵 + 買賣壓代理 | ✅ 已落地 |
 | 4 | [step-04-backtest-features.md](step-04-backtest-features.md) | 回測引擎吃 `features` | ⬜ |
 | 5 | [step-05-macro-layer-validation.md](step-05-macro-layer-validation.md) | ★macro 層 OOS 加分驗證 | ⬜ |
 
