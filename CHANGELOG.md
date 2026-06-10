@@ -28,6 +28,12 @@
     損益用 `signedMoney`/`signOf` 帶 +/- 號 + `NEON` 紅綠雙重編碼，不寫死 hex）。
   - 測試：`tests/test_positions.py`（2 測，monkeypatch 假持倉，不連網）；
     `PositionsCard.test.jsx`（3 測：有持倉/無持倉/API 失敗降級）。
+- **Backlog A：macro 層真資料驗證 runbook（記錄待辦、不改程式）**——Item A 唯一阻塞是缺免費
+  FRED API key（須 stlouisfed.org 帳號）；無 key 時 macro 欄全 NaN、驗證印 `worth=False`，但
+  **那不算數**（須真資料下仍 `worth=False` 才誠實砍）。新增
+  [`docs/guides/macro-layer-validation-runbook.md`](docs/guides/macro-layer-validation-runbook.md)：
+  申請 key → `POST /macro/refresh` → `scripts/validate_layers.py` → 判 verdict 後留/砍的機械式步驟單
+  （程式已全就位，本次只記錄；真資料驗證 + 留/砍決策待 key 與標的籃子敲定後執行）。`docs/README.md` 索引同步加列。
 - **Phase 11 step-04：回測引擎吃環境 `features` + 接線 bar_cache**——把 step-02/03 的快取與環境
   特徵真正接進回測管線（前三步只交付模組，本步「接線」）：
   - `services/backtest_engine.py`：`_run_on_df` / `run_backtest` 各加**選用** `features` 參數。

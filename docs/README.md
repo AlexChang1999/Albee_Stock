@@ -31,6 +31,7 @@
 | [`guides/setup.md`](guides/setup.md) | 環境設置（換新電腦一鍵建好開發環境）。 |
 | [`guides/使用說明.md`](guides/使用說明.md) | 日常操作流程（啟動、前端各分頁、檔案位置、安全雙閘、FAQ）。 |
 | [`guides/how-to-add-strategy.md`](guides/how-to-add-strategy.md) | 新增策略 runbook。 |
+| [`guides/macro-layer-validation-runbook.md`](guides/macro-layer-validation-runbook.md) | Backlog A：拿到 FRED key 後跑 macro 層真資料 OOS 驗證 + 留/砍決策的步驟單。 |
 | [`guides/setup-postgres-sync.md`](guides/setup-postgres-sync.md) | 換 PostgreSQL／同步設定。 |
 | [`guides/phase4-paper-checklist.md`](guides/phase4-paper-checklist.md) | Paper Trading 上線前檢查表。 |
 | [`guides/skill-guidelines.md`](guides/skill-guidelines.md) | 撰寫 Skill 的守則。 |
