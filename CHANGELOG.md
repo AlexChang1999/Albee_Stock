@@ -60,6 +60,9 @@
 
 ### 修正
 
+- **修正 PostgreSQL 全新資料庫遷移失敗**：將 `bots.adaptive` migration 的布林預設值從 SQLite 風格
+  `0` 改為跨資料庫相容的 `sa.false()`，避免 PostgreSQL 出現 `BOOLEAN DEFAULT 0` 型別錯誤。
+
 - **修復後端啟動報錯 `no such column: bots.promotion_status`（DB schema 漂移）**——本機 SQLite 的
   `alembic_version` 停在 `f6a7b8c9d0e1`，但實際 DB 已被 `create_all` 建出後續所有「表」
   （automation_config / opportunities / factor_snapshots / raw_strategy_finds / political_events），
