@@ -34,6 +34,22 @@
 
 ### 新增
 
+- **維運安全軌 H1 Step 3：bot_manager 接上券商端止損託管（核心收尾）**——
+  「電腦掛掉止損仍有效」正式生效（`BROKER_STOP_ENABLED` 預設開，關掉=完全退回
+  舊版本機輪詢，回歸測試保證）：
+  - **進場**：有止損/追蹤止損設定的 Bot 改買整股（買不起 1 股跳過+記審計），
+    市價單成交後另掛一張 GTC 保護賣單到券商端（trailing 優先用原生 trailing stop，
+    否則 stop 單），訂單 id 落 DB。掛失敗不擋主流程（本機輪詢備援）+ 通知警告。
+  - **每輪自癒**（`_ensure_protective_order`）：持倉但保護單失蹤/參數漂移 → 撤舊補掛
+    （涵蓋重啟、手動撤單、改風控參數）。best-effort 不阻斷。
+  - **本機出場先撤單**（`_cancel_protective_order`）：券商端掛著 sell stop 會保留股數，
+    不撤市價賣會被拒；撤不掉=券商端已成交 → 放棄本機賣出防雙重賣。
+  - **券商端成交回填**（`_settle_broker_exit`）：空手但 DB 記著保護單 id → 查單，
+    已成交就用「實際成交價」補記 TradeLog/DecisionLog + 通知 + 清 peak/id——
+    否則績效統計與 tracking error 對帳的資料源會斷鏈。
+  - 本機 `check_exit` 輪詢完整保留當備援（belt-and-suspenders）；止盈 v1 不託管
+    （OCO 複雜、晚 60 秒不致命）。回測引擎不動：Bot 層 TP/SL 本來就不在回測內，
+    盤中觸發/跳空落差由 H3 tracking error 量化。`tests/test_bot_manager.py` 補 8 條。
 - **維運安全軌 H1 Step 2：保護單規劃純函式 + `Bot.protective_order_id`**——新增
   `services/protective_orders.py` 三個純函式：`whole_share_qty`（Alpaca stop 單只支援
   整股 → 進場股數 floor 取整，買不起 1 股回 0）、`plan_protective_order`（trailing 優先

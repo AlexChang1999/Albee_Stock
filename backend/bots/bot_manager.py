@@ -42,6 +42,11 @@ from backend.services import market_data
 from backend.services.alpaca_client import alpaca_client
 from backend.services.circuit_breaker import check_breaker
 from backend.services.notifier import notify
+from backend.services.protective_orders import (
+    order_matches_plan,
+    plan_protective_order,
+    whole_share_qty,
+)
 from backend.services.risk_manager import check_exit
 from backend.strategies import get_strategy, Signal
 from backend.strategies.lookback import required_lookback_days
@@ -66,6 +71,158 @@ def _persist_peak(bot: Bot, peak: float | None) -> None:
         db.close()
     # 同步更新手上這顆物件，讓同一輪後續邏輯讀到新值
     bot.peak_price = peak
+
+
+def _persist_protective_order_id(bot: Bot, order_id: str | None) -> None:
+    """把某 Bot 的「券商端保護單 id」寫回資料庫（None 代表清除）。
+
+    與 _persist_peak 同款：用 bot.id 重查最新列更新、查不到靜默跳過，
+    並同步更新手上物件讓同一輪後續邏輯讀到新值。
+    """
+    db = SessionLocal()
+    try:
+        row = db.query(Bot).filter(Bot.id == bot.id).first()
+        if row is not None:
+            row.protective_order_id = order_id
+            db.commit()
+    finally:
+        db.close()
+    bot.protective_order_id = order_id
+
+
+# 券商端訂單「還活著（未成交、掛著）」的狀態集合。
+# Alpaca 的訂單狀態是字串列舉，這幾種代表單還掛在券商端等觸發。
+_OPEN_ORDER_STATUSES = {"new", "accepted", "held", "pending_new", "accepted_for_bidding"}
+
+
+def _order_status(order) -> str:
+    """把 Alpaca 訂單物件的 status（列舉或字串）統一轉成小寫字串。"""
+    status = getattr(order, "status", "")
+    return str(getattr(status, "value", status)).lower()
+
+
+def _place_protective_order(bot: Bot, qty: float, entry_price: float) -> None:
+    """進場成交後，把止損「託管」到券商端（維運安全軌 H1）。
+
+    依 Bot 風控設定掛 GTC 保護賣單（trailing 優先，否則 stop），
+    訂單 id 持久化到 bot.protective_order_id。
+    掛失敗**不擋主流程**（本機輪詢仍是備援），但發通知警告 + 交給下一輪自癒補掛。
+    """
+    if not settings.BROKER_STOP_ENABLED:
+        return
+    plan = plan_protective_order(
+        entry_price,
+        stop_loss_pct=bot.stop_loss_pct,
+        trailing_stop_pct=bot.trailing_stop_pct,
+    )
+    if plan is None:
+        return  # 沒設止損/追蹤止損 → 不掛（止盈 v1 仍走本機輪詢）
+    try:
+        if plan["type"] == "trailing_stop":
+            order = alpaca_client.submit_trailing_stop_order(
+                bot.symbol, qty, trail_percent=plan["trail_percent"]
+            )
+        else:
+            order = alpaca_client.submit_stop_order(
+                bot.symbol, qty, stop_price=plan["stop_price"]
+            )
+        _persist_protective_order_id(bot, str(getattr(order, "id", "")) or None)
+    except Exception as e:
+        # 保護單沒掛上 ≠ 交易失敗：本機輪詢照常守著，下一輪 _ensure 會再補掛
+        notify(f"⚠️ [{bot.name}] 券商端保護單掛單失敗（{e}），暫由本機輪詢守備，下一輪自動補掛。")
+
+
+def _ensure_protective_order(bot: Bot, position) -> None:
+    """每輪自癒（reconcile）：有持倉 + 有風控設定 → 券商端保護單必須活著且參數正確。
+
+    涵蓋：後端重啟（DB 記得 id）、保護單被手動撤掉、掛單曾失敗、
+    使用者改了止損百分比（撤舊掛新）。整段 best-effort：任何查詢失敗不阻斷主流程
+    （本機輪詢備援仍在）。
+    """
+    if not settings.BROKER_STOP_ENABLED:
+        return
+    try:
+        entry_price = float(position.avg_entry_price)
+        plan = plan_protective_order(
+            entry_price,
+            stop_loss_pct=bot.stop_loss_pct,
+            trailing_stop_pct=bot.trailing_stop_pct,
+        )
+        if plan is None:
+            # 風控設定被拿掉 → 不需要保護單；還掛著就撤
+            if bot.protective_order_id:
+                alpaca_client.cancel_order(bot.protective_order_id)
+                _persist_protective_order_id(bot, None)
+            return
+
+        if bot.protective_order_id:
+            order = alpaca_client.get_order(bot.protective_order_id)
+            if (
+                order is not None
+                and _order_status(order) in _OPEN_ORDER_STATUSES
+                and order_matches_plan(
+                    str(getattr(getattr(order, "order_type", None), "value", getattr(order, "order_type", ""))).lower(),
+                    float(order.stop_price) if getattr(order, "stop_price", None) else None,
+                    float(order.trail_percent) if getattr(order, "trail_percent", None) else None,
+                    plan,
+                )
+            ):
+                return  # 單活著且符合計畫 → 不動
+            # 單不見了 / 參數漂移 → 撤舊（best-effort）再補掛
+            alpaca_client.cancel_order(bot.protective_order_id)
+            _persist_protective_order_id(bot, None)
+
+        # 補掛：股數用「目前實際持倉」取整（保護單只支援整股；舊碎股倉位的零頭不掛）
+        qty = int(float(position.qty))
+        if qty > 0:
+            _place_protective_order(bot, qty, entry_price)
+    except Exception:
+        pass  # 自癒失敗不阻斷：本機輪詢照常守備，下一輪再試
+
+
+def _cancel_protective_order(bot: Bot) -> bool:
+    """本機要出場（風控/策略賣出）前，先撤掉券商端保護單。
+
+    券商端掛著 sell stop 時股數被保留，不先撤、本機市價賣單會被 Alpaca 拒絕。
+    :return: True = 已撤掉（或本來就沒掛），可以繼續本機賣出；
+             False = 撤不掉（多半是券商端剛好已成交）→ 呼叫端放棄本機賣出，
+             下一輪由 _settle_broker_exit 回填帳。
+    """
+    if not bot.protective_order_id:
+        return True
+    if alpaca_client.cancel_order(bot.protective_order_id):
+        _persist_protective_order_id(bot, None)
+        return True
+    return False
+
+
+def _settle_broker_exit(bot: Bot) -> bool:
+    """券商端保護單成交的「回填帳」：空手但 DB 記著保護單 id → 查單補記錄。
+
+    券商端止損觸發時本機不在場，TradeLog / DecisionLog 都沒記——
+    不回填的話績效統計（round-trip 配對）與 tracking error 對帳的資料源就是錯的。
+    :return: True = 這輪確認券商端已出場並補完帳。
+    """
+    order_id = bot.protective_order_id
+    if not order_id:
+        return False
+    try:
+        order = alpaca_client.get_order(order_id)
+        if order is not None and _order_status(order) == "filled":
+            qty = float(getattr(order, "filled_qty", 0) or 0)
+            price = float(getattr(order, "filled_avg_price", 0) or 0)
+            reason = "券商端止損/追蹤止損觸發（託管單成交，本機回填）"
+            _record_and_notify(bot, "sell", qty, price, order, reason)
+            _record_decision(bot, Signal.SELL, reason, price, ACTION_SOLD)
+            _persist_peak(bot, None)
+            _persist_protective_order_id(bot, None)
+            return True
+        # 沒成交卻空手（撤單/過期/人工平倉）：保護單已無意義，撤掉 + 清 id
+        alpaca_client.cancel_order(order_id)
+        _persist_protective_order_id(bot, None)
+    except Exception:
+        pass  # 查不到先不動，下一輪再試（best-effort）
+    return False
 
 
 def _mark_checked(bot: Bot) -> None:
@@ -156,6 +313,11 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
         position = alpaca_client.get_position(bot.symbol)
         current_price = alpaca_client.get_latest_price(bot.symbol)
 
+        # 空手但 DB 記著券商端保護單 id → 多半是託管止損在本機不在場時成交了，
+        # 先回填交易/決策紀錄（維運安全軌 H1），再照常走空手分支。
+        if position is None and bot.protective_order_id:
+            _settle_broker_exit(bot)
+
         if position is not None:
             _handle_holding(bot, position, current_price)
         else:
@@ -171,6 +333,9 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
 def _handle_holding(bot: Bot, position, current_price: float) -> None:
     """持倉中：先風控出場，再看策略賣出訊號（熔斷不擋出場）。"""
     entry_price = float(position.avg_entry_price)
+
+    # 券商端保護單自癒（維運安全軌 H1）：該掛的沒掛/參數漂移 → 補掛。best-effort 不阻斷。
+    _ensure_protective_order(bot, position)
 
     # 更新「持倉期間最高價」（給追蹤止損用）。
     # 起算基準：資料庫存的 peak_price；若還沒有（剛接手/重啟後第一次）就用進場價起算。
@@ -188,6 +353,11 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         trailing_stop_pct=bot.trailing_stop_pct,
     )
     if should_exit:
+        # 本機出場前先撤券商端保護單（掛著的 stop 會保留股數，不撤市價賣會被拒）。
+        # 撤不掉 = 券商端剛好已成交 → 放棄本機賣出，下一輪由 _settle_broker_exit 回填帳。
+        if not _cancel_protective_order(bot):
+            _record_decision(bot, Signal.SELL, "券商端保護單已先成交，待下一輪回填", current_price, ACTION_HOLD)
+            return
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, exit_reason)
@@ -198,6 +368,9 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
     # --- 風控沒觸發 → 看策略要不要賣 ---
     signal, reason = _run_strategy(bot)
     if signal == Signal.SELL:
+        if not _cancel_protective_order(bot):  # 同上：cancel-before-sell
+            _record_decision(bot, Signal.SELL, "券商端保護單已先成交，待下一輪回填", current_price, ACTION_HOLD)
+            return
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, reason)
@@ -227,8 +400,27 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
         _record_decision(bot, signal, "組合回撤熔斷，暫停新增曝險", current_price, ACTION_SKIPPED_CIRCUIT_BREAKER)
         return
 
-    # 用設定金額換算要買幾股（保留 4 位小數，支援碎股）
-    qty = round(bot.trade_amount / current_price, 4)
+    # 用設定金額換算要買幾股。
+    # 會掛券商端保護單的 Bot 必須買「整股」（Alpaca 的 stop/trailing 單不支援碎股）；
+    # 沒掛保護單需求的維持碎股（保留 4 位小數），行為與舊版一致。
+    needs_protection = settings.BROKER_STOP_ENABLED and plan_protective_order(
+        current_price,
+        stop_loss_pct=bot.stop_loss_pct,
+        trailing_stop_pct=bot.trailing_stop_pct,
+    ) is not None
+    if needs_protection:
+        qty = whole_share_qty(bot.trade_amount, current_price)
+        if qty <= 0:
+            print(f"[{bot.name}] trade_amount ${bot.trade_amount:.2f} 買不起 1 股 {bot.symbol}"
+                  f"（${current_price:.2f}，券商端止損需整股），跳過買進。")
+            _record_decision(
+                bot, signal,
+                f"trade_amount ${bot.trade_amount:.2f} 買不起 1 股（${current_price:.2f}；券商端止損需整股）",
+                current_price, ACTION_SKIPPED_NO_BUYING_POWER,
+            )
+            return
+    else:
+        qty = round(bot.trade_amount / current_price, 4)
 
     # --- 購買力守門（step-05，best-effort；查不到就放行）---
     buying_power = _available_buying_power()
@@ -245,6 +437,9 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
     _record_and_notify(bot, "buy", qty, current_price, order, reason)
     _record_decision(bot, Signal.BUY, reason, current_price, ACTION_BOUGHT)
     _persist_peak(bot, current_price)  # 進場價當作最高價的起點
+    if needs_protection:
+        # 把止損託管到券商端（失敗不擋主流程，下一輪自癒補掛）
+        _place_protective_order(bot, qty, current_price)
 
 
 def _run_strategy(bot: Bot):
