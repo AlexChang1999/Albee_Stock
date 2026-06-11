@@ -34,6 +34,15 @@
 
 ### 新增
 
+- **維運安全軌 H3 Step 6：tracking error 資料管**——把「可比的兩個數字」各自接出來：
+  - **Paper 側**：`performance.compute_round_trip_returns(trades)` 純函式——
+    平均成本法把交易紀錄配成完整回合，回每回合 `profit / entry_cost / return_pct /
+    closed_at`（邊界行為與 `compute_bot_stats` 一致：孤兒賣單跳過、部分平倉按比例）。
+  - **回測側**：optimizer 結果補 `oos_expectancy_pct`（OOS 期望值佔本金 %）；
+    `opportunities` 表加同名欄（Alembic `b4c5d6e7f8a9`），常駐掃描讀寫帶上、
+    舊列下次掃描自然回填（不做歷史回填）。
+  - **為何用 %**：回測全進全出複利（initial_cash）vs Paper 固定 trade_amount，
+    美元 EV 不可直接比，一律 % 歸一化（仍是近似，分母不同——文件誠實標註）。
 - **維運安全軌 H2 Step 5：dead-man switch 外側設定 + runbook（純文件/設定）**——
   `.env.example` 補 `BROKER_STOP_ENABLED` / `HEARTBEAT_*` 四鍵與註解；新增
   [`docs/guides/deadman-switch-runbook.md`](docs/guides/deadman-switch-runbook.md)：

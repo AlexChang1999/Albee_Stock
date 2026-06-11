@@ -50,6 +50,7 @@ def screener_results_to_rows(recommendations: list[dict]) -> list[dict]:
             "params": rec.get("params") or {},
             "oos_expected_value": metrics.get("oos_expected_value"),
             "oos_win_rate_pct": metrics.get("oos_win_rate_pct"),
+            "oos_expectancy_pct": metrics.get("oos_expectancy_pct"),
             "sentiment": rec.get("sentiment"),
         })
     # 依 OOS EV 由高到低（None 視為最低，排最後）
@@ -86,6 +87,7 @@ def upsert_opportunities(db, rows: list[dict]) -> dict:
                 params=row.get("params") or {},
                 oos_expected_value=row.get("oos_expected_value"),
                 oos_win_rate_pct=row.get("oos_win_rate_pct"),
+                oos_expectancy_pct=row.get("oos_expectancy_pct"),
                 sentiment=row.get("sentiment"),
                 scanned_at=datetime.now(),
                 status="new",
@@ -95,6 +97,7 @@ def upsert_opportunities(db, rows: list[dict]) -> dict:
             existing.params = row.get("params") or {}
             existing.oos_expected_value = row.get("oos_expected_value")
             existing.oos_win_rate_pct = row.get("oos_win_rate_pct")
+            existing.oos_expectancy_pct = row.get("oos_expectancy_pct")
             existing.sentiment = row.get("sentiment")
             existing.scanned_at = datetime.now()
             # status 不動（保留 seen/deployed/expired 的流轉結果）
