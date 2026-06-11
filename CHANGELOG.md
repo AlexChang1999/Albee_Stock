@@ -34,6 +34,11 @@
 
 ### 新增
 
+- **維運安全軌 H2 Step 5：dead-man switch 外側設定 + runbook（純文件/設定）**——
+  `.env.example` 補 `BROKER_STOP_ENABLED` / `HEARTBEAT_*` 四鍵與註解；新增
+  [`docs/guides/deadman-switch-runbook.md`](docs/guides/deadman-switch-runbook.md)：
+  healthchecks.io 免費版設定步驟（period=1h+grace=1h）、警報響起的六步排查順序、
+  **每月演練**流程（沒演練過的 dead-man switch 等於沒有）。`docs/README.md` 索引同步加列。
 - **維運安全軌 H2 Step 4：每日心跳 + dead-man ping**——一人公司沒有同事盯系統：
   - 新增 `services/heartbeat.py`：`run_daily_heartbeat()` 每日定時發「💓 活著｜持倉 X 檔｜
     啟用 Bot Y 個｜今日決策 N 筆｜權益 $Z」日報（任何查詢失敗以 "?" 帶過照樣發——
