@@ -5,6 +5,7 @@
 1. GET /company/overview 聚合鍵齊全（account / bots / automation / circuit_breaker / decisions）。
 2. 離線降級：get_account 丟例外時 account=None，整頁不崩、其餘區塊照常。
 3. Bot 艦隊 total/active 計數、決策倒序。
+4. 探勘漏斗（Phase 12 step-04）：空庫全 0 + 淘汰率 None；播種後計數精確 + 淘汰率正確。
 
 不連網：用臨時 SQLite 覆寫 get_db，避免污染 dev DB；get_account 用 monkeypatch。
 
@@ -123,6 +124,52 @@ def test_overview_keys_and_offline_account(monkeypatch, tmp_path):
         # 決策倒序（後種的 id=2 在前）
         assert len(body["decisions"]) == 2
         assert body["decisions"][0]["id"] == 2
+
+
+def test_funnel_empty_db_all_zero(monkeypatch, tmp_path):
+    """空庫：discovery_funnel 鍵齊全、八個計數全 0、淘汰率 None（shape 穩定不靠資料）。"""
+    import backend.routers.company as company_mod
+
+    monkeypatch.setattr(company_mod.alpaca_client, "get_account",
+                        lambda: (_ for _ in ()).throw(RuntimeError("離線")))
+
+    with _client_with_db(tmp_path) as (client, _):
+        funnel = client.get("/company/overview").json()["discovery_funnel"]
+        assert funnel["raw"] == {"new": 0, "triaged": 0, "built": 0, "discarded": 0}
+        assert funnel["knowledge"] == {"candidate": 0, "validated": 0,
+                                       "rejected": 0, "curated": 0}
+        assert funnel["rejection_rate_pct"] is None
+
+
+def test_funnel_counts_and_rejection_rate(monkeypatch, tmp_path):
+    """播種兩表各狀態 → 計數精確；淘汰率 = rejected/(validated+rejected)。"""
+    import backend.routers.company as company_mod
+    from backend.models import RawStrategyFind
+    from backend.models.strategy_knowledge import StrategyKnowledge
+
+    monkeypatch.setattr(company_mod.alpaca_client, "get_account",
+                        lambda: (_ for _ in ()).throw(RuntimeError("離線")))
+
+    with _client_with_db(tmp_path) as (client, TestingSession):
+        db = TestingSession()
+        try:
+            for i, status in enumerate(["new", "new", "built", "discarded"]):
+                db.add(RawStrategyFind(source="t", source_url=f"https://t/{i}",
+                                       title=f"a{i}", summary="s", status=status))
+            for i, status in enumerate(
+                ["candidate", "candidate", "validated", "rejected", "curated"]
+            ):
+                db.add(StrategyKnowledge(name=f"k{i}", strategy_key="rsi",
+                                         params={"period": 14}, status=status))
+            db.commit()
+        finally:
+            db.close()
+
+        funnel = client.get("/company/overview").json()["discovery_funnel"]
+        assert funnel["raw"] == {"new": 2, "triaged": 0, "built": 1, "discarded": 1}
+        assert funnel["knowledge"] == {"candidate": 2, "validated": 1,
+                                       "rejected": 1, "curated": 1}
+        assert funnel["rejection_rate_pct"] == 50.0
 
 
 def test_overview_account_present_when_online(monkeypatch, tmp_path):

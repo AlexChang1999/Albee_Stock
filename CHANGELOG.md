@@ -17,6 +17,14 @@
 
 ### 新增
 
+- **Phase 12 step-04：探勘漏斗報表 + 待審提醒（人在迴路收口）**——
+  `/company/overview` 加 `discovery_funnel` 區塊（raw 收件匣 + 知識庫各狀態
+  group-count + 淘汰率，純讀無遷移）；每日心跳日報加一行
+  「探勘漏斗：candidate X｜validated 待審 Y」（查不到以 ? 帶過，心跳永不崩、
+  不另開通知管道）；戰情頁加「探勘漏斗」部門卡（四段計數 + validated 待審徽章，
+  點擊跳既有 LibraryPage 策展，零新增審核入口；吃 theme 色）。
+  測試：後端漏斗聚合 2 案 + 心跳漏斗行 2 案、前端漏斗卡 2 案。
+
 - **Phase 12 step-03：候選自動批次驗證（OOS 閘排程化）**——新增
   `backend/services/auto_validate.py`：每日定時取知識庫 status=candidate 至多
   `AUTO_VALIDATE_BATCH_SIZE` 筆，逐筆呼叫**既有** `evolution.validate_candidate`

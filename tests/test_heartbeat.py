@@ -56,6 +56,27 @@ def test_message_degrades_to_question_marks():
     print("✅ 心跳訊息缺值降級測試通過")
 
 
+def test_message_contains_funnel_line():
+    """探勘漏斗待審提醒（Phase 12 step-04）：有數字時日報含漏斗行。"""
+    msg = hb.build_heartbeat_message(
+        positions_count=3, active_bots=2, decisions_today=15,
+        equity=12345.6, now=datetime(2026, 6, 11, 8, 0),
+        candidate_count=4, validated_pending=2,
+    )
+    assert "探勘漏斗：candidate 4｜validated 待審 2" in msg
+    print("✅ 心跳漏斗行測試通過")
+
+
+def test_message_funnel_degrades_to_question_marks():
+    """漏斗數查不到（或舊呼叫端沒傳）→ ? 帶過，心跳照發。"""
+    msg = hb.build_heartbeat_message(
+        positions_count=None, active_bots=None, decisions_today=None,
+        equity=None, now=datetime(2026, 6, 11, 8, 0),
+    )
+    assert "探勘漏斗：candidate ?｜validated 待審 ?" in msg
+    print("✅ 心跳漏斗缺值降級測試通過")
+
+
 # ---------- run_daily_heartbeat ----------
 
 def test_daily_heartbeat_sends_notification(monkeypatch):

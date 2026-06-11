@@ -96,6 +96,7 @@ export default function CompanyPage() {
     circuit_breaker: breaker,
     decisions,
     opportunities = [],
+    discovery_funnel: funnel = null,
   } = data;
 
   return (
@@ -261,6 +262,37 @@ export default function CompanyPage() {
             )}
           </DeptCard>
         </Grid>
+
+        {/* 探勘漏斗（Phase 12 step-04）：raw → candidate → validated → curated，
+            人只看最後一道閘——validated 待審徽章 + 跳既有 LibraryPage 策展 */}
+        {funnel && (
+          <Grid item xs={12} sm={6} md={4}>
+            <DeptCard
+              title="探勘漏斗"
+              role="收料 → 候選 → 驗證 → 入庫 · 人只審最後一道閘"
+              to="/library"
+              linkLabel="知識庫策展 →"
+              chip={
+                <Chip
+                  size="small"
+                  label={`待審 ${funnel.knowledge.validated}`}
+                  color={funnel.knowledge.validated > 0 ? "warning" : "default"}
+                />
+              }
+            >
+              <Stack direction="row" spacing={3} sx={{ mb: 1 }}>
+                <Stat label="raw 收料" value={funnel.raw.new + funnel.raw.triaged + funnel.raw.built + funnel.raw.discarded} />
+                <Stat label="candidate" value={funnel.knowledge.candidate} />
+                <Stat label="validated" value={funnel.knowledge.validated} />
+                <Stat label="curated" value={funnel.knowledge.curated} />
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                淘汰率 {funnel.rejection_rate_pct ?? "—"}
+                {funnel.rejection_rate_pct != null && "%"}（高是健康的：大部分點子過不了 OOS 閘是預期）
+              </Typography>
+            </DeptCard>
+          </Grid>
+        )}
       </Grid>
     </Box>
   );

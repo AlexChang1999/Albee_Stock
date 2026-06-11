@@ -24,6 +24,7 @@ import requests
 from backend.config import settings
 from backend.database import SessionLocal
 from backend.models import Bot, DecisionLog
+from backend.models.strategy_knowledge import StrategyKnowledge
 from backend.services.alpaca_client import alpaca_client
 from backend.services.notifier import notify
 
@@ -35,10 +36,14 @@ def build_heartbeat_message(
     decisions_today,
     equity,
     now: datetime,
+    candidate_count=None,
+    validated_pending=None,
 ) -> str:
     """純函式：組每日心跳日報的文字。
 
     任一數字查不到時呼叫端傳 None，這裡以 "?" 顯示（缺資料也要發，發不出去才是事故）。
+    candidate_count / validated_pending：探勘漏斗待審提醒（Phase 12 step-04）——
+    validated 堆著沒人理是自動化最常見的死法，日報每天提醒一次。
     """
     def _fmt(v):
         return "?" if v is None else v
@@ -47,7 +52,8 @@ def build_heartbeat_message(
     return (
         f"💓 [心跳] {now:%Y-%m-%d %H:%M} 系統存活\n"
         f"持倉 {_fmt(positions_count)} 檔｜啟用 Bot {_fmt(active_bots)} 個｜"
-        f"今日決策 {_fmt(decisions_today)} 筆｜權益 {equity_text}"
+        f"今日決策 {_fmt(decisions_today)} 筆｜權益 {equity_text}\n"
+        f"探勘漏斗：candidate {_fmt(candidate_count)}｜validated 待審 {_fmt(validated_pending)}"
     )
 
 
@@ -69,8 +75,8 @@ def run_daily_heartbeat() -> None:
     except Exception:
         equity = None
 
-    # 啟用中 Bot 數 + 今日決策筆數（DB 壞了也不擋心跳）
-    active_bots = decisions_today = None
+    # 啟用中 Bot 數 + 今日決策筆數 + 探勘漏斗待審數（DB 壞了也不擋心跳）
+    active_bots = decisions_today = candidate_count = validated_pending = None
     try:
         db = SessionLocal()
         try:
@@ -78,6 +84,13 @@ def run_daily_heartbeat() -> None:
             today_start = datetime.combine(datetime.now().date(), dt_time.min)
             decisions_today = (
                 db.query(DecisionLog).filter(DecisionLog.created_at >= today_start).count()
+            )
+            # 探勘漏斗（Phase 12 step-04）：candidate 排隊數 + validated 待人審數
+            candidate_count = (
+                db.query(StrategyKnowledge).filter(StrategyKnowledge.status == "candidate").count()
+            )
+            validated_pending = (
+                db.query(StrategyKnowledge).filter(StrategyKnowledge.status == "validated").count()
             )
         finally:
             db.close()
@@ -90,6 +103,8 @@ def run_daily_heartbeat() -> None:
         decisions_today=decisions_today,
         equity=equity,
         now=datetime.now(),
+        candidate_count=candidate_count,
+        validated_pending=validated_pending,
     ))
 
 
