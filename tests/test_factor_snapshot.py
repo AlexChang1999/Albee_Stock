@@ -96,7 +96,11 @@ def test_collect_writes_one_per_symbol_and_matches_compute(tmp_path, monkeypatch
 
     monkeypatch.setattr(opportunity_scan.settings, "SCREENER_WATCHLIST", "AAPL,TSLA")
     monkeypatch.setattr(opportunity_scan.settings, "FACTOR_RETENTION_DAYS", 90)
-    monkeypatch.setattr(opportunity_scan.market_data, "get_bars", lambda sym, days=60, source="alpaca": df)
+    # collect_factor_snapshots 改批次抓（1 次 HTTP）→ 換掉批次版假函式
+    monkeypatch.setattr(
+        opportunity_scan.market_data, "get_bars_multi",
+        lambda syms, days=60, source="alpaca": {s: df for s in syms},
+    )
 
     as_of = datetime(2026, 6, 8, 12, 0, 0)
     written = collect_factor_snapshots(db, as_of=as_of)
@@ -118,7 +122,11 @@ def test_collect_prunes_old_snapshots(tmp_path, monkeypatch):
 
     monkeypatch.setattr(opportunity_scan.settings, "SCREENER_WATCHLIST", "AAPL")
     monkeypatch.setattr(opportunity_scan.settings, "FACTOR_RETENTION_DAYS", 90)
-    monkeypatch.setattr(opportunity_scan.market_data, "get_bars", lambda sym, days=60, source="alpaca": df)
+    # collect_factor_snapshots 改批次抓（1 次 HTTP）→ 換掉批次版假函式
+    monkeypatch.setattr(
+        opportunity_scan.market_data, "get_bars_multi",
+        lambda syms, days=60, source="alpaca": {s: df for s in syms},
+    )
 
     now = datetime(2026, 6, 8, 12, 0, 0)
     # 種一筆 200 天前的舊快照
@@ -138,7 +146,11 @@ def test_collect_no_prune_when_retention_zero(tmp_path, monkeypatch):
     df = _synth_df()
     monkeypatch.setattr(opportunity_scan.settings, "SCREENER_WATCHLIST", "AAPL")
     monkeypatch.setattr(opportunity_scan.settings, "FACTOR_RETENTION_DAYS", 0)  # 不修剪
-    monkeypatch.setattr(opportunity_scan.market_data, "get_bars", lambda sym, days=60, source="alpaca": df)
+    # collect_factor_snapshots 改批次抓（1 次 HTTP）→ 換掉批次版假函式
+    monkeypatch.setattr(
+        opportunity_scan.market_data, "get_bars_multi",
+        lambda syms, days=60, source="alpaca": {s: df for s in syms},
+    )
 
     now = datetime(2026, 6, 8, 12, 0, 0)
     db.add(FactorSnapshot(symbol="AAPL", as_of=now - timedelta(days=500), regime="ranging"))

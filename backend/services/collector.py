@@ -16,6 +16,7 @@
   用本地樣本測（不連網）。fetch_url / run_collector_scan 才碰網路 / DB。
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from urllib.parse import urlparse
 from xml.etree import ElementTree
@@ -216,7 +217,8 @@ def fetch_url(url: str) -> str | None:
     """
     抓單一網址的內容（best-effort）。帶 User-Agent 與逾時；任何錯誤回 None、不丟例外。
 
-    尊重節流：呼叫端逐一抓、別並發猛打，避免被封 IP。
+    尊重節流：同一個網域每輪只打一次（feed 清單本身就一站一條）；
+    並行只發生在「不同網域之間」（collect_from_feeds 的小 ThreadPool），不對單站猛打。
     """
     import requests
 
@@ -235,14 +237,22 @@ def fetch_url(url: str) -> str | None:
 
 def collect_from_feeds(feeds: list[str]) -> list[dict]:
     """
-    逐一抓 RSS feed 並解析成素材列（best-effort）。單一 feed 失敗不影響其他。
+    抓 RSS feed 並解析成素材列（best-effort）。單一 feed 失敗不影響其他。
+
+    多條 feed 用小 ThreadPool「並行」抓（不同網域互不打擾；同站每輪仍只一次請求），
+    N 條 feed 的網路往返疊在一起。解析（parse_rss）回主執行緒做，純 CPU 很快。
 
     這裡只走 RSS（最穩、最尊重來源）。HTML 列表頁解析（parse_html_listing）保留給
     確有需求時呼叫，預設不主動爬任意網站。
     """
+    feeds = list(feeds or [])
+    if not feeds:
+        return []
+    workers = max(1, min(settings.FETCH_MAX_WORKERS, len(feeds)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        pages = pool.map(fetch_url, feeds)  # 失敗的 feed 回 None（fetch_url 已吞錯）
     rows = []
-    for url in feeds or []:
-        xml = fetch_url(url)
+    for url, xml in zip(feeds, pages):
         if not xml:
             continue
         rows.extend(parse_rss(xml, source=_host(url)))

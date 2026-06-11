@@ -56,6 +56,11 @@ class Settings:
     # 兩道閘都開才會下真單，避免手滑或設定錯誤就燒到真錢。
     ALLOW_LIVE_TRADING: bool = os.getenv("ALLOW_LIVE_TRADING", "false").lower() in ("1", "true", "yes")
 
+    # --- Alpaca 資料 API 限流（免費版約 200 req/min）---
+    # 批次化抓取後請求數大降，這是「保險絲」不是常態路徑：額度內直接放行，
+    # 超量才 sleep 等補充，避免標的一多就被 429 打爆。0 = 不限流（測試 / 付費方案用）。
+    ALPACA_RATE_LIMIT_PER_MIN: int = int(os.getenv("ALPACA_RATE_LIMIT_PER_MIN", "200"))
+
     # ========================================================
     # 全系統唯一資料源（Phase 6 step-01）
     # ========================================================
@@ -63,6 +68,10 @@ class Settings:
     # 可選 "alpaca"（預設）或 "yfinance"（免費）。想整套切資料源只改這一個環境變數，
     # 程式一行都不用動——這是「回測 = 實盤」鐵則的第一道（同源）。
     DATA_SOURCE: str = os.getenv("DATA_SOURCE", "alpaca")
+
+    # 並行抓取的執行緒數：給「只能逐筆打」的 I/O 用（FRED 多序列、RSS 多 feed）。
+    # 批次 API（一次請求抓多檔 K 線 / 報價）不需要這個。I/O-bound 用 threads 即夠。
+    FETCH_MAX_WORKERS: int = int(os.getenv("FETCH_MAX_WORKERS", "4"))
 
     # ========================================================
     # 多年 OHLCV 本機快取（Phase 11 step-02）

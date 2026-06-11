@@ -132,12 +132,16 @@ def collect_factor_snapshots(db, *, as_of: datetime | None = None) -> int:
     """
     as_of = as_of or datetime.now()
     symbols = screener.parse_watchlist(settings.SCREENER_WATCHLIST)
+    # 批次抓整個 watchlist（1 次 HTTP），仍走同一條正規資料路徑（market_data + DATA_SOURCE）
+    try:
+        dfs = market_data.get_bars_multi(symbols, days=60, source=settings.DATA_SOURCE)
+    except Exception:
+        dfs = {}
     written = 0
     for sym in symbols:
-        try:
-            df = market_data.get_bars(sym, days=60, source=settings.DATA_SOURCE)
-        except Exception:
-            continue  # 單檔抓失敗略過
+        df = dfs.get(sym)
+        if df is None or df.empty:
+            continue  # 單檔抓失敗略過（批次層已隔離，缺檔是空 df）
         features = regime_features.compute_features(df)
         regime_label = regime.classify_regime(features)
         row = features_to_snapshot_row(sym, features, regime_label, as_of)

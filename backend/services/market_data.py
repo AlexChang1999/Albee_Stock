@@ -20,6 +20,12 @@ _SOURCES = {
     "yfinance": yfinance_client.get_bars,
 }
 
+# 批次版（一次請求抓多檔）：契約與單檔版逐欄一致，只是傳輸層批次化
+_SOURCES_MULTI = {
+    "alpaca": alpaca_client.get_bars_multi,
+    "yfinance": yfinance_client.get_bars_multi,
+}
+
 
 def get_bars(symbol: str, days: int = 60, source: str = "alpaca") -> pd.DataFrame:
     """
@@ -36,3 +42,21 @@ def get_bars(symbol: str, days: int = 60, source: str = "alpaca") -> pd.DataFram
         supported = "、".join(_SOURCES.keys())
         raise ValueError(f"不支援的資料源：{source}（可用：{supported}）")
     return fetch(symbol, days=days)
+
+
+def get_bars_multi(
+    symbols: list[str], days: int = 60, source: str = "alpaca"
+) -> dict[str, pd.DataFrame]:
+    """
+    批次版 get_bars：一次請求抓多檔日 K，回 {symbol: DataFrame}。
+
+    每檔 DataFrame 契約與 get_bars 完全一致；查無資料的檔回空 DataFrame（key 仍在）。
+    watchlist 掃描從「N 檔 N 次 HTTP 往返」變 1 次，是抓取效率的主要來源。
+
+    :raises ValueError: 傳入不支援的 source 時
+    """
+    fetch = _SOURCES_MULTI.get(source)
+    if fetch is None:
+        supported = "、".join(_SOURCES_MULTI.keys())
+        raise ValueError(f"不支援的資料源：{source}（可用：{supported}）")
+    return fetch(symbols, days=days)

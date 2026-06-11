@@ -49,13 +49,17 @@ def _parse_date(s: str) -> date:
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 
-def refresh_series(db: Session, series_id: str) -> int:
+def refresh_series(db: Session, series_id: str, rows: Optional[list] = None) -> int:
     """
     向 FRED 抓某序列、upsert 進本機快取。回傳新增/更新的筆數。
     沒 FRED key 或抓取失敗 → 回 0（best-effort，不崩）。
+
+    :param rows: 已抓好的觀測值（refresh_all 並行預抓後傳入，避免重抓）；
+                 留 None ＝這裡自己抓（單序列呼叫的舊行為不變）。
     """
     series_id = series_id.upper()
-    rows = fred_client.get_observations(series_id)
+    if rows is None:
+        rows = fred_client.get_observations(series_id)
     if not rows:
         return 0
 
@@ -96,8 +100,15 @@ def refresh_series(db: Session, series_id: str) -> int:
 
 
 def refresh_all(db: Session) -> dict:
-    """把設定清單裡的每個序列都更新一次。回傳 {series_id: 筆數}。"""
-    return {sid: refresh_series(db, sid) for sid in configured_series()}
+    """
+    把設定清單裡的每個序列都更新一次。回傳 {series_id: 筆數}。
+
+    網路抓取用 ThreadPool「並行」（7 條序列的往返疊在一起）；
+    DB upsert 仍逐序列「序列化」——SQLite session 不可跨執行緒共用。
+    """
+    sids = configured_series()
+    fetched = fred_client.get_observations_multi(sids)
+    return {sid: refresh_series(db, sid, rows=fetched.get(sid)) for sid in sids}
 
 
 def get_macro_series(
