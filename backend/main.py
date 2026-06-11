@@ -67,6 +67,9 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_opportunity_scan(_cfg.scan_interval_min)
         # Phase 10 step-04：掛上市場蒐集員收料 job（每 N 分鐘抓 RSS；0=關，沒設 feed 也會跳過）
         bot_manager.schedule_collector_scan(settings.COLLECTOR_INTERVAL_MIN)
+        # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
+        bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
+        bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)
     finally:
         _db.close()
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")

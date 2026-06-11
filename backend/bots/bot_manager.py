@@ -633,6 +633,46 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_heartbeat(self, hour: int) -> None:
+        """
+        掛上「每日心跳日報」的定時工作（維運安全軌 H2）。
+
+        每天 hour 時發一則「我還活著」摘要通知（不依賴開市——休市日也要證明系統活著）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.heartbeat import run_daily_heartbeat
+
+        self.scheduler.add_job(
+            run_daily_heartbeat,
+            "cron",
+            hour=hour,
+            id="heartbeat_daily",
+            replace_existing=True,
+        )
+
+    def schedule_deadman_ping(self, interval_minutes: int) -> None:
+        """
+        掛上「dead-man ping」的週期工作（維運安全軌 H2）。
+
+        每隔 interval_minutes 分鐘對外側監測服務發一個 GET；本機掛掉 → ping 停 →
+        外側（healthchecks.io）主動發警報。interval_minutes <= 0 或 URL 沒設 = 關：
+        移除既有 job（若有）並返回。在 main.py 啟動時呼叫一次即可。
+        """
+        from backend.services.heartbeat import ping_deadman
+
+        job_id = "deadman_ping"
+        if interval_minutes <= 0 or not settings.HEARTBEAT_PING_URL:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            ping_deadman,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
     def schedule_collector_scan(self, interval_minutes: int) -> None:
         """
         掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。

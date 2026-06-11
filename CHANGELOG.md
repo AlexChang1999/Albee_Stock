@@ -34,6 +34,16 @@
 
 ### 新增
 
+- **維運安全軌 H2 Step 4：每日心跳 + dead-man ping**——一人公司沒有同事盯系統：
+  - 新增 `services/heartbeat.py`：`run_daily_heartbeat()` 每日定時發「💓 活著｜持倉 X 檔｜
+    啟用 Bot Y 個｜今日決策 N 筆｜權益 $Z」日報（任何查詢失敗以 "?" 帶過照樣發——
+    **心跳永不崩**、不依賴開市）；`ping_deadman()` 每 N 分鐘對外側監測服務
+    （healthchecks.io）GET 一次，本機掛掉 → ping 停 → 外側主動發警報
+    （警報必須在系統外側：本機死了發不出「我死了」的通知）。
+  - config 三鍵：`HEARTBEAT_PING_URL`（留空＝dead-man 關）/ `HEARTBEAT_HOUR`（預設 8）/
+    `HEARTBEAT_PING_INTERVAL_MIN`（預設 30）。bot_manager 加 `schedule_heartbeat` /
+    `schedule_deadman_ping` 兩個排程方法（仿既有體例），main.py lifespan 掛載。
+    `tests/test_heartbeat.py` 七條全綠。
 - **維運安全軌 H1 Step 3：bot_manager 接上券商端止損託管（核心收尾）**——
   「電腦掛掉止損仍有效」正式生效（`BROKER_STOP_ENABLED` 預設開，關掉=完全退回
   舊版本機輪詢，回歸測試保證）：

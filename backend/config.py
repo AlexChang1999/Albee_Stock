@@ -310,6 +310,19 @@ class Settings:
     BROKER_STOP_ENABLED: bool = os.getenv("BROKER_STOP_ENABLED", "true").lower() in ("1", "true", "yes")
 
     # ========================================================
+    # 心跳 + dead-man switch（維運安全軌 H2）
+    # ========================================================
+    # 一人公司沒有同事盯系統：每日心跳日報（給人看）+ 對外側監測服務 ping（給機器看）。
+    # 警報必須在「系統外側」——本機死了，本機發不出「我死了」的通知。
+    #   - HEARTBEAT_PING_URL：healthchecks.io 的專屬 ping 網址。留空＝dead-man 功能關。
+    #   - HEARTBEAT_HOUR：每日心跳日報的本機時刻（24 小時制的「時」）。
+    #   - HEARTBEAT_PING_INTERVAL_MIN：每隔幾分鐘 ping 外側一次（外側 check 的 period
+    #     建議設 1 小時 + grace 1 小時 → 系統死超過約 2 小時必有警報）。
+    HEARTBEAT_PING_URL: str = os.getenv("HEARTBEAT_PING_URL", "")
+    HEARTBEAT_HOUR: int = int(os.getenv("HEARTBEAT_HOUR", "8"))
+    HEARTBEAT_PING_INTERVAL_MIN: int = int(os.getenv("HEARTBEAT_PING_INTERVAL_MIN", "30"))
+
+    # ========================================================
     # 即時報價推送（改版子軌：AI 終端機改版，非主線 Phase 6）
     # ========================================================
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。
