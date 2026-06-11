@@ -17,6 +17,12 @@
 
 ### 新增
 
+- **Phase 12 step-05：端到端驗收模板**——新增
+  `docs/history/phase-12-strategy-discovery/review-e2e.md`（兩週觀察數據表：收料量/
+  垃圾率/OOS 通過率〔分母排除 `rejected_by=auto_validate` 操作性放棄〕/curated 增量 +
+  optimizer 網格基準對照 + 留/降級/砍三選一判準 + 判準凍結聲明）。兩週觀察需在常駐
+  機器全開連跑後回填；backlog D 項與 phase-12 README 狀態同步為「step-01~04 已實作」。
+
 - **Phase 12 step-04：探勘漏斗報表 + 待審提醒（人在迴路收口）**——
   `/company/overview` 加 `discovery_funnel` 區塊（raw 收件匣 + 知識庫各狀態
   group-count + 淘汰率，純讀無遷移）；每日心跳日報加一行

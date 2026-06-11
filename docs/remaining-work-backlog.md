@@ -26,7 +26,7 @@
 | B | `/positions` 端點 + 前端持倉/未實現損益卡 | 後端+前端 | — | ✅ 已完成（2026-06-11，`13ef4bb`） |
 | C | `test_run_dry_run` pre-existing 失敗修掉 | bugfix | — | ✅ 已完成（2026-06-11，`13ef4bb`） |
 | H | 維運安全軌（真錢前必備：券商端止損/心跳/自動降級） | 後端+設定 | 無 | **最高（電腦掛掉直接賠錢的洞）** |
-| D | Phase 12：策略自動探勘入庫管線 | 大 feature | 無 | 中（長線） |
+| D | Phase 12：策略自動探勘入庫管線 | 大 feature | 無 | 🔶 step-01~04 已實作（2026-06-11）；step-05 兩週觀察待開跑 |
 | E | 前端 UX 零碎：亮色模式/排行榜排序/Skeleton/補測試 | 前端 | 無 | ✅ 已完成（2026-06-11，四項全落地） |
 | F | `ui-ux-pro-max` skill CLI（`search.py`/CSV） | 工具 | 無 | 低 |
 | G | 文件漂移：`workflow-diagrams.md`/`CLAUDE.md` 結構樹停在 Phase 6–7 | 文件 | 無 | ✅ 已完成（2026-06-11，補 Phase 8–11 + 圖 5） |
@@ -252,11 +252,16 @@ venv\Scripts\alembic.exe upgrade head        # 動 schema 的 step
 
 ---
 
-## D. Phase 12：策略自動探勘入庫管線（大 feature，長線）
+## D. Phase 12：策略自動探勘入庫管線 🔶 step-01~04 已實作（2026-06-11）
 
-> **2026-06-11 更新：藍圖已完成** —— [`history/phase-12-strategy-discovery/`](history/phase-12-strategy-discovery/README.md)
-> （README + step-01~05 契約檔：collector 通電 / 探勘橋 / 自動驗證 / 漏斗報表 / 端到端誠實檢討）。
-> 程式未開工；開工時從 step-01 起、一次一步。
+> **2026-06-11 更新：step-01~04 程式全落地**——
+> step-01 collector 通電 guide + 邊界測試（`a8ec500`）、step-02 探勘橋 `discovery.py`
+> （`c0727fa`）、step-03 自動批次驗證 `auto_validate.py`（判準零修改、連續 3 次失敗才
+> rejected）、step-04 漏斗報表（`/company/overview` `discovery_funnel` + 心跳待審行 +
+> 戰情漏斗卡）。**剩 step-05 兩週觀察**：在常駐機器上全開
+> （feeds + `DISCOVERY_ENABLED` + `AUTO_VALIDATE_ENABLED`）連跑 14 天，數據回填
+> [`history/phase-12-strategy-discovery/review-e2e.md`](history/phase-12-strategy-discovery/review-e2e.md)
+> 模板 → 留 / 降級 / 砍三選一。藍圖：[`history/phase-12-strategy-discovery/`](history/phase-12-strategy-discovery/README.md)。
 
 ### 現況
 Phase 11 README「不在本 Phase 範圍」明記「策略自動探勘入庫 → 排 Phase 12」。

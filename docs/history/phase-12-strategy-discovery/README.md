@@ -1,6 +1,8 @@
 # Phase 12 — 策略自動探勘入庫管線（Strategy Discovery Pipeline）
 
-> **文件狀態：藍圖階段（尚未開工）。** 把「raw 素材 → 候選策略 → 自動 OOS 驗證 → 人在迴路核准入庫」
+> **文件狀態：step-01~04 已實作（2026-06-11）；step-05 兩週觀察待開跑**
+> （驗收模板：[review-e2e.md](review-e2e.md)，在常駐機器全開連跑 14 天後回填數據下結論）。
+> 把「raw 素材 → 候選策略 → 自動 OOS 驗證 → 人在迴路核准入庫」
 > 串成一條自動化管線。零件幾乎都在（Phase 8 知識庫、Phase 10 蒐集員），本 Phase 是**接水管**，
 > 不是造新引擎。
 > **開工前必讀 [`../../ai-implementation-guardrails.md`](../../ai-implementation-guardrails.md)（防漂移 + 防 slop 合約）。**
@@ -74,7 +76,7 @@ StrategyKnowledge（status=curated) → 既有 automation 模式 B 可部署 Pap
 | 2 | [step-02-discovery-bridge.md](step-02-discovery-bridge.md) | 探勘橋：raw find → LLM 產候選（自動 triage） | step-01、Phase 8 step-02 |
 | 3 | [step-03-auto-validation.md](step-03-auto-validation.md) | 候選自動批次驗證（OOS 閘排程化） | step-02、Phase 8 step-04 |
 | 4 | [step-04-funnel-report-hil.md](step-04-funnel-report-hil.md) | 漏斗報表 + 待審提醒（人在迴路收口） | step-03、Phase 10 step-01 |
-| 5 | [step-05-e2e-honest-review.md](step-05-e2e-honest-review.md) | 端到端驗收 + 誠實去留檢討 | step-01~04 |
+| 5 | [step-05-e2e-honest-review.md](step-05-e2e-honest-review.md) | 端到端驗收 + 誠實去留檢討（模板就緒：[review-e2e.md](review-e2e.md)，待兩週觀察） | step-01~04 |
 
 > **一次一步、一步一聚焦 commit，永遠對齊原目標。** step-01 先跑兩週真 feed 再開 step-02
 > 也可以（有真素材才知道 LLM 提案橋要處理什麼髒資料）。
