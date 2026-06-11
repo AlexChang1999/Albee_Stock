@@ -17,6 +17,33 @@
 
 ### 新增
 
+- **抓取效率升級：批次多檔抓取 + 並行 I/O + 限流**——瓶頸調查確認「慢在逐檔 HTTP
+  往返，不在 RAM」（快取已是磁碟 parquet），把傳輸層批次化、判準零修改：
+  - **批次 K 線**：`alpaca_client.get_bars_multi()` / `yfinance_client.get_bars_multi()` /
+    `market_data.get_bars_multi()`——一次請求抓 N 檔（Alpaca `StockBarsRequest`
+    原生吃 list；yfinance 走 `yf.download` 批次），每檔契約與單檔版逐欄一致、
+    缺檔回空 DataFrame。watchlist 掃描從「N 檔 N 次往返」變 1 次。
+  - **批次快取**：`bar_cache.get_bars_cached_multi()`——逐檔查 parquet 快取分三桶
+    （全命中 0 API / 無快取整段 / 尾缺口），有缺口的桶批次補抓（最多 2 次 HTTP），
+    缺口判定/合併/切片重用單檔版同一組純函式，結果與逐檔跑完全一致（有測試守門）；
+    批次失敗自動退單檔舊路徑。單檔 `get_bars_cached` 一字未動。
+  - **批次報價**：`alpaca_client.get_latest_prices()` + `quote_stream` 輪詢改批次——
+    一輪所有訂閱股票 1 次請求（原本每 5 秒逐檔各打一次）。
+  - **限流保險絲**：`alpaca_client` 加 token bucket（`ALPACA_RATE_LIMIT_PER_MIN`，
+    預設 200 = Alpaca 免費版額度；0=不限流），所有資料 API 同一個桶，
+    交易單不限流（下單延遲不可接受）。防標的一多被 429 打爆。
+  - **並行 I/O**：FRED 多序列（`fred_client.get_observations_multi`，DB upsert 仍
+    序列化）與 collector 多條 RSS 改小 ThreadPool 並行（`FETCH_MAX_WORKERS`，
+    預設 4；同站每輪仍只一次請求，不對單站猛打）。
+  - **呼叫端接上**：screener 第一層批次抓 + 第三層回測前批次暖快取、
+    `opportunity_scan.collect_factor_snapshots` 批次、每日領導股回測前批次暖快取。
+  - 測試：新增 `tests/test_batch_fetch.py`（12 案：契約一致/單請求/缺檔打底/
+    零 API 命中/混桶/失敗 fallback/批次=單檔一致性/限流/時鐘倒退防卡死），
+    `test_quotes.py` 隨批次輪詢同步更新。
+  - 實測（10 檔 × 60 天、冷快取、yfinance 備源、暖 session 後）：批次 0.32s vs
+    逐檔 1.31s ≈ **4.1x**；暖快取第二次 0.05s（0 次外部 API）。Alpaca 源為真正
+    單請求批次，預期倍數更高。回測網格並行（P3）量測後暫不做——抓取已非瓶頸。
+
 - **Bot 活動即時可視化（真跑偵測器 + 策略可視化）**——解決「前端無法確認機器人
   是真跑還是假跑」：Bot 一輪執行 <1 秒、前端 30 秒輪詢，中間全黑盒。四件套全上：
   - **後端事件管線**：新增 `backend/services/bot_activity.py`（BotActivityHub：

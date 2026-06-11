@@ -63,8 +63,8 @@ def test_websocket_pushes_price(monkeypatch):
     前端訂閱後，應在短時間內收到後端推來的價格。
     把拉價函式換成固定假價、輪詢間隔縮短，避免連網與等待。
     """
-    # 換掉全域 hub 的拉價來源與輪詢間隔（測試專用）
-    monkeypatch.setattr(hub, "_fetch_price", lambda symbol: 123.45)
+    # 換掉全域 hub 的拉價來源與輪詢間隔（測試專用；批次版：吃 list、回 dict）
+    monkeypatch.setattr(hub, "_fetch_prices", lambda symbols: {s: 123.45 for s in symbols})
     monkeypatch.setattr(hub, "poll_interval", 0.05)
 
     with TestClient(app) as client:
@@ -82,8 +82,8 @@ if __name__ == "__main__":
     test_clients_for_symbol()
     test_unsubscribe_and_disconnect()
     # __main__ 直接跑時沒有 pytest 的 monkeypatch，這裡手動替換再還原
-    _orig_fetch, _orig_interval = hub._fetch_price, hub.poll_interval
-    hub._fetch_price = lambda symbol: 123.45
+    _orig_fetch, _orig_interval = hub._fetch_prices, hub.poll_interval
+    hub._fetch_prices = lambda symbols: {s: 123.45 for s in symbols}
     hub.poll_interval = 0.05
     try:
         with TestClient(app) as client:
@@ -93,5 +93,5 @@ if __name__ == "__main__":
                 assert msg["symbol"] == "AAPL" and msg["price"] == 123.45, msg
         print("✅ WebSocket 即時推送通過：AAPL = 123.45")
     finally:
-        hub._fetch_price, hub.poll_interval = _orig_fetch, _orig_interval
+        hub._fetch_prices, hub.poll_interval = _orig_fetch, _orig_interval
     print("\n🎉 全部即時報價測試通過！")

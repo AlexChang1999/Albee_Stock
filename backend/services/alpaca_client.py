@@ -14,9 +14,15 @@ Alpaca API 封裝
 - get_order()             查單一訂單現況
 - get_open_orders()       列出未成交訂單（reconcile 用）
 - get_bars()              取得歷史 K 線資料（給策略算指標）
+- get_bars_multi()        一次請求抓多檔歷史 K 線（批次，省 N 倍往返）
 - get_latest_price()      取得最新成交價
+- get_latest_prices()     一次請求抓多檔最新成交價（批次）
+
+資料 API 都過同一個 token bucket 限流器（免費版 200 req/min 保險絲）；
+交易單（submit_*/cancel）不限流——下單延遲不可接受，且單量遠低於資料請求。
 """
 
+import threading
 import time
 from datetime import datetime, timedelta
 
@@ -36,6 +42,47 @@ from alpaca.data.timeframe import TimeFrame
 from backend.config import settings
 
 
+class _RateLimiter:
+    """
+    行程內共用的 token bucket 限流器（執行緒安全）。
+
+    Alpaca 免費版資料 API 約 200 req/min。批次化抓取後請求數已大降，
+    這是「保險絲」不是常態路徑：額度內直接放行（零延遲），
+    超量才 sleep 等 token 補充（每秒補 per_minute/60 個）。
+    per_minute=0 代表不限流（測試 / 付費方案用）。
+    """
+
+    def __init__(self, per_minute: int) -> None:
+        self.per_minute = per_minute
+        self._tokens = float(per_minute)  # 一開始滿桶
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+
+    def acquire(self) -> None:
+        """取得一個請求額度；額度不足時 sleep 到補充為止。"""
+        if self.per_minute <= 0:
+            return
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                # 時鐘倒退（測試注入假時鐘、系統校時）視為 0 經過，絕不倒扣 token——
+                # 否則負數巨量倒扣會算出「等好幾小時」的 sleep，整個行程卡死。
+                elapsed = max(0.0, now - self._last)
+                # 依經過時間補充 token（上限 = 滿桶 per_minute）
+                self._tokens = min(
+                    float(self.per_minute),
+                    self._tokens + elapsed * (self.per_minute / 60.0),
+                )
+                self._last = now
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return
+                # 算出湊滿 1 個 token 還要等多久（鎖外 sleep，不卡其他執行緒）
+                wait = (1.0 - self._tokens) / (self.per_minute / 60.0)
+            print(f"⏳ Alpaca 限流：請求過密，等待 {wait:.1f}s（額度 {self.per_minute}/min）")
+            time.sleep(wait)
+
+
 class AlpacaClient:
     """封裝 Alpaca 的交易與資料功能。"""
 
@@ -49,6 +96,8 @@ class AlpacaClient:
         # 開市狀態的短期快取：(到期時間戳, 是否開市)。
         # 多個 Bot 幾乎同時排程時，不必每個都各問一次 Alpaca 的 clock，省 API 額度。
         self._clock_cache: tuple[float, bool] | None = None
+        # 資料 API 限流（免費版 200 req/min 的保險絲；0 = 不限流）
+        self._limiter = _RateLimiter(settings.ALPACA_RATE_LIMIT_PER_MIN)
 
     @property
     def trading(self) -> TradingClient:
@@ -89,6 +138,7 @@ class AlpacaClient:
         if self._clock_cache is not None and now < self._clock_cache[0]:
             return self._clock_cache[1]
 
+        self._limiter.acquire()  # 只有快取失效真的要打 API 時才占額度
         is_open = bool(self.trading.get_clock().is_open)
         self._clock_cache = (now + self.CLOCK_CACHE_TTL_SEC, is_open)
         return is_open
@@ -255,9 +305,27 @@ class AlpacaClient:
         用成交價(trade)而非買賣報價(quote)，因為休市時 bid/ask 常為 0，
         用成交價在盤中、盤後都比較可靠。
         """
+        self._limiter.acquire()
         request = StockLatestTradeRequest(symbol_or_symbols=symbol)
         trade = self.data.get_stock_latest_trade(request)[symbol]
         return trade.price
+
+    def get_latest_prices(self, symbols: list[str]) -> dict[str, float]:
+        """
+        一次請求抓「多檔」最新成交價，回 {symbol: price}。
+
+        N 檔 N 次 HTTP 往返 → 1 次（Alpaca 的 latest-trade API 原生支援多檔，
+        回應本來就是按 symbol 索引的 dict）。抓不到的檔不在回傳 dict 裡，
+        呼叫端用 .get() 取、缺的視為這輪沒報價。
+        """
+        # 大寫正規化 + 保序去重；空清單直接回空 dict，不打 API
+        symbols = list(dict.fromkeys(s.upper() for s in symbols))
+        if not symbols:
+            return {}
+        self._limiter.acquire()
+        request = StockLatestTradeRequest(symbol_or_symbols=symbols)
+        trades = self.data.get_stock_latest_trade(request)
+        return {sym: float(trade.price) for sym, trade in trades.items()}
 
     def get_bars(self, symbol: str, days: int = 60) -> pd.DataFrame:
         """
@@ -268,6 +336,7 @@ class AlpacaClient:
         :param days: 往前抓幾天
         :return: 含 open/high/low/close/volume 欄位的 DataFrame
         """
+        self._limiter.acquire()
         request = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=TimeFrame.Day,  # 日 K
@@ -280,6 +349,36 @@ class AlpacaClient:
         if not df.empty:
             df = df.reset_index()
         return df
+
+    def get_bars_multi(self, symbols: list[str], days: int = 60) -> dict[str, pd.DataFrame]:
+        """
+        一次 HTTP 請求抓「多檔」日 K，回 {symbol: DataFrame}。
+
+        N 檔 N 次往返 → 1 次（StockBarsRequest 的 symbol_or_symbols 原生吃 list）。
+        每檔 DataFrame 的欄位 / 排序 / 索引契約與 get_bars() 完全一致
+        （reset_index 後同樣保留 symbol + timestamp 欄）。
+        查無資料的檔回「空 DataFrame」——key 仍在，呼叫端不用接 KeyError。
+        """
+        # 大寫正規化 + 保序去重；空清單直接回空 dict，不打 API
+        symbols = list(dict.fromkeys(s.upper() for s in symbols))
+        if not symbols:
+            return {}
+
+        self._limiter.acquire()
+        request = StockBarsRequest(
+            symbol_or_symbols=symbols,
+            timeframe=TimeFrame.Day,
+            start=datetime.now() - timedelta(days=days),
+        )
+        df = self.data.get_stock_bars(request).df
+
+        # 先以空 DataFrame 打底：Alpaca 對查無資料的 symbol 直接不回任何列
+        result: dict[str, pd.DataFrame] = {s: pd.DataFrame() for s in symbols}
+        if not df.empty:
+            df = df.reset_index()  # 多層索引 (symbol, timestamp) → 一般欄位
+            for sym, group in df.groupby("symbol", sort=False):
+                result[str(sym)] = group.reset_index(drop=True)
+        return result
 
 
 # 建立一個全域共用的實例，其他檔案 import 後直接用。

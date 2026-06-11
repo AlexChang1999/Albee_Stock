@@ -215,6 +215,8 @@ def test_leader_backtest_stores_champion_per_symbol(monkeypatch, db_factory):
     monkeypatch.setattr(settings, "LEADER_BACKTEST_SYMBOLS", "AAPL,BAD,NVDA")
     monkeypatch.setattr(settings, "LEADER_BACKTEST_DAYS", 365)
     monkeypatch.setattr("backend.services.optimizer.run_auto_backtest", _fake_scan)
+    # 跑回測前的批次暖快取換掉（避免真打網路）
+    monkeypatch.setattr("backend.services.bar_cache.get_bars_cached_multi", lambda *a, **k: {})
 
     db = db_factory()
     result = run_leader_backtest(db=db)
@@ -234,6 +236,7 @@ def test_leader_backtest_all_failed_raises(monkeypatch, db_factory):
     monkeypatch.setattr(settings, "LEADER_BACKTEST_ENABLED", True)
     monkeypatch.setattr(settings, "LEADER_BACKTEST_SYMBOLS", "BAD")
     monkeypatch.setattr("backend.services.optimizer.run_auto_backtest", _fake_scan)
+    monkeypatch.setattr("backend.services.bar_cache.get_bars_cached_multi", lambda *a, **k: {})
     db = db_factory()
     with pytest.raises(RuntimeError):
         run_leader_backtest(db=db)

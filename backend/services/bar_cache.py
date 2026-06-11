@@ -152,3 +152,87 @@ def get_bars_cached(
         source, symbol, bars, min(req_start, cov_start), max(req_end, cov_end)
     )
     return _slice(bars, req_start, req_end)
+
+
+def get_bars_cached_multi(
+    symbols: list[str], days: int = 60, source: str = "alpaca", today: Optional[date] = None
+) -> dict[str, pd.DataFrame]:
+    """
+    批次版 get_bars_cached：逐檔查快取，只把「有缺口的檔」收集起來批次補抓
+    （最多 2 次 HTTP：一次補「整段」桶、一次補「尾缺口」桶），再分別寫回快取。
+
+    每檔的缺口判定 / 合併 / 切片與單檔版同義（重用同一組 _read_cache/_write_cache/
+    _merge/_slice），所以結果與逐檔呼叫 get_bars_cached 一致——只是傳輸層批次化。
+    批次抓取失敗時退回單檔舊路徑（網路抖動不全滅）；單檔也失敗回空 DataFrame。
+
+    :return: {symbol: DataFrame}，key 必在（抓不到的檔是空 DataFrame）。
+    """
+    today = today or date.today()
+    req_start = today - timedelta(days=days)
+    req_end = today
+
+    result: dict[str, pd.DataFrame] = {}
+    cached: dict[str, tuple] = {}   # 有快取但有缺口的檔 → (bars, cov)，merge 用
+    need_full: list[str] = []       # 無快取 / 頭缺口 → 抓滿整段 days
+    need_tail: dict[str, int] = {}  # 只有尾缺口 → {symbol: tail_days}
+
+    # 1) 逐檔讀快取、分桶（這段純磁碟、不打網路）
+    for sym in dict.fromkeys(s.upper() for s in symbols):
+        bars, cov = _read_cache(source, sym)
+        if bars is None:
+            need_full.append(sym)  # 完全沒快取 → 抓滿整段
+            continue
+        need_head = req_start < cov["covered_start"]
+        has_tail_gap = req_end > cov["covered_end"]
+        if not need_head and not has_tail_gap:
+            result[sym] = _slice(bars, req_start, req_end)  # 全命中，0 次 API
+        elif need_head:
+            # 頭缺口：days-API 只能由 today 往回抓 → 抓滿整段再 merge 去重（同單檔版）
+            need_full.append(sym)
+            cached[sym] = (bars, cov)
+        else:
+            need_tail[sym] = (req_end - cov["covered_end"]).days
+            cached[sym] = (bars, cov)
+
+    def _finish(sym: str, fetched: Optional[pd.DataFrame]) -> None:
+        """合併補抓結果、寫快取、放進 result。fetched=None ＝批次失敗 → 退單檔舊路徑。"""
+        if fetched is None:
+            try:
+                result[sym] = get_bars_cached(sym, days=days, source=source, today=today)
+            except Exception:
+                result[sym] = pd.DataFrame()  # 單檔也失敗 → 空 df，不拖垮整批
+            return
+        old = cached.get(sym)
+        if old is None:
+            # 完全沒快取的首抓：直接寫出（同單檔版分支 1）
+            _write_cache(source, sym, fetched, req_start, req_end)
+            result[sym] = _slice(fetched, req_start, req_end)
+            return
+        bars, cov = old
+        merged = _merge(bars, fetched)
+        _write_cache(
+            source, sym, merged,
+            min(req_start, cov["covered_start"]), max(req_end, cov["covered_end"]),
+        )
+        result[sym] = _slice(merged, req_start, req_end)
+
+    def _fetch_batch(syms: list[str], fetch_days: int) -> dict:
+        """批次抓一桶；整批失敗回 {} → _finish 收到 None 走單檔 fallback。"""
+        try:
+            return market_data.get_bars_multi(syms, days=fetch_days, source=source)
+        except Exception:
+            return {}
+
+    # 2) 批次補抓（每桶一次 HTTP）
+    if need_full:
+        fetched = _fetch_batch(need_full, days)
+        for sym in need_full:
+            _finish(sym, fetched.get(sym) if fetched else None)
+    if need_tail:
+        # 整桶用「最大尾缺口」天數抓：多抓幾天無害——_merge 按 timestamp 去重
+        # （重抓的修正值勝出）、_slice 保證回傳嚴格 ⊆ 請求區間，不會偷看未來。
+        fetched = _fetch_batch(list(need_tail), max(need_tail.values()))
+        for sym in need_tail:
+            _finish(sym, fetched.get(sym) if fetched else None)
+
+    return result

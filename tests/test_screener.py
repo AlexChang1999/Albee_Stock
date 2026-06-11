@@ -90,6 +90,8 @@ def test_recommendations_endpoint(monkeypatch):
             {"symbol": "TSLA", "volume_ratio": 2.8},
         ],
     )
+    # 第三層前的批次暖快取也換掉（避免真打網路）
+    monkeypatch.setattr(screener.bar_cache, "get_bars_cached_multi", lambda *a, **k: {})
     # 第二層：跳過情緒（None）
     monkeypatch.setattr(
         screener, "_layer2_sentiment",
@@ -124,7 +126,9 @@ if __name__ == "__main__":
     test_parse_sentiment_json()
     test_parse_sentiment_fallback()
     test_parse_watchlist()
-    # __main__ 直跑：手動替換漏斗各層再還原
+    # __main__ 直跑：手動替換漏斗各層再還原（含批次暖快取，避免真打網路）
+    _warm = screener.bar_cache.get_bars_cached_multi
+    screener.bar_cache.get_bars_cached_multi = lambda *a, **k: {}
     _l1, _l2, _scan = screener._layer1_volume, screener._layer2_sentiment, screener.run_auto_backtest
     screener._layer1_volume = lambda symbols, days, source: [
         {"symbol": "AAPL", "volume_ratio": 3.0},
@@ -144,4 +148,5 @@ if __name__ == "__main__":
         print("✅ GET /ai-recommendations 整合通過")
     finally:
         screener._layer1_volume, screener._layer2_sentiment, screener.run_auto_backtest = _l1, _l2, _scan
+        screener.bar_cache.get_bars_cached_multi = _warm
     print("\n🎉 全部漏斗 / 推薦 API 測試通過！")

@@ -9,6 +9,7 @@ FRED API 文件：https://fred.stlouisfed.org/docs/api/fred/series_observations.
 免費 API key 申請：https://fred.stlouisfed.org/docs/api/api_key.html
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import requests
@@ -74,3 +75,23 @@ def get_observations(
         except (KeyError, ValueError):
             continue
     return out
+
+
+def get_observations_multi(
+    series_ids: list[str], start: Optional[str] = None, end: Optional[str] = None
+) -> dict:
+    """
+    並行抓多個 FRED 序列，回 {series_id: observations 或 None}。
+
+    FRED 沒有批次 API、只能逐序列打 → 用 ThreadPool 把 N 次序列網路往返
+    疊在一起（I/O-bound，執行緒即夠）。單一序列失敗回 None，不影響其他序列。
+    """
+    series_ids = list(dict.fromkeys(s.upper() for s in series_ids))
+    if not series_ids:
+        return {}
+    if not has_key():
+        return {sid: None for sid in series_ids}
+    workers = max(1, min(settings.FETCH_MAX_WORKERS, len(series_ids)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = pool.map(lambda sid: get_observations(sid, start, end), series_ids)
+    return dict(zip(series_ids, results))

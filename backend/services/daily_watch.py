@@ -40,6 +40,17 @@ def run_leader_backtest(db=None) -> dict:
     if not symbols:
         return {"skipped": "LEADER_BACKTEST_SYMBOLS 留空"}
 
+    # 批次「暖快取」：整批領導股的歷史一次補齊（1 次 HTTP），
+    # 之後每檔 run_auto_backtest 內的單檔 get_bars_cached 全命中、0 次外部 API。
+    from backend.services import bar_cache
+
+    try:
+        bar_cache.get_bars_cached_multi(
+            symbols, days=settings.LEADER_BACKTEST_DAYS, source=settings.DATA_SOURCE
+        )
+    except Exception:
+        pass  # 暖快取失敗無妨，下面照樣逐檔走單檔路徑
+
     own_session = db is None
     if own_session:
         db = SessionLocal()
