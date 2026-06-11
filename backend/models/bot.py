@@ -60,6 +60,12 @@ class Bot(Base):
     # 為何存進資料庫而非記憶體：後端重啟後追蹤止損才不會把最高價歸零、保護中斷一段時間。
     peak_price = Column(Float, nullable=True)
 
+    # 券商端保護單 id（維運安全軌 H1，內部狀態非使用者設定）。
+    # 進場後掛在 Alpaca 的 GTC stop / trailing stop 單的訂單 id；None = 沒掛。
+    # 存 DB 的理由同 peak_price：後端重啟後才知道券商端還掛著哪張保護單，
+    # 不會重複掛單、也能在它成交後回填交易紀錄。
+    protective_order_id = Column(String, nullable=True)
+
     # 自適應模式（Phase 7 step-03）：開啟時不固定用 strategy 欄位的策略，
     # 而是每輪先算當下「市場狀態」，查「狀態→最佳策略對照表」挑策略。
     # 預設關（False）＝沿用固定策略，向後相容。狀態無可信策略時保守觀望（不亂下注）。

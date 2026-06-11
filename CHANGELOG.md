@@ -34,6 +34,13 @@
 
 ### 新增
 
+- **維運安全軌 H1 Step 2：保護單規劃純函式 + `Bot.protective_order_id`**——新增
+  `services/protective_orders.py` 三個純函式：`whole_share_qty`（Alpaca stop 單只支援
+  整股 → 進場股數 floor 取整，買不起 1 股回 0）、`plan_protective_order`（trailing 優先
+  於固定 stop；trail_percent 小數→百分比數字轉換；stop_price round 2 位）、
+  `order_matches_plan`（reconcile 容差比對，預設 0.5%）。`bots` 表加
+  `protective_order_id`（Alembic `a3b4c5d6e7f8`）：DB 記住券商端保護單 id，
+  重啟後不重複掛單、成交後能回填。`tests/test_protective_orders.py` 全分支覆蓋。
 - **維運安全軌 H1 Step 1：`alpaca_client` 訂單原語 + 安全閥外推**——為「券商端止損」
   鋪路：實盤雙閘檢查抽成 `_assert_live_allowed()`（市價/停損/追蹤止損所有 `submit_*`
   共用同一道閘，新增單型不可繞過）；新增 `submit_stop_order`（GTC stop 單，託管券商端、
