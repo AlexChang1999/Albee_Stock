@@ -149,7 +149,17 @@ cd frontend && npm run test
 
 ---
 
-## H. 維運安全軌（真錢前必備）★
+## H. 維運安全軌（真錢前必備）★ ✅ 程式已完成（2026-06-11），剩 2 項人工驗收
+
+> **結論：Step 1~7 全部落地**（feature/ops-safety-track 分支，一 step 一聚焦 commit，
+> 全套件 397 passed、Alembic 三個遷移已套用）。詳見 `CHANGELOG.md` 未發布區塊。
+> **剩餘人工驗收（程式做不了的）**：
+> 1. **H1 Paper 端到端驗證**：開市時建一隻帶 stop_loss 的 Bot 跑一輪 → Alpaca 後台
+>    看到 GTC stop 單 → 殺後端進程確認單仍掛著 → 重啟確認不重複掛。
+> 2. **H2 dead-man 接線 + 演練**：到 healthchecks.io 註冊、ping URL 填 `.env`、
+>    照 [`guides/deadman-switch-runbook.md`](guides/deadman-switch-runbook.md) 演練一次
+>    （停後端 2 小時收到警報才算數）。
+> 以下原始契約留作歷史紀錄。
 
 > 出自 [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md)
 > 第三/四部分：缺口 1（止損掛本機輪詢最危險）、缺口 2（無心跳監控）、缺口 3+4（有晉升沒降級、
