@@ -186,7 +186,7 @@ def test_upsert_idempotent_and_preserves_status(tmp_path):
     db = _session(tmp_path)
     rows = parse_rss(_RSS, source="algo")
     r1 = upsert_finds(db, rows)
-    assert r1 == {"inserted": 2, "skipped": 0}
+    assert r1 == {"inserted": 2, "skipped": 0, "watch_hits": 0}
     assert db.query(RawStrategyFind).count() == 2
 
     # 把第一筆標成 triaged，再 upsert 同一批：全部已存在 → skip，status 保留
@@ -195,7 +195,7 @@ def test_upsert_idempotent_and_preserves_status(tmp_path):
     db.commit()
 
     r2 = upsert_finds(db, rows)
-    assert r2 == {"inserted": 0, "skipped": 2}
+    assert r2 == {"inserted": 0, "skipped": 2, "watch_hits": 0}
     assert db.query(RawStrategyFind).count() == 2  # 沒重複堆積
     first = db.query(RawStrategyFind).filter_by(source_url="https://blog.example.com/mean-reversion").first()
     assert first.status == "triaged"  # 保留人工策展結果
@@ -300,3 +300,54 @@ def test_finds_api_list_and_status_transition(tmp_path):
         # 不存在的 id → 404
         missing = client.patch("/collector/finds/99999", json={"status": "built"})
         assert missing.status_code == 404
+
+
+# ---------- 7. 未上市公司關鍵字監控（watch tags）----------
+def test_parse_keywords():
+    from backend.services.collector import parse_keywords
+
+    assert parse_keywords("SpaceX, OpenAI ,spacex,") == ["SpaceX", "OpenAI"]  # 去重不分大小寫
+    assert parse_keywords("") == []
+    assert parse_keywords(None) == []
+
+
+def test_tag_watch_rows_matches_title_and_summary():
+    from backend.services.collector import tag_watch_rows
+
+    rows = [
+        {"title": "SpaceX raises new round", "summary": ""},
+        {"title": "Some ETF article", "summary": "mentions spacex starship plans"},
+        {"title": "Unrelated", "summary": "nothing here"},
+    ]
+    hits = tag_watch_rows(rows, ["SpaceX"])
+    assert hits == 2  # 標題命中 + 摘要命中（不分大小寫）
+    assert rows[0]["tags"] == "watch:SpaceX"
+    assert rows[1]["tags"] == "watch:SpaceX"
+    assert "tags" not in rows[2]
+    # 沒關鍵字 → 不動
+    assert tag_watch_rows(rows, []) == 0
+
+
+def test_upsert_writes_tags_and_api_filters_by_tag(tmp_path):
+    from backend.services.collector import tag_watch_rows
+
+    with _isolated_client(tmp_path) as (client, TestingSession):
+        db = TestingSession()
+        try:
+            rows = [
+                {"source": "x", "source_url": "https://x.com/sx", "title": "SpaceX news", "summary": ""},
+                {"source": "x", "source_url": "https://x.com/other", "title": "Plain post", "summary": ""},
+            ]
+            tag_watch_rows(rows, ["SpaceX"])
+            result = upsert_finds(db, rows)
+            assert result["inserted"] == 2
+            assert result["watch_hits"] == 1
+        finally:
+            db.close()
+
+        # tag 篩選只回命中監控的素材
+        watched = client.get("/collector/finds?tag=watch:SpaceX").json()
+        assert [r["title"] for r in watched] == ["SpaceX news"]
+        assert watched[0]["tags"] == "watch:SpaceX"
+        # 不給 tag → 全部
+        assert len(client.get("/collector/finds").json()) == 2

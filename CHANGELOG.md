@@ -17,6 +17,31 @@
 
 ### 新增
 
+- **開機補跑 + 自我修復三層防護（家用電腦非 24/7 也能跑滿每日管線）**——
+  - 新增 `backend/services/catchup.py`：後端啟動時檢查「今天該跑而沒跑」的每日 job
+    （discovery → auto_validate → 領導股回測 → 心跳 → tracking 對帳，含 collector 預跑），
+    時辰已過就立刻補跑；同日去重靠新表 `job_run_log`（`backend/models/job_run_log.py`，
+    Alembic 遷移 `2639cd3d3e17`），**只記成功**——失敗不落帳、下次開機自然重試。
+    `make_daily_idempotent` 同時包住排程 cron job，補跑與 cron 互不重複執行。
+    開關 `CATCHUP_ON_BOOT`（預設開）。
+  - APScheduler 加 `coalesce=True` + `misfire_grace_time=3600`：電腦睡眠喚醒後
+    一小時內的錯過排程會合併補發一次，不再靜默跳過。
+  - `start_backend.bat` 加看門狗迴圈：後端崩潰／斷線退出後等 10 秒自動重啟
+    （搭配開機補跑，重啟即接回當日管線，人不在家也能自我修復）。
+- **每日領導股回測紀錄**——新增 `backend/services/daily_watch.py`：每天對
+  `LEADER_BACKTEST_SYMBOLS`（預設 AAPL/MSFT/NVDA/GOOGL/AMZN/META/TSLA）各跑一輪
+  全自動掃描（optimizer，OOS EV 排名），把每檔冠軍存成 `BacktestRun`
+  （`preset_id=None`、`is_good=False`，不灌人工策展榜）；單檔失敗不擋其他檔、
+  全數失敗拋例外讓補跑機制之後重試。排程 `LEADER_BACKTEST_HOUR`（預設 10 點），
+  開關 `LEADER_BACKTEST_ENABLED`、回看 `LEADER_BACKTEST_DAYS`（預設 365）。
+- **未上市公司關鍵字監控（SpaceX 等回不了測的公司）**——collector 收料時比對
+  `PRIVATE_WATCH_KEYWORDS`（逗號分隔，預設 `SpaceX`），命中標題/摘要的素材寫入
+  `raw_strategy_finds.tags`（`watch:<關鍵字>`，新欄位含索引）；通知附命中數，
+  `GET /collector/finds?tag=watch:SpaceX` 可過濾查閱。
+- 測試：新增 `tests/test_catchup.py`（同日冪等/補跑順序/失敗重試/領導股回測，11 例）、
+  `tests/test_collector.py` 補關鍵字監控 3 例；新增 `tests/conftest.py` 測試環境
+  全域關閉開機補跑閘（TestClient 起 lifespan 時不真跑背景管線、不互染 monkeypatch）。
+
 - **工作流圖完善（6 張）**——`docs/reference/workflow-diagrams.md`：圖 5 從
   Phase 8–11 擴成 8–12（補 discovery 探勘橋 → auto_validate OOS 閘 → 漏斗報表的
   自動探勘管線，標註預設全關 + 開跑 checklist / 驗收模板連結）；新增圖 6

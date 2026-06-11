@@ -78,6 +78,11 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)
         # 維運安全軌 H3：tracking error 每日對帳（連續違規自動降級停 Bot，人再決定）
         bot_manager.schedule_tracking_check(settings.TRACKING_CHECK_HOUR)
+        # 每日領導股回測紀錄（只落 BacktestRun、不下單；LEADER_BACKTEST_ENABLED=false = 不掛）
+        bot_manager.schedule_leader_backtest(settings.LEADER_BACKTEST_HOUR)
+        # 開機補跑：家用電腦不是 24/7——啟動時把「時刻已過 + 今天還沒跑」的每日 job
+        # 依管線順序立刻補跑（必須排在所有 schedule_* 之後，設定才齊）。
+        bot_manager.schedule_catchup_on_boot()
     finally:
         _db.close()
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")

@@ -560,7 +560,12 @@ class BotManager:
     """用排程器管理所有 Bot 的定時執行。"""
 
     def __init__(self) -> None:
-        self.scheduler = BackgroundScheduler()
+        # coalesce + misfire_grace_time：電腦睡眠/卡頓錯過觸發時刻時，
+        # 醒來後 1 小時內補觸發一次（coalesce=多次錯過只補一次）。
+        # APScheduler 預設錯過 1 秒就放棄——家用電腦會睡，必須放寬。
+        self.scheduler = BackgroundScheduler(
+            job_defaults={"coalesce": True, "misfire_grace_time": 3600},
+        )
         self.scheduler.start()
 
     def start_bot(self, bot: Bot, interval_seconds: int = 60) -> None:
@@ -640,10 +645,12 @@ class BotManager:
         每天 hour 時發一則「我還活著」摘要通知（不依賴開市——休市日也要證明系統活著）。
         在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
         """
+        from backend.services.catchup import make_daily_idempotent
         from backend.services.heartbeat import run_daily_heartbeat
 
         self.scheduler.add_job(
-            run_daily_heartbeat,
+            # 同日防重複：開機補跑可能已先發過今天的日報，cron 再觸發會自動跳過
+            make_daily_idempotent("heartbeat_daily", run_daily_heartbeat),
             "cron",
             hour=hour,
             id="heartbeat_daily",
@@ -682,10 +689,12 @@ class BotManager:
         在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴
         （tracking 反過來會用到 bot_manager.stop_bot）。
         """
+        from backend.services.catchup import make_daily_idempotent
         from backend.services.tracking import run_tracking_check
 
         self.scheduler.add_job(
-            run_tracking_check,
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent("tracking_check", run_tracking_check),
             "cron",
             hour=hour,
             id="tracking_check",
@@ -701,6 +710,7 @@ class BotManager:
         （run_discovery_batch 內部還有一道開關雙保險）。在 main.py 啟動時呼叫一次即可。
         延遲 import 避免循環依賴。
         """
+        from backend.services.catchup import make_daily_idempotent
         from backend.services.discovery import run_discovery_batch
 
         job_id = "discovery_bridge"
@@ -709,7 +719,8 @@ class BotManager:
                 self.scheduler.remove_job(job_id)
             return
         self.scheduler.add_job(
-            run_discovery_batch,
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_discovery_batch),
             "cron",
             hour=hour,
             id=job_id,
@@ -725,6 +736,7 @@ class BotManager:
         移除既有 job（若有）並返回（run_auto_validate 內部還有一道開關雙保險）。
         在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
         """
+        from backend.services.catchup import make_daily_idempotent
         from backend.services.auto_validate import run_auto_validate
 
         job_id = "auto_validate"
@@ -733,7 +745,8 @@ class BotManager:
                 self.scheduler.remove_job(job_id)
             return
         self.scheduler.add_job(
-            run_auto_validate,
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_auto_validate),
             "cron",
             hour=hour,
             id=job_id,
@@ -760,6 +773,52 @@ class BotManager:
             "interval",
             minutes=interval_minutes,
             id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_leader_backtest(self, hour: int) -> None:
+        """
+        掛上「每日領導股回測紀錄」的定時工作。
+
+        每天 hour 時對 LEADER_BACKTEST_SYMBOLS 各跑一輪全自動掃描（OOS EV 排名），
+        各檔冠軍存一筆 BacktestRun（只落紀錄、不下單、不建 Bot）。
+        LEADER_BACKTEST_ENABLED=false 代表完全不掛：移除既有 job（若有）並返回
+        （run_leader_backtest 內部還有一道開關雙保險）。在 main.py 啟動時呼叫一次即可。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.daily_watch import run_leader_backtest
+
+        job_id = "leader_backtest"
+        if not settings.LEADER_BACKTEST_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_leader_backtest),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_catchup_on_boot(self) -> None:
+        """
+        掛上「開機補跑」的一次性工作（後端啟動時呼叫，立刻在排程器執行緒池跑一次）。
+
+        把「開關有開 + 排定時刻已過 + 今天還沒跑」的每日 job 依管線順序補跑——
+        家用電腦不是 24/7，早上沒開機的日子靠這個救回來。
+        CATCHUP_ON_BOOT=false = 不掛（補跑功能整個關閉，cron 行為照舊）。
+        """
+        from backend.services.catchup import run_catchup
+
+        if not settings.CATCHUP_ON_BOOT:
+            return
+        # "date" 觸發器不給 run_date = 排進去就盡快跑一次；用排程器執行緒池，不擋 FastAPI 啟動
+        self.scheduler.add_job(
+            run_catchup,
+            "date",
+            id="catchup_on_boot",
             replace_existing=True,
         )
 

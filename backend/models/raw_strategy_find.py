@@ -51,6 +51,11 @@ class RawStrategyFind(Base):
     # 狀態流轉（見檔頭說明）
     status = Column(String, nullable=False, default="new", index=True)
 
+    # 標籤（逗號分隔，可空）。目前用途：未上市公司關鍵字監控——收料時命中
+    # PRIVATE_WATCH_KEYWORDS 的素材打上 "watch:<關鍵字>"（如 watch:SpaceX），
+    # 讓「不能回測、只能監控記錄」的公司新聞可以被篩出來追蹤。
+    tags = Column(String, nullable=True, index=True)
+
     # ---- Phase 12 step-02：探勘橋的審計欄（自動 triage 決策可回查）----
     # 探勘橋據此素材產出的 StrategyKnowledge id（built 時回填；人工流程可為空）
     knowledge_id = Column(Integer, nullable=True)

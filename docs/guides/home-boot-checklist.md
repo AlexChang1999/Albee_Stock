@@ -36,6 +36,11 @@ start_frontend.bat    # 前端 http://localhost:5173
 
 啟動驗證：開 `http://127.0.0.1:8000/`，看到「Albee Stock 後端運行中 + paper_trading: true」即成功。
 
+> 💡 **開機即補跑（2026-06-11 起）**：後端啟動會自動檢查「今天該跑而沒跑」的每日 job
+> （discovery / auto_validate / 領導股回測 / 心跳 / tracking），時辰已過就立刻補跑、
+> 同日去重不重複——**不必趕在 7/8 點前開機**，一天至少開機一次（有網路）即可。
+> `start_backend.bat` 也內建看門狗：後端崩潰 10 秒後自動重啟。
+
 ---
 
 ## `.env` 最小必填清單（開機測試用）

@@ -284,8 +284,11 @@ venv\Scripts\alembic.exe upgrade head        # 動 schema 的 step
 
 **3. 要開（常駐）的程式**
 - [ ] `ollama serve` + `ollama pull llama3.1`——探勘橋每日 7 點要用；連不上 = 整批跳過不誤殺，但等於那天沒跑
-- [ ] 後端 `start_backend.bat`（uvicorn）**24/7 常駐**——APScheduler 活在後端行程裡，
-      排程時刻（7 收料 triage / 8 驗證+心跳）沒開機 = 當天管線整段空轉
+- [ ] 後端 `start_backend.bat`（uvicorn）——APScheduler 活在後端行程裡。
+      **2026-06-11 起前提放寬：不必 24/7，一天至少開機一次（有網路）即可**——
+      開機補跑（`CATCHUP_ON_BOOT`，預設開）會把當天該跑而沒跑的每日 job
+      （discovery / auto_validate / 領導股回測 / 心跳 / tracking）立刻補齊，
+      同日去重不重跑；`start_backend.bat` 內建看門狗，崩潰 10 秒後自動重啟
 - [ ] （選配）healthchecks.io ping URL 填 `HEARTBEAT_PING_URL`——順便補 H2 欠的演練
 
 **4. 串接驗通（開跑日一次性）**

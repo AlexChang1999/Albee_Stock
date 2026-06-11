@@ -200,6 +200,40 @@ class Settings:
     AUTO_VALIDATE_SYMBOL: str = os.getenv("AUTO_VALIDATE_SYMBOL", "SPY")
 
     # ========================================================
+    # 開機補跑（catch-up on boot）— 維運安全軌
+    # ========================================================
+    # 家用電腦不是 24/7：每日 cron 時刻沒開機，那天管線整段跳過。
+    # 開機補跑 = 後端啟動時把「開關有開 + 時刻已過 + 今天還沒跑」的每日 job 立刻補跑。
+    # 只解決「時間到沒開機」，不放大權限：各 job 自己的 enable 閘照常生效。
+    CATCHUP_ON_BOOT: bool = os.getenv("CATCHUP_ON_BOOT", "true").lower() in ("1", "true", "yes")
+
+    # ========================================================
+    # 每日領導股回測紀錄（daily leader backtest）
+    # ========================================================
+    # 每天對主要領導股各跑一輪全自動掃描（OOS EV 排名），各檔冠軍存一筆 BacktestRun，
+    # 日積月累成「領導股最佳策略 EV 時間序列」。只落紀錄、不下單、不建 Bot。
+    #   - LEADER_BACKTEST_ENABLED：總開關（預設開——純本機回測紀錄，無對外動作）。
+    #   - LEADER_BACKTEST_SYMBOLS：逗號分隔的上市領導股清單（未上市公司回不了測，
+    #     交給 collector 的 PRIVATE_WATCH_KEYWORDS 監控）。
+    #   - LEADER_BACKTEST_DAYS：每輪回測往前抓幾天。
+    #   - LEADER_BACKTEST_HOUR：每日幾點跑（24 小時制；排在其他每日 job 之後，避免擠 CPU）。
+    LEADER_BACKTEST_ENABLED: bool = os.getenv("LEADER_BACKTEST_ENABLED", "true").lower() in ("1", "true", "yes")
+    LEADER_BACKTEST_SYMBOLS: str = os.getenv(
+        "LEADER_BACKTEST_SYMBOLS",
+        "AAPL,MSFT,NVDA,GOOGL,AMZN,META,TSLA",
+    )
+    LEADER_BACKTEST_DAYS: int = int(os.getenv("LEADER_BACKTEST_DAYS", "365"))
+    LEADER_BACKTEST_HOUR: int = int(os.getenv("LEADER_BACKTEST_HOUR", "10"))
+
+    # ========================================================
+    # 未上市公司關鍵字監控（collector 加掛）
+    # ========================================================
+    # SpaceX 這類未上市公司沒有 K 線、回不了測——只能「監控記錄」：
+    # collector 收料時比對關鍵字，命中的素材打上 watch:<關鍵字> 標籤留檔 + 通知提及。
+    # 逗號分隔、不分大小寫；留空 = 關閉監控。
+    PRIVATE_WATCH_KEYWORDS: str = os.getenv("PRIVATE_WATCH_KEYWORDS", "SpaceX")
+
+    # ========================================================
     # 政治專討員 — Discord 事件流（Phase 10 step-05）
     # ========================================================
     # 從 Discord 頻道偵測政治貼文（例如川普發文鏡像）→ 本機 Ollama 判讀 → 接既有風險煞車。

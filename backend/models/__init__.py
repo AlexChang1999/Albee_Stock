@@ -18,6 +18,7 @@ from backend.models.factor_snapshot import FactorSnapshot
 from backend.models.raw_strategy_find import RawStrategyFind
 from backend.models.political_event import PoliticalEvent
 from backend.models.macro_series import MacroObservation
+from backend.models.job_run_log import JobRunLog
 
 __all__ = [
     "Bot",
@@ -33,4 +34,5 @@ __all__ = [
     "RawStrategyFind",
     "PoliticalEvent",
     "MacroObservation",
+    "JobRunLog",
 ]

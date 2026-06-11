@@ -133,6 +133,36 @@ def _host(url: str) -> str:
         return ""
 
 
+def parse_keywords(raw: str) -> list[str]:
+    """把逗號分隔的監控關鍵字字串清成清單（去空白、去重、保留原大小寫供顯示）。純函式。"""
+    seen, out = set(), []
+    for part in (raw or "").split(","):
+        kw = part.strip()
+        if kw and kw.lower() not in seen:
+            seen.add(kw.lower())
+            out.append(kw)
+    return out
+
+
+def tag_watch_rows(rows: list[dict], keywords: list[str]) -> int:
+    """
+    未上市公司關鍵字監控：對每列素材比對標題+摘要（不分大小寫），
+    命中就在 row["tags"] 寫入 "watch:<關鍵字>"（多個用逗號接）。純函式、就地標記。
+
+    :return: 命中的列數（給通知用）。
+    """
+    if not keywords:
+        return 0
+    hits = 0
+    for row in rows or []:
+        text = f"{row.get('title', '')} {row.get('summary', '')}".lower()
+        matched = [kw for kw in keywords if kw.lower() in text]
+        if matched:
+            row["tags"] = ",".join(f"watch:{kw}" for kw in matched)
+            hits += 1
+    return hits
+
+
 def dedup_rows(rows: list[dict]) -> list[dict]:
     """同一批內依 source_url 去重（保留第一筆）。純函式。"""
     seen, out = set(), []
@@ -151,9 +181,9 @@ def upsert_finds(db, rows: list[dict]) -> dict:
     （保留既有 status，避免把人已 triaged/discarded 的東西又打回 new）。
 
     冪等：同一批 rows 連跑兩次，第二次全部跳過、不重複堆積。
-    :return: {"inserted": 新增數, "skipped": 已存在跳過數}
+    :return: {"inserted": 新增數, "skipped": 已存在跳過數, "watch_hits": 新增中命中監控標籤數}
     """
-    inserted = skipped = 0
+    inserted = skipped = watch_hits = 0
     for row in dedup_rows(rows):
         url = row.get("source_url")
         if not url:
@@ -173,10 +203,13 @@ def upsert_finds(db, rows: list[dict]) -> dict:
             summary=row.get("summary") or "",
             fetched_at=datetime.now(),
             status="new",
+            tags=row.get("tags"),  # 監控關鍵字命中標籤（tag_watch_rows 寫入，可空）
         ))
         inserted += 1
+        if row.get("tags"):
+            watch_hits += 1
     db.commit()
-    return {"inserted": inserted, "skipped": skipped}
+    return {"inserted": inserted, "skipped": skipped, "watch_hits": watch_hits}
 
 
 def fetch_url(url: str) -> str | None:
@@ -232,14 +265,20 @@ def run_collector_scan() -> None:
     if not rows:
         return
 
+    # 未上市公司關鍵字監控：收料順手比對（SpaceX 等回不了測的公司，留檔追蹤）
+    tag_watch_rows(rows, parse_keywords(settings.PRIVATE_WATCH_KEYWORDS))
+
     db = SessionLocal()
     try:
         result = upsert_finds(db, rows)
         if result["inserted"] > 0:
-            notifier.notify(
+            msg = (
                 f"📰 市場蒐集員收到 {result['inserted']} 篇新策略素材"
                 f"（跳過 {result['skipped']} 篇已收過）。到「市場蒐集員」頁消化。"
             )
+            if result.get("watch_hits"):
+                msg += f"\n🛰️ 其中 {result['watch_hits']} 篇命中監控關鍵字（{settings.PRIVATE_WATCH_KEYWORDS}）。"
+            notifier.notify(msg)
     finally:
         db.close()
 
