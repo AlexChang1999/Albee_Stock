@@ -28,7 +28,7 @@
 | H | 維運安全軌（真錢前必備：券商端止損/心跳/自動降級） | 後端+設定 | 無 | **最高（電腦掛掉直接賠錢的洞）** |
 | D | Phase 12：策略自動探勘入庫管線 | 大 feature | 無 | 🔶 step-01~04 已實作（2026-06-11）；step-05 兩週觀察待開跑 |
 | E | 前端 UX 零碎：亮色模式/排行榜排序/Skeleton/補測試 | 前端 | 無 | ✅ 已完成（2026-06-11，四項全落地） |
-| F | `ui-ux-pro-max` skill CLI（`search.py`/CSV） | 工具 | 無 | 低 |
+| F | `ui-ux-pro-max` skill CLI（`search.py`/CSV） | 工具 | 無 | ✅ 已完成（2026-06-12，vendor 上游 MIT repo） |
 | G | 文件漂移：`workflow-diagrams.md`/`CLAUDE.md` 結構樹停在 Phase 6–7 | 文件 | 無 | ✅ 已完成（2026-06-11，補 Phase 8–11 + 圖 5） |
 
 **建議先做順序**：H（真錢前必備、無阻塞，出自
@@ -282,7 +282,8 @@ venv\Scripts\alembic.exe upgrade head        # 動 schema 的 step
 - [ ] `LLM_BASE_URL=http://localhost:11434/v1` + `LLM_MODEL=llama3.1`（`LLM_ALLOW_CLOUD` **維持 false**，素材不外送）
 - [ ] 通知擇一：`DISCORD_WEBHOOK_URL` 或 LINE token——心跳「validated 待審」提醒要送得出去，否則人在迴路斷線
 
-**3. 要開（常駐）的程式**
+**3. 要開（常駐）的程式**（家用電腦方案；或改用免費 VM 24/7 常駐，
+見 [`guides/free-vm-deployment.md`](guides/free-vm-deployment.md)——Oracle A1 免費 24GB 跑得動 Ollama）
 - [ ] `ollama serve` + `ollama pull llama3.1`——探勘橋每日 7 點要用；連不上 = 整批跳過不誤殺，但等於那天沒跑
 - [ ] 後端 `start_backend.bat`（uvicorn）——APScheduler 活在後端行程裡。
       **2026-06-11 起前提放寬：不必 24/7，一天至少開機一次（有網路）即可**——
@@ -347,7 +348,16 @@ Phase 12 = 把「raw 素材 → 候選策略 → 自動回測（OOS 閘）→ �
 
 ---
 
-## F. `ui-ux-pro-max` skill CLI
+## F. `ui-ux-pro-max` skill CLI ✅ 已完成（2026-06-12）
+
+> **結論：vendor 上游開源檔案，不自己造資料。** 此 skill 出自
+> [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+> （MIT），把上游 `scripts/`（search.py + core.py + design_system.py，純 stdlib）與
+> `data/` 全套 CSV（含 stacks/，排除未引用的 `draft.csv`/`_sync_all.py`）搬進
+> `.claude/skills/ui-ux-pro-max/`，附 `LICENSE-upstream.txt` 署名。
+> Windows 驗通：`venv\Scripts\python.exe ...\search.py "animation accessibility" --domain ux`
+> 出正確結果；script 自帶 UTF-8 stdout 修正不踩 cp950 坑。SKILL.md 適配註記已同步
+> （「CLI 不可用」→ 本專案跑法）。以下原始契約留作歷史紀錄。
 
 ### 現況
 `.claude/skills/ui-ux-pro-max` 的規則文字已夠用，但未隨附 `search.py` / 規則 CSV，

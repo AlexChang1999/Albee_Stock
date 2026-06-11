@@ -13,9 +13,17 @@ trigger: /ux-pro
 >   行動版只求「不破版」，非一級目標）。
 > - **重點**：§1 無障礙（`aria-label`、focus、`color-not-only`）、§6 字體/色、
 >   §7 動畫（含 `prefers-reduced-motion`）、§8 表單與回饋、§9 導覽、§10 圖表。
-> - **CLI 不可用**：原文的 `scripts/search.py` 與 CSV 資料**未隨附**，故
->   `--design-system` / `--domain` 等查詢指令跑不起來。請直接讀本檔的
->   **Quick Reference**（§1–§10）與 **Pre-Delivery Checklist** 當規則庫。
+> - **CLI 已可用（2026-06-12 補齊）**：`scripts/search.py` 與 `data/` CSV 已從上游
+>   [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+>   （MIT 授權，見 [`LICENSE-upstream.txt`](LICENSE-upstream.txt)）vendor 進來，純 stdlib 免裝依賴。
+>   本專案 Windows 跑法（從專案根目錄）：
+>   ```powershell
+>   venv\Scripts\python.exe .claude\skills\ui-ux-pro-max\scripts\search.py "<查詢>" --domain ux
+>   venv\Scripts\python.exe .claude\skills\ui-ux-pro-max\scripts\search.py "<查詢>" --design-system -f markdown
+>   ```
+>   （script 自帶 UTF-8 stdout 修正，cp950 主控台不崩；本檔下方原文的 `python3 skills/...`
+>   路徑是上游寫法，路徑以上面這兩行為準。`--stack` 本專案用 `react`，非原文預設的 `react-native`。
+>   上游 `draft.csv`/`_sync_all.py` 為開發雜檔未引用，未搬入。）
 > - **落地流程**：見 [`docs/ux/ux-workflow.md`](../../../docs/ux/ux-workflow.md)（何時觸發、
 >   優先序閘門、Web/MUI 版交付前檢查表、驗證步驟）。
 

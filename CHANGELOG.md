@@ -17,6 +17,24 @@
 
 ### 新增
 
+- **Backlog F 收尾：`ui-ux-pro-max` skill CLI 通電**——從上游開源 repo
+  [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+  （MIT）vendor `scripts/`（search.py/core.py/design_system.py，純 stdlib 免依賴）+
+  `data/` 全套 CSV（含 stacks/；排除未引用的開發雜檔 draft.csv/_sync_all.py），附
+  `LICENSE-upstream.txt` 署名。SKILL.md 適配註記同步：「CLI 不可用」改為本專案
+  Windows 跑法（`venv\Scripts\python.exe ...\search.py "<查詢>" --domain ux`；
+  script 自帶 UTF-8 stdout 修正不踩 cp950 坑）。靜態掃描確認無網路/子行程/eval，
+  唯一檔案寫入是 `--persist` 明確要求時。backlog F 標 ✅。
+- **免費 VM 常駐部署指南**——新增 `docs/guides/free-vm-deployment.md`：Phase 12
+  step-05 兩週觀察的常駐機器方案。比較表載明只有 Oracle Cloud Always Free
+  Ampere A1（4 OCPU/24GB，永久免費）跑得動 Ollama 8B（AWS 已改 6 個月 credits 制、
+  1GB 小機載不動模型）；含開通步驟（搶 A1 容量應對、不開 8000 對公網）、Linux 裝機、
+  兩個 Linux 限定坑（APScheduler 吃伺服器本地時間→必設 Asia/Taipei；
+  `start_backend.bat` 看門狗改 systemd `Restart=always`）、SSH tunnel 看戰情頁、
+  備援方案（小 VM + Groq/Gemini 免費層，`LLM_ALLOW_CLOUD=true` 外送邊界：僅公開
+  RSS 素材可外送、策略私有探討留本機）。`docs/README.md` 索引 + backlog D
+  checklist 同步補 VM 選項。
+
 - **開機補跑 + 自我修復三層防護（家用電腦非 24/7 也能跑滿每日管線）**——
   - 新增 `backend/services/catchup.py`：後端啟動時檢查「今天該跑而沒跑」的每日 job
     （discovery → auto_validate → 領導股回測 → 心跳 → tracking 對帳，含 collector 預跑），
