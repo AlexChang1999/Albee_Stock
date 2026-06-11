@@ -17,6 +17,14 @@
 
 ### 新增
 
+- **工作流圖完善（6 張）**——`docs/reference/workflow-diagrams.md`：圖 5 從
+  Phase 8–11 擴成 8–12（補 discovery 探勘橋 → auto_validate OOS 閘 → 漏斗報表的
+  自動探勘管線，標註預設全關 + 開跑 checklist / 驗收模板連結）；新增圖 6
+  「手工新增策略工作流」（點子 → 調參數免寫程式 / strategy-builder skill /
+  手動六落地點 → 收尾驗證 → OOS 證明 → 手動 Bot / 自動海選 / 知識庫三用途，
+  含「沒加 PARAM_GRIDS 自動化軌看不見」坑註）；對照表補 discovery / auto_validate
+  與圖 6 列；`docs/README.md` 索引同步。
+
 - **Phase 12 觀察期開跑前 checklist**——backlog D 項加完整開跑待辦：`.env` 必填
   （Alpaca 金鑰或 `DATA_SOURCE=yfinance`、feeds、兩個 ENABLED 開關、本機 Ollama、
   通知管道）、要常駐的程式（ollama serve、後端 24/7——排程器活在後端行程裡）、
