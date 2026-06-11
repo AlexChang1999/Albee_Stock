@@ -15,6 +15,32 @@
 
 ## [未發布]
 
+### 移除
+
+- **Backlog A 收尾：macro overlay 層真資料驗證 → 誠實砍除**——取得 FRED API key 後灌入真
+  序列（7 個 series、41,604 筆觀測），以 `scripts/validate_layers.py SPY QQQ AAPL MSFT NVDA`
+  跑 walk-forward 層驗證。macro 列 verdict：**worth=False、folds=207（遠超門檻 3）、
+  Δ=-101.68**（baseline EV 91.17 → candidate -10.51）——a-priori risk-off 煞車在樣本外
+  大幅扣分，依 Phase 7「真資料下無 OOS 加分就砍」鐵律移除：
+  - `services/layer_validation.py`：刪 `MacroOverlayStrategy` / `_macro_risk_off` /
+    `_build_features` / `validate_macro_layer`，`validate_symbol`/`validate_layers`
+    取下 macro 池（也不再需要 DB session）。
+  - `scripts/validate_layers.py`：印表迴圈移除 `"macro"`。
+  - 刪 `tests/test_macro_layer.py`（整檔測被砍的 overlay 層）。
+  - **保留**：FRED 資料層（`macro_data` / `fred_client` / `macro_features` /
+    `orderflow_proxy` / `routers/macro.py`）——被否決的是煞車層，不是資料源。
+  - 同次驗證的保留層數據：adaptive worth=True（folds=45、Δ=+17.72）、
+    meta worth=True（folds=207、Δ=+38.88）；kelly folds=1 < 3 樣本不足不採信。
+
+### 修正
+
+- **`database.py` 換 PostgreSQL 會崩**——`connect_args={"check_same_thread": False}` 是
+  SQLite 專屬參數，硬塞給 Postgres 報 `invalid connection option "check_same_thread"`。
+  改成依 `DATABASE_URL` 方言判斷只在 SQLite 才加，兌現「換 PostgreSQL 只改 .env」承諾。
+- **本機 `.env` 編碼修復（不進 git，僅記錄）**——檔案曾被以錯誤編碼存檔，中文註解全變
+  亂碼且數個 `KEY=VALUE` 被黏進註解行（dotenv 讀不到）。已依 `.env.example` 範本重建
+  （UTF-8 無 BOM），27 個鍵值經雜湊比對零遺失；亂碼版備份於 `.env.garbled.bak`。
+
 ### 新增
 
 - **Backlog B：`GET /positions` 端點 + 前端持倉卡（填掉最大缺口）**——原本只有

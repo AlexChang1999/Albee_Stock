@@ -17,9 +17,17 @@ from backend.config import settings
 # 建立資料庫引擎。
 # connect_args={"check_same_thread": False} 是 SQLite 在多執行緒環境
 # （例如 FastAPI + 排程器）需要的設定，否則會報錯。
+# ⚠️ 這個參數**只有 SQLite 認得**：換成 PostgreSQL 等其他資料庫時若硬塞會報
+# 「invalid connection option」。所以依 DATABASE_URL 的方言判斷，只在 SQLite 才加，
+# 兌現 CLAUDE.md「換 PostgreSQL 只改 .env、程式不用改」的承諾。
+_connect_args = (
+    {"check_same_thread": False}
+    if settings.DATABASE_URL.startswith("sqlite")
+    else {}
+)
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args=_connect_args,
     echo=False,  # 設 True 會印出每一句 SQL，除錯時很有用
 )
 

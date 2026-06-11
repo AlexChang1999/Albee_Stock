@@ -34,7 +34,14 @@
 
 ---
 
-## A. Phase 11 macro 層真資料驗證（step-05 收尾）
+## A. Phase 11 macro 層真資料驗證（step-05 收尾）✅ 已完成（2026-06-11）
+
+> **結論：誠實砍除。** 取得 FRED key、灌入真序列（41,604 筆觀測）後，以
+> `scripts/validate_layers.py SPY QQQ AAPL MSFT NVDA` 跑 walk-forward：macro 列
+> **worth=False、folds=207、Δ=-101.68**（baseline 91.17 → candidate -10.51）。
+> 依下方 step 4 的 `worth=False` 分支執行：移除 `MacroOverlayStrategy`/`validate_macro_layer`、
+> CLI 取下 macro 列、整檔刪 `tests/test_macro_layer.py`；FRED 資料層保留。
+> 詳見 `CHANGELOG.md` 未發布區塊。以下原始步驟留作歷史紀錄。
 
 ### 現況
 首跑 `scripts\validate_layers.py SPY` 判 macro 層 `worth=False`。原因：未填 `FRED_API_KEY`，

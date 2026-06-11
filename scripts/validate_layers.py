@@ -62,7 +62,7 @@ def main():
     print()
     print("層                          worth   明細")
     print("-" * 100)
-    for key in ("adaptive", "meta", "kelly", "macro"):
+    for key in ("adaptive", "meta", "kelly"):
         print(_row(out[key]["layer"], out[key]["verdict"]))
     print(_row(out["event"]["layer"], out["event"]["verdict"]))
     print("-" * 100)
