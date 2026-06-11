@@ -129,6 +129,46 @@ def test_parse_html_listing_picks_article_links():
     assert all(u.startswith("http") for u in urls)
 
 
+def test_parse_rss_cdata_html_summary():
+    # 真實 feed 的 description 常是 CDATA 包 HTML：要解析得出來、不崩，且摘要有截斷上限
+    xml = """<rss version="2.0"><channel><item>
+      <title>Donchian breakout notes</title>
+      <link>https://blog.example.com/donchian</link>
+      <description><![CDATA[<p>Buy on a <b>20-day high</b> breakout.</p>]]></description>
+    </item></channel></rss>"""
+    rows = parse_rss(xml)
+    assert len(rows) == 1
+    assert "20-day high" in rows[0]["summary"]
+    assert len(rows[0]["summary"]) <= 500  # _clip 截斷生效
+
+
+# ---------- 2.5 collect_from_feeds：單一 feed 失敗不影響其他 ----------
+def test_collect_from_feeds_skips_dead_feed(monkeypatch):
+    # 第一個 feed 抓不到（回 None）、第二個正常：只收正常那個、不丟例外
+    def fake_fetch(url):
+        return None if "dead" in url else _RSS
+
+    monkeypatch.setattr(collector, "fetch_url", fake_fetch)
+    rows = collector.collect_from_feeds([
+        "https://dead.example.com/feed",
+        "https://blog.example.com/feed",
+    ])
+    assert len(rows) == 2  # 只有活 feed 的兩篇
+    assert all("blog.example.com" in r["source_url"] for r in rows)
+
+
+# ---------- 2.6 _parse_feeds：設定字串清洗 ----------
+def test_parse_feeds_mixed_separators_and_junk():
+    raw = """https://a.com/feed, https://b.com/feed
+    not-a-url
+    https://a.com/feed"""
+    out = collector._parse_feeds(raw)
+    # 逗號/換行混用都解析；非 http(s) 行丟掉；重複去重
+    assert out == ["https://a.com/feed", "https://b.com/feed"]
+    assert collector._parse_feeds("") == []
+    assert collector._parse_feeds(None) == []
+
+
 # ---------- 3. dedup_rows ----------
 def test_dedup_rows_by_url():
     rows = [

@@ -17,6 +17,13 @@
 
 ### 新增
 
+- **Phase 12 step-01：collector 通電指南 + 邊界測試**——新增
+  `docs/guides/collector-feeds-guide.md`（推薦 RSS 來源、robots.txt 檢查步驟、
+  `.env` 設定範例、驗收 runbook、「關掉就回全關」說明），`docs/README.md` 索引補列；
+  `tests/test_collector.py` 補 3 個邊界測試（CDATA/HTML 摘要、單一 feed 失敗容錯、
+  `_parse_feeds` 字串清洗）。collector 本體零修改（藍圖明定只准修 bug）。
+  真 feed 連跑 3~7 天觀察為人工驗收，待使用者填 `.env` 執行。
+
 - **Phase 12 藍圖（backlog D Step 1）**——`docs/history/phase-12-strategy-discovery/`：
   README（原目標錨點/現況盤點/架構/5 步路線/防 slop 邊界/Phase DoD）+ step-01~05 契約檔
   （collector 通電/探勘橋 raw→LLM 候選/自動 OOS 驗證/漏斗報表+待審提醒/端到端誠實檢討）。
