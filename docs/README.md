@@ -30,6 +30,7 @@
 | 檔案 | 用途 |
 |------|------|
 | [`guides/setup.md`](guides/setup.md) | 環境設置（換新電腦一鍵建好開發環境）。 |
+| [`guides/home-boot-checklist.md`](guides/home-boot-checklist.md) | 回家開機測試 checklist（`.env` 最小必填、雲端 PG 方案 A/B、step-01 驗收、缺口盤點）。 |
 | [`guides/使用說明.md`](guides/使用說明.md) | 日常操作流程（啟動、前端各分頁、檔案位置、安全雙閘、FAQ）。 |
 | [`guides/how-to-add-strategy.md`](guides/how-to-add-strategy.md) | 新增策略 runbook。 |
 | [`guides/macro-layer-validation-runbook.md`](guides/macro-layer-validation-runbook.md) | Backlog A：拿到 FRED key 後跑 macro 層真資料 OOS 驗證 + 留/砍決策的步驟單。 |
