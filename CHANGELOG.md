@@ -17,6 +17,17 @@
 
 ### 新增
 
+- **Phase 12 step-02：探勘橋（raw find → LLM 產候選）**——新增
+  `backend/services/discovery.py`：每日定時取收件匣 status=new 素材（至多
+  `DISCOVERY_BATCH_SIZE` 筆），本機 Ollama 判讀「在講哪種既有策略 + 建議參數」，
+  有提案 → 建 `StrategyKnowledge` candidate、find 標 built + 回填 `knowledge_id`；
+  不相關/解析失敗 → 標 discarded（原因落新欄 `triage_note`，決策可回查）。
+  LLM 連不上 = 整批跳過不標記。設定 `DISCOVERY_ENABLED`（預設 false，完全不掛排程）
+  / `DISCOVERY_BATCH_SIZE` / `DISCOVERY_HOUR`；排程掛 `bot_manager.schedule_discovery`。
+  Alembic 遷移加 `raw_strategy_finds.knowledge_id`/`triage_note` 兩 nullable 欄。
+  守界線：LLM 只提既有策略參數（composite/非數字參數/低信心一律拒）、不生成程式碼、
+  不外送雲端（`cloud_blocked` 閘）、不下單。測試 11 案（monkeypatch llm，不連網）。
+
 - **Phase 12 step-01：collector 通電指南 + 邊界測試**——新增
   `docs/guides/collector-feeds-guide.md`（推薦 RSS 來源、robots.txt 檢查步驟、
   `.env` 設定範例、驗收 runbook、「關掉就回全關」說明），`docs/README.md` 索引補列；

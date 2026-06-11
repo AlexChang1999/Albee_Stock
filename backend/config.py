@@ -171,6 +171,20 @@ class Settings:
     )
 
     # ========================================================
+    # 探勘橋 — raw find → LLM 產候選（Phase 12 step-02）
+    # ========================================================
+    # 每日定時把收件匣（raw_strategy_finds, status=new）的素材交給本機 Ollama 判讀：
+    # 「這篇在講哪種**既有**策略？建議什麼參數？」有提案 → 建 StrategyKnowledge candidate
+    # （之後仍要過 OOS 閘 + 人工晉升才算數）；不相關 → 標 discarded。
+    # ★ LLM 只提既有策略的參數、不生成程式碼；素材不外送雲端（走 llm.py 同一道外送閘）。
+    #   - DISCOVERY_ENABLED：總開關（預設 false，不掛排程、行為與沒這功能一樣）。
+    #   - DISCOVERY_BATCH_SIZE：一輪最多處理幾筆素材（防 LLM 跑整夜）。
+    #   - DISCOVERY_HOUR：每日幾點跑（24 小時制，預設 7 = 盤前）。
+    DISCOVERY_ENABLED: bool = os.getenv("DISCOVERY_ENABLED", "false").lower() in ("1", "true", "yes")
+    DISCOVERY_BATCH_SIZE: int = int(os.getenv("DISCOVERY_BATCH_SIZE", "5"))
+    DISCOVERY_HOUR: int = int(os.getenv("DISCOVERY_HOUR", "7"))
+
+    # ========================================================
     # 政治專討員 — Discord 事件流（Phase 10 step-05）
     # ========================================================
     # 從 Discord 頻道偵測政治貼文（例如川普發文鏡像）→ 本機 Ollama 判讀 → 接既有風險煞車。

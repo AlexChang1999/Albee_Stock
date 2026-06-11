@@ -67,6 +67,9 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_opportunity_scan(_cfg.scan_interval_min)
         # Phase 10 step-04：掛上市場蒐集員收料 job（每 N 分鐘抓 RSS；0=關，沒設 feed 也會跳過）
         bot_manager.schedule_collector_scan(settings.COLLECTOR_INTERVAL_MIN)
+        # Phase 12 step-02：掛上探勘橋每日 job（收件匣素材 → LLM triage → candidate；
+        # DISCOVERY_ENABLED=false = 完全不掛，行為與沒這功能一樣）
+        bot_manager.schedule_discovery(settings.DISCOVERY_HOUR)
         # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
         bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)

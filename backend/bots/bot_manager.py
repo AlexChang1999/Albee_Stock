@@ -692,6 +692,30 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_discovery(self, hour: int) -> None:
+        """
+        掛上「探勘橋」的每日定時工作（Phase 12 step-02）。
+
+        每天 hour 時跑一次 run_discovery_batch（收件匣素材 → 本機 LLM triage → candidate）。
+        DISCOVERY_ENABLED=false 代表完全不掛：移除既有 job（若有）並返回
+        （run_discovery_batch 內部還有一道開關雙保險）。在 main.py 啟動時呼叫一次即可。
+        延遲 import 避免循環依賴。
+        """
+        from backend.services.discovery import run_discovery_batch
+
+        job_id = "discovery_bridge"
+        if not settings.DISCOVERY_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_discovery_batch,
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
     def schedule_collector_scan(self, interval_minutes: int) -> None:
         """
         掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。
