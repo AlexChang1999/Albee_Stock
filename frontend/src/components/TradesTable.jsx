@@ -17,6 +17,7 @@ import {
   TableSortLabel,
   TableContainer,
   Paper,
+  Skeleton,
 } from "@mui/material";
 
 // 可排序欄位定義：key 對應資料欄、numeric 決定右對齊與數值排序、time 走時間排序
@@ -29,7 +30,7 @@ const COLUMNS = [
   { key: "reason", label: "原因", sortable: false },
 ];
 
-export default function TradesTable({ trades }) {
+export default function TradesTable({ trades, loading = false }) {
   // 預設依時間新→舊
   const [orderBy, setOrderBy] = useState("created_at");
   const [order, setOrder] = useState("desc");
@@ -69,7 +70,14 @@ export default function TradesTable({ trades }) {
         <Typography variant="h6" gutterBottom>
           交易紀錄（{trades.length}）
         </Typography>
-        {trades.length === 0 ? (
+        {loading && trades.length === 0 ? (
+          // Skeleton 載入態（E3）：畫幾列灰條佔位，分得清「載入中」與「真的沒紀錄」
+          <Paper variant="outlined" sx={{ p: 2 }} aria-label="交易紀錄載入中">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} height={32} />
+            ))}
+          </Paper>
+        ) : trades.length === 0 ? (
           <Typography color="text.secondary">
             目前還沒有任何交易紀錄。
           </Typography>

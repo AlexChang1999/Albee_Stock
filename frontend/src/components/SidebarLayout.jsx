@@ -84,6 +84,8 @@ export default function SidebarLayout({
   onClearMessage,
   loadError,
   context,
+  colorMode,
+  onToggleColorMode,
 }) {
   return (
     <>
@@ -131,6 +133,35 @@ export default function SidebarLayout({
           {NAV_ITEMS.map((item) => (
             <NavItem key={item.to} {...item} />
           ))}
+
+          {/* 亮/暗模式切換（E1）：存 localStorage，下次開啟沿用 */}
+          {onToggleColorMode && (
+            <Box
+              component="button"
+              type="button"
+              onClick={onToggleColorMode}
+              aria-label="切換亮暗模式"
+              sx={{
+                mt: 2,
+                px: 2,
+                py: 1,
+                width: "100%",
+                textAlign: "left",
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                background: "transparent",
+                color: "text.secondary",
+                cursor: "pointer",
+                fontFamily: '"Manrope", sans-serif',
+                fontWeight: 600,
+                fontSize: 13,
+                "&:hover": { color: "text.primary", borderColor: "primary.main" },
+              }}
+            >
+              {colorMode === "dark" ? "☀️ 亮色模式" : "🌙 深藍模式"}
+            </Box>
+          )}
         </Box>
 
         {/* 中間路由內容 */}

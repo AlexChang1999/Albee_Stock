@@ -3,11 +3,12 @@
 > 用 [Mermaid](https://mermaid.js.org/) 畫（圖即程式碼，進 git）。
 > **看圖方式**：推上 GitHub 自動渲染，或 VSCode 裝「Markdown Preview Mermaid Support」擴充後預覽。
 >
-> 共 4 張圖：
+> 共 5 張圖：
 > 1. [高層全景](#圖-1高層全景) — 三大子系統一張看懂
 > 2. [即時/自動交易決策流水線](#圖-2即時自動交易決策流水線flow-a) — Bot 每輪怎麼決策下單
 > 3. [回測 / EV 流水線](#圖-3回測--ev-流水線flow-b) — 怎麼挑出冠軍策略
 > 4. [Phase 7 層驗證流](#圖-4phase-7-層驗證流flow-c) — 每層加分到底值不值得留
+> 5. [Phase 8–11 知識庫 → AI 公司軌](#圖-5phase-811-知識庫--ai-公司軌flow-d) — 素材進料、知識庫晉升、戰情監控、維運安全
 >
 > 圖內容已對照 `backend/` 實際程式碼流程，非憑記憶。
 
@@ -184,6 +185,60 @@ flowchart TD
 
 ---
 
+## 圖 5：Phase 8–11 知識庫 → AI 公司軌（Flow D）
+
+Phase 8（策略知識庫 + 人在迴路晉升）、Phase 10（AI 公司編排）、Phase 11（總經資料地基）
+與 backlog H（維運安全軌）怎麼接在一起。**人工關卡只有兩個**：知識庫晉升、董事會核准。
+
+```mermaid
+flowchart TD
+    subgraph FEED["進料（Phase 10/11）"]
+        COL["collector RSS 蒐集員<br/>(預設關) → raw_strategy_find"]
+        POL["political Discord 政治員<br/>(煞車, bridge 預設關)"]
+        MAC["fred_client / macro_data<br/>FRED 總經序列 [P11]"]
+        OFP["orderflow_proxy 籌碼面 proxy [P11]"]
+    end
+
+    subgraph KNOW["策略知識庫（Phase 8）"]
+        GEN["strategy_generator.propose_params<br/>LLM 提案參數 → candidate"]
+        VAL["evolution.validate_candidate<br/>walk-forward OOS 驗證"]
+        PROM{"人工晉升<br/>validated → curated"}
+    end
+
+    subgraph COMPANY["AI 公司（Phase 10）"]
+        SCAN["opportunity_scan 常駐探勘<br/>→ Opportunity (OOS 指標)"]
+        FAC["factor_snapshot 因子報表"]
+        OVR["company.overview 戰情頁聚合"]
+        BOARD{"董事會核准<br/>promotion: proposed_live → approved_live"}
+    end
+
+    subgraph OPS["維運安全軌（backlog H）"]
+        PROT["protective_orders + alpaca_client<br/>券商端 GTC 保護單 [H1]"]
+        HB["heartbeat 日報 + dead-man ping [H2]"]
+        TRK["tracking error 對帳<br/>連 3 違規自動停 Bot [H3]"]
+    end
+
+    COL -.靈感素材.-> GEN
+    GEN --> VAL --> PROM
+    PROM -- curated --> DEPLOY["automation.run_auto_deploy<br/>(模式 B, OOS 門檻 + 名額)"]
+    SCAN --> OVR
+    FAC --> OVR
+    POL -.風險煞車.-> DEPLOY
+    MAC -.特徵.-> SCAN
+    OFP -.特徵.-> SCAN
+    DEPLOY --> BOT["Bot 實跑 (圖 2 流水線)"]
+    BOT --> PROT
+    BOT --> TRK
+    BOT --> HB
+    BOT -. 達標證據 .-> BOARD
+    BOARD -- 核准旗標 --> LIVE["真錢（仍須雙閘安全閥）"]
+
+    classDef human fill:#2e2a1a,stroke:#f0ad4e,color:#eec
+    class PROM,BOARD human
+```
+
+---
+
 ## 對照表：圖 ↔ 程式碼
 
 | 圖 | 入口函式 | 關鍵模組 |
@@ -191,5 +246,6 @@ flowchart TD
 | 圖 2 實盤 | `bot_manager.run_bot_once` | `regime_features` / `regime` / `strategy_selector` / `meta_label` / `circuit_breaker` / `capital` / `risk_manager` / `alpaca_client` |
 | 圖 3 回測 | `screener.screen_watchlist` → `optimizer.run_auto_backtest` | `backtest_engine._run_on_df` / `optimizer.split_train_test` |
 | 圖 4 驗證 | `scripts/validate_layers.py` → `layer_validation.validate_layers` | `validation.walk_forward_splits` / `validation.is_layer_worth_it` |
+| 圖 5 知識庫/公司 | `routers/knowledge.py` / `routers/company.py` | `strategy_generator` / `evolution` / `opportunity_scan` / `collector` / `political` / `heartbeat` / `tracking` / `protective_orders` |
 
 > 圖會跟程式碼演進而過期。改動 `backend/` 流程順序時，記得同步本檔。

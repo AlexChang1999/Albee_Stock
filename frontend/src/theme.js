@@ -23,32 +23,57 @@ export const NEON = {
   red: "#ff5d7a", // 虧損洋紅
 };
 
-const INK = "#e7edf7"; // 主文字：近白冷光
-const INK_SOFT = "#9aa9c2"; // 次要文字：灰藍
-const PANEL = "#0f1f3a"; // 面板底：深海軍藍
-const LINE = "rgba(255,255,255,0.09)"; // 冷色髮絲線
-
-// 卡片共用底樣式：深藍面板 + 冷色細邊 + 深處陰影（沉浸、不刺眼）。
-const paperCard = {
-  backgroundColor: PANEL,
-  backgroundImage: "none",
-  border: `1px solid ${LINE}`,
-  borderRadius: 16,
-  // 深色底用「外陰影壓深 + 內側一條極淡高光」營造面板浮起感
-  boxShadow:
-    "0 1px 0 rgba(255,255,255,0.04) inset, 0 16px 32px -22px rgba(0,0,0,0.7)",
-  transition: "border-color .25s, box-shadow .25s, transform .25s",
+// 兩套底色變數（E1 亮色模式）：深藍沉浸（預設）與亮色。
+// NEON 數據色兩個模式共用——深底上是冷光、亮底上是飽和點綴，對比都夠。
+const MODES = {
+  dark: {
+    ink: "#e7edf7", // 主文字：近白冷光
+    inkSoft: "#9aa9c2", // 次要文字：灰藍
+    panel: "#0f1f3a", // 面板底：深海軍藍
+    line: "rgba(255,255,255,0.09)", // 冷色髮絲線
+    cardShadow:
+      "0 1px 0 rgba(255,255,255,0.04) inset, 0 16px 32px -22px rgba(0,0,0,0.7)",
+    cardShadowHover:
+      "0 1px 0 rgba(255,255,255,0.05) inset, 0 22px 40px -24px rgba(0,0,0,0.8)",
+  },
+  light: {
+    ink: "#16243f", // 主文字：深海軍藍（在淺底上）
+    inkSoft: "#5a6a88", // 次要文字：灰藍
+    panel: "#ffffff", // 面板底：白
+    line: "rgba(22,36,63,0.14)", // 深色髮絲線
+    cardShadow: "0 10px 24px -18px rgba(22,36,63,0.35)",
+    cardShadowHover: "0 16px 32px -20px rgba(22,36,63,0.45)",
+  },
 };
 
-export const theme = createTheme({
+// 依模式產整套 MUI 主題。元件 import { theme } 拿到的是深色預設，
+// App.jsx 用 buildTheme(mode) 依使用者切換重建。
+export function buildTheme(mode = "dark") {
+  const C = MODES[mode] ?? MODES.dark;
+  const INK = C.ink;
+  const INK_SOFT = C.inkSoft;
+  const PANEL = C.panel;
+  const LINE = C.line;
+
+  // 卡片共用底樣式：面板 + 細邊 + 陰影（兩模式同形、不同色）。
+  const paperCard = {
+    backgroundColor: PANEL,
+    backgroundImage: "none",
+    border: `1px solid ${LINE}`,
+    borderRadius: 16,
+    boxShadow: C.cardShadow,
+    transition: "border-color .25s, box-shadow .25s, transform .25s",
+  };
+
+  return createTheme({
   palette: {
-    mode: "dark",
+    mode,
     primary: { main: NEON.cyan },
     secondary: { main: NEON.magenta },
     success: { main: NEON.green },
     error: { main: NEON.red },
     warning: { main: NEON.magenta },
-    // 背景透明，讓 index.css 的深藍底與冷色光暈透出來
+    // 背景透明，讓 index.css 的底色與光暈透出來（亮/暗由 body[data-mode] 切）
     background: { default: "transparent", paper: PANEL },
     text: { primary: INK, secondary: INK_SOFT },
     divider: LINE,
@@ -71,8 +96,7 @@ export const theme = createTheme({
           ...paperCard,
           "&:hover": {
             borderColor: "rgba(77,163,255,0.45)",
-            boxShadow:
-              "0 1px 0 rgba(255,255,255,0.05) inset, 0 22px 40px -24px rgba(0,0,0,0.8)",
+            boxShadow: C.cardShadowHover,
           },
         },
       },
@@ -184,4 +208,8 @@ export const theme = createTheme({
       },
     },
   },
-});
+  });
+}
+
+// 深色預設：既有 import { theme } 不用改就照常運作
+export const theme = buildTheme("dark");

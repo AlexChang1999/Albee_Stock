@@ -8,7 +8,7 @@
 // 這個元件「自管狀態」（表單、載入中、結果、錯誤），不依賴 App，
 // 跟 StrategyWorkbench 一樣是獨立區塊，放在儀表板分頁即可運作。
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -25,6 +25,7 @@ import {
   TableRow,
   TableCell,
   TableContainer,
+  TableSortLabel,
   CircularProgress,
 } from "@mui/material";
 import { api } from "../api";
@@ -91,6 +92,41 @@ export default function AutoBacktestPanel() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+
+  // 排行榜排序（E2）：預設依 EV 由高到低；點欄位標頭可改排序鍵/方向
+  const [orderBy, setOrderBy] = useState("expected_value");
+  const [order, setOrder] = useState("desc");
+  const handleSort = (key) => {
+    if (orderBy === key) {
+      setOrder((o) => (o === "desc" ? "asc" : "desc"));
+    } else {
+      setOrderBy(key);
+      setOrder("desc"); // 換欄位先看「大的在前」最直覺
+    }
+  };
+  const sortedBoard = useMemo(() => {
+    const rows = result?.leaderboard ?? [];
+    const dir = order === "desc" ? -1 : 1;
+    // null 一律沉底（不論方向），數字照方向排
+    return [...rows].sort((a, b) => {
+      const av = a[orderBy];
+      const bv = b[orderBy];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return (av - bv) * dir;
+    });
+  }, [result, orderBy, order]);
+
+  // 可排序的數字欄（key 對應 leaderboard 摘要欄位）
+  const SORT_COLS = [
+    { key: "expected_value", label: "EV/筆" },
+    { key: "expectancy_pct", label: "EV%" },
+    { key: "total_return_pct", label: "報酬%" },
+    { key: "win_rate_pct", label: "勝率%" },
+    { key: "max_drawdown_pct", label: "回撤%" },
+    { key: "num_round_trips", label: "交易" },
+  ];
 
   async function handleScan() {
     setError("");
@@ -266,9 +302,9 @@ export default function AutoBacktestPanel() {
               </Box>
             </Box>
 
-            {/* 排行榜 */}
+            {/* 排行榜（點數字欄標頭可排序） */}
             <Typography variant="subtitle2" sx={{ mt: 3, mb: 1 }}>
-              完整排行榜（依 EV 由高到低）
+              完整排行榜（點欄位標頭可排序，預設依 EV 由高到低）
             </Typography>
             <TableContainer>
               <Table size="small">
@@ -277,27 +313,48 @@ export default function AutoBacktestPanel() {
                     <TableCell>#</TableCell>
                     <TableCell>策略</TableCell>
                     <TableCell>參數</TableCell>
-                    <TableCell align="right">EV/筆</TableCell>
-                    <TableCell align="right">EV%</TableCell>
-                    <TableCell align="right">報酬%</TableCell>
-                    <TableCell align="right">勝率%</TableCell>
-                    <TableCell align="right">回撤%</TableCell>
-                    <TableCell align="right">交易</TableCell>
+                    {SORT_COLS.map((col) => (
+                      <TableCell
+                        key={col.key}
+                        align="right"
+                        sortDirection={orderBy === col.key ? order : false}
+                        aria-sort={
+                          orderBy === col.key
+                            ? order === "desc"
+                              ? "descending"
+                              : "ascending"
+                            : undefined
+                        }
+                      >
+                        <TableSortLabel
+                          active={orderBy === col.key}
+                          direction={orderBy === col.key ? order : "desc"}
+                          onClick={() => handleSort(col.key)}
+                        >
+                          {col.label}
+                        </TableSortLabel>
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {result.leaderboard.map((e, i) => (
+                  {sortedBoard.map((e, i) => {
+                    // 冠軍列＝策略+參數與 best 相同（排序後位置會變，不能用 i===0 判斷）
+                    const isChampion =
+                      e.strategy_key === best.strategy_key &&
+                      paramsText(e.params) === paramsText(best.params);
+                    return (
                     <TableRow
-                      key={i}
+                      key={`${e.strategy_key}-${paramsText(e.params)}`}
                       sx={{
                         // 冠軍那列淡金底
-                        bgcolor: i === 0 ? "rgba(176,136,58,0.08)" : "transparent",
+                        bgcolor: isChampion ? "rgba(176,136,58,0.08)" : "transparent",
                       }}
                     >
                       <TableCell sx={MONO}>
-                        {i === 0 ? "🏆" : i + 1}
+                        {isChampion ? "🏆" : i + 1}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: i === 0 ? 700 : 500 }}>
+                      <TableCell sx={{ fontWeight: isChampion ? 700 : 500 }}>
                         {strategyLabel(e.strategy_key)}
                       </TableCell>
                       <TableCell sx={{ ...MONO, fontSize: 12, color: "text.secondary" }}>
@@ -322,7 +379,8 @@ export default function AutoBacktestPanel() {
                         {e.num_round_trips}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>

@@ -15,7 +15,7 @@ import BotList from "../components/BotList";
 import AutomationPanel from "../components/AutomationPanel";
 
 export default function DashboardPage() {
-  const { account, bots, onToggleActive, onRun, onEdit, onDelete, reload } =
+  const { account, bots, loading, onToggleActive, onRun, onEdit, onDelete, reload } =
     useOutletContext();
   const navigate = useNavigate();
 
@@ -39,6 +39,7 @@ export default function DashboardPage() {
       <AutomationPanel onChanged={reload} />
       <BotList
         bots={bots}
+        loading={loading}
         onToggle={onToggleActive}
         onRun={onRun}
         onEdit={onEdit}

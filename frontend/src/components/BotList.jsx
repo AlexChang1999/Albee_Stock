@@ -18,6 +18,7 @@ import {
   IconButton,
   Tooltip,
   Stack,
+  Skeleton,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
@@ -30,6 +31,7 @@ import { statRows, formatCheckedAgo, holdingText } from "../utils/botStats";
 
 export default function BotList({
   bots,
+  loading = false,
   onToggle,
   onRun,
   onEdit,
@@ -42,7 +44,28 @@ export default function BotList({
         <Typography variant="h6" gutterBottom>
           Bot 列表（{bots.length}）
         </Typography>
-        {bots.length === 0 ? (
+        {loading && bots.length === 0 ? (
+          // Skeleton 載入態（E3）：先畫卡片灰塊佔位，分得清「載入中」與「真的沒 Bot」
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
+              gap: 2,
+            }}
+            aria-label="Bot 列表載入中"
+          >
+            {[0, 1, 2, 3].map((i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                  <Skeleton variant="circular" width={40} height={40} />
+                  <Skeleton width="60%" height={24} />
+                </Stack>
+                <Skeleton width="80%" />
+                <Skeleton width="50%" />
+              </Paper>
+            ))}
+          </Box>
+        ) : bots.length === 0 ? (
           <Typography color="text.secondary">
             還沒有任何 Bot，先用上面的表單建立一個吧！
           </Typography>

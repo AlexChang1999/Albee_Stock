@@ -27,9 +27,9 @@
 | C | `test_run_dry_run` pre-existing 失敗修掉 | bugfix | — | ✅ 已完成（2026-06-11，`13ef4bb`） |
 | H | 維運安全軌（真錢前必備：券商端止損/心跳/自動降級） | 後端+設定 | 無 | **最高（電腦掛掉直接賠錢的洞）** |
 | D | Phase 12：策略自動探勘入庫管線 | 大 feature | 無 | 中（長線） |
-| E | 前端 UX 零碎：亮色模式/排行榜排序/Skeleton/補測試 | 前端 | 無 | 低~中 |
+| E | 前端 UX 零碎：亮色模式/排行榜排序/Skeleton/補測試 | 前端 | 無 | ✅ 已完成（2026-06-11，四項全落地） |
 | F | `ui-ux-pro-max` skill CLI（`search.py`/CSV） | 工具 | 無 | 低 |
-| G | 文件漂移：`workflow-diagrams.md`/`CLAUDE.md` 結構樹停在 Phase 6–7 | 文件 | 無 | 低 |
+| G | 文件漂移：`workflow-diagrams.md`/`CLAUDE.md` 結構樹停在 Phase 6–7 | 文件 | 無 | ✅ 已完成（2026-06-11，補 Phase 8–11 + 圖 5） |
 
 **建議先做順序**：H（真錢前必備、無阻塞，出自
 [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) 第四部分優先序）→ D/E/F/G 依需求挑。
@@ -276,7 +276,11 @@ Phase 12 = 把「raw 素材 → 候選策略 → 自動回測（OOS 閘）→ �
 
 ---
 
-## E. 前端 UX 零碎（低~中價值，逐項獨立、互不阻塞）
+## E. 前端 UX 零碎 ✅ 已完成（2026-06-11）
+
+> 四項全落地：E1 亮色模式（`buildTheme(mode)` + `body[data-mode]` CSS 變數 + sidebar 切換鈕
+> + localStorage）、E2 排行榜 `TableSortLabel`+`aria-sort`、E3 三元件 Skeleton、
+> E4 補 `AccountCard`/`BacktestResultCard` 測試（前端 111 tests 全綠）。原始契約留作歷史紀錄。
 
 1. **亮色模式切換**：`frontend/src/theme.js` 拆 light/dark 兩套 palette + 切換鈕（存 localStorage）；
    全站對比再過一遍（**深底寫死 hex 的坑要清**——換淺底時深色文字會隱形，反之亦然）。
@@ -306,7 +310,10 @@ skill 文件提到的 CLI 查詢無法實際跑。
 
 ---
 
-## G. 文件漂移修正
+## G. 文件漂移修正 ✅ 已完成（2026-06-11）
+
+> `CLAUDE.md` 結構樹補齊 Phase 8–11 + backlog H 模組；`workflow-diagrams.md` 加
+> 「圖 5：Phase 8–11 知識庫 → AI 公司軌」。原始契約留作歷史紀錄。
 
 ### 現況
 `docs/reference/workflow-diagrams.md` 與 `CLAUDE.md` 的「專案結構」樹仍停在 Phase 6–7，

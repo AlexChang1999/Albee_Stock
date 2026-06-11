@@ -10,12 +10,12 @@
 //   外殼在 components/SidebarLayout.jsx，各頁在 pages/。狀態與動作仍集中在這裡，
 //   行為與原本一致（只是改用路由切換、儀表板瘦身）。
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { api } from "./api";
 import { CssBaseline } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { theme } from "./theme";
+import { buildTheme } from "./theme";
 import { useDashboardData } from "./hooks/useDashboardData";
 
 // 外殼 + 路由頁
@@ -64,6 +64,19 @@ function App() {
   // 操作訊息（建立/刪除/啟停 Bot 的結果），跟資料載入分開管理。
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  // 亮/暗模式（E1）：記在 localStorage，下次開啟沿用；預設深藍。
+  const [colorMode, setColorMode] = useState(
+    () => localStorage.getItem("albee-color-mode") || "dark"
+  );
+  const muiTheme = useMemo(() => buildTheme(colorMode), [colorMode]);
+  useEffect(() => {
+    // index.css 用 body[data-mode] 切整套 CSS 變數（頁面底色、髮絲線…）
+    document.body.dataset.mode = colorMode;
+    localStorage.setItem("albee-color-mode", colorMode);
+  }, [colorMode]);
+  const toggleColorMode = () =>
+    setColorMode((m) => (m === "dark" ? "light" : "dark"));
 
   // 圖表目前顯示的股票（chartSymbol）與輸入框的暫存值（symbolInput）
   const [chartSymbol, setChartSymbol] = useState("AAPL");
@@ -256,6 +269,7 @@ function App() {
     status, // 交易環境（含 live_armed，給 AI 探勘頁的實盤部署確認用）
     bots,
     trades,
+    loading, // 載入中（給各頁畫 Skeleton 載入態，E3）
     reload, // 讓子頁（如自動化試跑後）能要求重抓 account/bots/trades
     // Bot 動作
     onToggleActive: handleToggleActive,
@@ -281,7 +295,7 @@ function App() {
   };
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={muiTheme}>
       {/* CssBaseline：統一各瀏覽器的預設樣式 */}
       <CssBaseline />
 
@@ -297,6 +311,8 @@ function App() {
                 onClearMessage={() => setMessage("")}
                 loadError={loadError}
                 context={outletContext}
+                colorMode={colorMode}
+                onToggleColorMode={toggleColorMode}
               />
             }
           >

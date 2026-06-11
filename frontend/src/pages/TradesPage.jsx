@@ -23,7 +23,7 @@ import { filterTrades } from "../utils/filterTrades";
 const EMPTY = { botId: "", symbol: "", side: "", dateFrom: "", dateTo: "" };
 
 export default function TradesPage() {
-  const { trades, bots } = useOutletContext();
+  const { trades, bots, loading } = useOutletContext();
   const [filters, setFilters] = useState(EMPTY);
 
   function set(field, value) {
@@ -120,7 +120,7 @@ export default function TradesPage() {
         </CardContent>
       </Card>
 
-      <TradesTable trades={filtered} />
+      <TradesTable trades={filtered} loading={loading} />
     </Box>
   );
 }

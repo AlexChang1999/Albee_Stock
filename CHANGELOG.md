@@ -17,6 +17,27 @@
 
 ### 新增
 
+- **壓力測試前端按鈕**——`BacktestResultCard` 加「🎲 壓力測試」鈕，打
+  `POST /backtest/stress/{run_id}` 顯示權益 p5/p50/p95、回撤分布、破產機率，
+  破產機率 >5% 出警告；`api.js` 加 `stressBacktestRun()`。測試 4 案（mock api）。
+- **亮色模式切換（backlog E1）**——`theme.js` 改 `buildTheme(mode)` 雙 palette、
+  `index.css` 以 `body[data-mode="light"]` 切整套 CSS 變數，sidebar 加切換鈕、
+  選擇存 localStorage；NEON 數據色兩模式共用。
+- **排行榜欄位排序（backlog E2）**——`AutoBacktestPanel` 排行榜加 `TableSortLabel`
+  + `aria-sort`（EV/EV%/報酬/勝率/回撤/交易皆可排），冠軍列改依「策略+參數」
+  判斷不受排序影響。
+- **Skeleton 載入態（backlog E3）**——`AccountCard`/`BotList`/`TradesTable` 載入中
+  改畫 MUI `<Skeleton>` 佔位，分得清「載入中」與「真的沒資料」；
+  `loading` 經 outlet context 傳到各頁。
+- **元件測試（backlog E4）**——新增 `AccountCard.test.jsx`（含 Skeleton 態）、
+  `BacktestResultCard.test.jsx`；前端 27 檔 111 tests 全綠。
+
+### 變更
+
+- **文件漂移修正（backlog G）**——`CLAUDE.md` 結構樹補齊 Phase 8–11 + backlog H
+  的 routers/models/services；`docs/reference/workflow-diagrams.md` 新增
+  「圖 5：Phase 8–11 知識庫 → AI 公司軌」（含兩個人工關卡與維運安全軌）。
+
 - **VaR/CVaR 尾部風險指標**——`backend/services/analytics.py` 新增 `var_cvar()`
   （歷史模擬法，純 pandas 分位數、不依賴 quantstats），`extended_metrics()` 回傳
   `var_95_pct` / `cvar_95_pct`，自動流入 `BacktestRun.metrics` JSON（零遷移）。

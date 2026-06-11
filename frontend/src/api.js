@@ -145,6 +145,13 @@ export const api = {
   favoriteBacktestRun: (id, isGood = true) =>
     request(`/backtest-runs/${id}/favorite?is_good=${isGood}`, { method: "PUT" }),
 
+  // 蒙地卡羅壓力測試：bootstrap 重抽該筆回測的日報酬，回風險分布（按需計算、不存 DB）
+  stressBacktestRun: (id, options = {}) =>
+    request(`/backtest/stress/${id}`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+
   // ===== Claude 思考助手（步驟 4 為 stub）=====
   // 聊天（無狀態，送完整 messages）
   sendChat: (messages) =>

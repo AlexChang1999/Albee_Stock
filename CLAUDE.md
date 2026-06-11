@@ -66,26 +66,60 @@ Albee_Stock/
 │   ├── test_connection.py # Alpaca 連線測試腳本
 │   ├── routers/           # API 路由（依功能拆檔）
 │   │   ├── bots.py        # Bot 管理（CRUD/啟停/執行/績效）
-│   │   ├── backtest.py    # 回測 API
+│   │   ├── backtest.py    # 回測 API（手動/全自動掃描/蒙地卡羅壓力測試）
 │   │   ├── orders.py      # 交易紀錄 API
 │   │   ├── positions.py   # 持倉清單 API（GET /positions，含浮動損益；無金鑰優雅回 []）
 │   │   ├── presets.py     # 策略方案 CRUD + 一鍵回測 + 回測歷史（依 EV 排序）
 │   │   ├── chat.py        # 本機 LLM 思考助手（對話 + 兩段式事後檢討）
-│   │   └── strategies.py  # 策略清單單一來源（GET /strategies，Phase 6 step-10）
+│   │   ├── strategies.py  # 策略清單單一來源（GET /strategies，Phase 6 step-10）
+│   │   ├── quotes.py / bars.py # 即時報價 / 歷史 K 線（給前端圖表）
+│   │   ├── fundamentals.py    # 基本面/財報/新聞（yfinance）
+│   │   ├── recommendations.py # AI 海選推薦（redesign P2）
+│   │   ├── automation.py      # 模式 B 自動化規則（redesign P4）
+│   │   ├── explorations.py    # 探討檔案記憶唯讀端點（Phase 9）
+│   │   ├── knowledge.py       # 策略知識庫 CRUD/驗證/晉升（Phase 8）
+│   │   ├── company.py         # 公司戰情聚合（Phase 10 step-01）
+│   │   ├── opportunities.py   # 常駐機會清單（Phase 10 step-02）
+│   │   ├── factors.py         # 因子數值表 + CSV 匯出（Phase 10 step-03）
+│   │   ├── collector.py       # 市場蒐集員收件匣（Phase 10 step-04）
+│   │   ├── political.py       # 政治事件流 + 風險煞車（Phase 10 step-05）
+│   │   ├── promotion.py       # 董事會核准 Bot 上真錢（Phase 10 step-06）
+│   │   └── macro.py           # 總經序列查詢（Phase 11，FRED 資料地基）
 │   ├── models/            # SQLAlchemy 資料模型
-│   │   ├── bot.py         # Bot 模型
+│   │   ├── bot.py         # Bot 模型（含風控欄位 + 保護單 id + tracking 降級欄位）
 │   │   ├── trade.py       # 交易紀錄模型
 │   │   ├── strategy_preset.py # 策略方案（參數組合）
 │   │   ├── backtest_run.py    # 回測歷史（含 EV 指標 + 檢討摘要）
 │   │   ├── decision_log.py    # 決策審計軌跡（Phase 6 step-08，含沒成交但有決策的時點）
-│   │   └── portfolio_state.py # 組合權益峰值（Phase 6 step-09 回撤熔斷用，單列持久化）
+│   │   ├── portfolio_state.py # 組合權益峰值（Phase 6 step-09 回撤熔斷用，單列持久化）
+│   │   ├── automation_config.py # 模式 B 自動化規則（存 DB 可編輯，redesign P4）
+│   │   ├── strategy_knowledge.py # 策略知識庫（candidate→validated→curated，Phase 8）
+│   │   ├── opportunity.py     # 常駐探勘機會（含 OOS 指標，Phase 10）
+│   │   ├── factor_snapshot.py # 因子快照（Phase 10 step-03）
+│   │   ├── raw_strategy_find.py # 蒐集員 raw 素材（Phase 10 step-04）
+│   │   ├── political_event.py # 政治事件（Phase 10 step-05）
+│   │   └── macro_series.py    # 總經序列（FRED，Phase 11）
 │   ├── services/          # 業務邏輯
-│   │   ├── alpaca_client.py   # Alpaca API 封裝（延遲初始化）
+│   │   ├── alpaca_client.py   # Alpaca API 封裝（延遲初始化 + 雙閘 + 保護單/撤單）
+│   │   ├── market_data.py     # 統一資料源（回測=實盤同路，Phase 6）
+│   │   ├── bar_cache.py       # K 線快取
+│   │   ├── yfinance_client.py / fundamentals.py # yfinance 報價備源 / 基本面
 │   │   ├── backtest_engine.py # 回測引擎（含期望值 EV + 成本模型 + 隔日成交）
-│   │   ├── performance.py     # Bot 績效指標計算
+│   │   ├── vectorized_engine.py # 向量化回測（海選加速）
+│   │   ├── optimizer.py       # 全自動掃描（策略×參數網格，OOS EV 排名）
+│   │   ├── screener.py        # AI 海選漏斗（量能→情緒→EV）
+│   │   ├── analytics.py       # 延伸績效指標（Sharpe/Sortino/VaR/CVaR + tear sheet）
+│   │   ├── monte_carlo.py     # 蒙地卡羅壓力測試（bootstrap 重抽日報酬）
+│   │   ├── performance.py     # Bot 績效指標計算（含每回合報酬配對）
 │   │   ├── capital.py         # 組合層資金/購買力守門（Phase 6 step-05，純函式 plan_capital）
 │   │   ├── circuit_breaker.py # 組合回撤熔斷（Phase 6 step-09，只擋進不擋出）
-│   │   ├── notifier.py        # 通知服務（LINE 等）
+│   │   ├── risk_manager.py    # Bot 層止盈/止損/追蹤止損出場（Phase 4）
+│   │   ├── protective_orders.py # 券商端 GTC 保護單規劃（backlog H1）
+│   │   ├── heartbeat.py       # 每日心跳日報 + dead-man ping（backlog H2）
+│   │   ├── tracking.py        # tracking error 對帳 + 自動降級（backlog H3）
+│   │   ├── notifier.py        # 通知服務（LINE / Discord）
+│   │   ├── quote_stream.py    # Alpaca WebSocket 即時報價
+│   │   ├── llm.py             # LLM 客戶端（本機 Ollama，外送閘）
 │   │   ├── explorations.py    # 探討/檢討檔案記憶（INDEX 路標 + 內容檔，防路徑穿越）
 │   │   ├── regime_features.py # 市場狀態特徵（Phase 7 step-01）
 │   │   ├── regime.py          # 狀態分類（Phase 7 step-02）
@@ -94,7 +128,15 @@ Albee_Stock/
 │   │   ├── meta_label.py      # meta-labeling 二級過濾（Phase 7 step-05）
 │   │   ├── event_risk.py      # 事件風險閘（Phase 7 step-06，只煞車不猜方向）
 │   │   ├── validation.py      # 防過擬合框架（Phase 7 step-07：walk-forward/purged k-fold/層閘）
-│   │   └── layer_validation.py # 層驗證 harness（baseline-vs-candidate 樣本外比較各層加分）
+│   │   ├── layer_validation.py # 層驗證 harness（baseline-vs-candidate 樣本外比較各層加分）
+│   │   ├── strategy_generator.py # LLM 提案策略參數（Phase 8 step-02）
+│   │   ├── evolution.py       # 知識庫候選 OOS 驗證管線（Phase 8 step-04）
+│   │   ├── automation.py / automation_config.py # 模式 B 自動部署 + 規則（redesign P4）
+│   │   ├── opportunity_scan.py # 常駐探勘機會掃描（Phase 10 step-02）
+│   │   ├── collector.py       # 爬蟲蒐集員（RSS，Phase 10 step-04，預設關）
+│   │   ├── political.py       # Discord 政治員（煞車，Phase 10 step-05，bridge 預設關）
+│   │   ├── fred_client.py / macro_data.py / macro_features.py # FRED 總經資料地基（Phase 11）
+│   │   └── orderflow_proxy.py # 籌碼面 proxy 特徵（Phase 11）
 │   ├── strategies/        # 交易策略模組（每個策略一個檔案）
 │   │   ├── base.py        # 策略基底類別
 │   │   ├── ma_crossover.py    # 均線交叉
@@ -120,7 +162,8 @@ Albee_Stock/
 │       ├── BotAvatar.jsx      # Bot 頭像元件（深藍發光徽章）
 │       ├── LightweightChart.jsx  # 原生 K 線圖（lightweight-charts，取代舊 TradingView iframe，redesign P1）
 │       ├── pages/             # 各路由頁（Dashboard/Trades/BacktestRuns/Presets/Explorations/
-│       │                      #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/BacktestTools）
+│       │                      #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/BacktestTools/
+│       │                      #   Company/Opportunities→戰情頁內/Factors/Collector/Political/Promotion，Phase 10）
 │       ├── components/        # 畫面區塊元件
 │       │   ├── SidebarLayout  # 左側導覽外殼（Phase 9 step-01）
 │       │   ├── AssistantDrawer  # 思考助手全站抽屜（Phase 9 step-08，右下浮動鈕）
