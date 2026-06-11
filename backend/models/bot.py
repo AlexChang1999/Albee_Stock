@@ -97,5 +97,19 @@ class Bot(Base):
     # 提議達標證據摘要 / 退回理由（人看的一句話，詳細軌跡另寫 explorations 記憶）
     promotion_reason = Column(String, nullable=True)
 
+    # ----- tracking error 自動降級（維運安全軌 H3）-----
+    # 「回測 OOS 期望值 vs Paper 實跑」每日對帳：實跑連續低於門檻 → 自動停 Bot（人再決定）。
+    # 降級只停新決策，不平倉、不撤券商端保護單；單向不自動恢復（重啟走既有 /bots/{id}/start）。
+
+    # 連續違規次數（每日對帳：違規 +1、回到門檻上歸零；達 TRACKING_DEMOTE_AFTER 即降級）
+    tracking_breach_count = Column(Integer, nullable=False, default=0)
+
+    # 上次對帳時的完整回合數——回合數沒增加就跳過不計數，防同一批樣本連日重複扣分
+    tracking_last_rt_count = Column(Integer, nullable=False, default=0)
+
+    # 被自動降級的時間 / 原因（None = 沒被降級過；給前端與審計看）
+    demoted_at = Column(DateTime, nullable=True)
+    demote_reason = Column(String, nullable=True)
+
     def __repr__(self) -> str:
         return f"<Bot {self.id} {self.name} ({self.strategy} on {self.symbol})>"

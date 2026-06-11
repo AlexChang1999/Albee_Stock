@@ -310,6 +310,23 @@ class Settings:
     BROKER_STOP_ENABLED: bool = os.getenv("BROKER_STOP_ENABLED", "true").lower() in ("1", "true", "yes")
 
     # ========================================================
+    # tracking error 對帳 + 自動降級（維運安全軌 H3）
+    # ========================================================
+    # 每日比對「回測 OOS 期望值（% of 本金）vs Paper 實跑每回合報酬率（%）」。
+    # 實跑連續低於「OOS × 折扣」→ 自動停 Bot + 通知（不平倉、不撤券商端保護單，人再決定）。
+    # 這是「有晉升、沒降級」的補完——上線後唯一的品管。
+    #   - TRACKING_MIN_ROUND_TRIPS：Paper 完整回合數低於此值不對帳（樣本太少不冤殺）。
+    #   - TRACKING_WINDOW：取最近幾回合的平均報酬率來比（滾動窗）。
+    #   - TRACKING_DEMOTE_RATIO：門檻 = OOS expectancy × 此折扣（0.5 = 實跑掉到一半就算違規）。
+    #   - TRACKING_DEMOTE_AFTER：連續違規幾次才降級（只在有新回合的日子計數，寧鈍勿敏）。
+    #   - TRACKING_CHECK_HOUR：每日對帳的本機時刻（建議美股收盤後）。
+    TRACKING_MIN_ROUND_TRIPS: int = int(os.getenv("TRACKING_MIN_ROUND_TRIPS", "5"))
+    TRACKING_WINDOW: int = int(os.getenv("TRACKING_WINDOW", "10"))
+    TRACKING_DEMOTE_RATIO: float = float(os.getenv("TRACKING_DEMOTE_RATIO", "0.5"))
+    TRACKING_DEMOTE_AFTER: int = int(os.getenv("TRACKING_DEMOTE_AFTER", "3"))
+    TRACKING_CHECK_HOUR: int = int(os.getenv("TRACKING_CHECK_HOUR", "9"))
+
+    # ========================================================
     # 心跳 + dead-man switch（維運安全軌 H2）
     # ========================================================
     # 一人公司沒有同事盯系統：每日心跳日報（給人看）+ 對外側監測服務 ping（給機器看）。

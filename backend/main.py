@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI):
         # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
         bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)
+        # 維運安全軌 H3：tracking error 每日對帳（連續違規自動降級停 Bot，人再決定）
+        bot_manager.schedule_tracking_check(settings.TRACKING_CHECK_HOUR)
     finally:
         _db.close()
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")

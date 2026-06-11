@@ -34,6 +34,19 @@
 
 ### 新增
 
+- **維運安全軌 H3 Step 7：tracking error 評估 + 自動降級（「有晉升、沒降級」補完）**——
+  - 新增 `services/tracking.py`：`evaluate_tracking` 純函式（Paper 滾動近 10 回合
+    均報酬率% vs 機會清單 OOS expectancy_pct × 0.5 折扣；樣本 < 5 回合或無基準
+    不對帳不冤殺；OOS≤0 門檻夾 0）；`run_tracking_check` 每日對帳（只在「有新回合」
+    的日子計數防重複扣分；違規累計、回升歸零）；連續 3 次違規 → `_demote_bot`
+    自動停 Bot（is_active=False + 移除排程）+ DecisionLog(`demoted`) + 通知。
+  - **降級邊界（刻意保守）**：只停新決策，**不平倉、不撤券商端保護單**（持倉保護
+    不中斷，砍倉由人決定）；單向不自動恢復（重啟走既有 `POST /bots/{id}/start`）；
+    與 promotion 狀態機正交（approved_live 一樣會被降級停跑）。
+  - `bots` 加 `tracking_breach_count` / `tracking_last_rt_count` / `demoted_at` /
+    `demote_reason` 四欄（Alembic `c5d6e7f8a9b0`）；config 五鍵 `TRACKING_*`；
+    `bot_manager.schedule_tracking_check`（每日 `TRACKING_CHECK_HOUR` 時，預設 9）。
+    `tests/test_tracking.py` 十條全綠；全套件 397 passed。
 - **維運安全軌 H3 Step 6：tracking error 資料管**——把「可比的兩個數字」各自接出來：
   - **Paper 側**：`performance.compute_round_trip_returns(trades)` 純函式——
     平均成本法把交易紀錄配成完整回合，回每回合 `profit / entry_cost / return_pct /

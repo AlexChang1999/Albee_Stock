@@ -673,6 +673,25 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_tracking_check(self, hour: int) -> None:
+        """
+        掛上「tracking error 每日對帳」的定時工作（維運安全軌 H3）。
+
+        每天 hour 時（建議美股收盤後）比對各啟用 Bot 的「Paper 實跑 vs 回測 OOS」，
+        連續違規自動降級停 Bot + 通知（不平倉、不撤保護單，人再決定）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴
+        （tracking 反過來會用到 bot_manager.stop_bot）。
+        """
+        from backend.services.tracking import run_tracking_check
+
+        self.scheduler.add_job(
+            run_tracking_check,
+            "cron",
+            hour=hour,
+            id="tracking_check",
+            replace_existing=True,
+        )
+
     def schedule_collector_scan(self, interval_minutes: int) -> None:
         """
         掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。
