@@ -17,6 +17,40 @@
 
 ### 新增
 
+- **Bot 活動即時可視化（真跑偵測器 + 策略可視化）**——解決「前端無法確認機器人
+  是真跑還是假跑」：Bot 一輪執行 <1 秒、前端 30 秒輪詢，中間全黑盒。四件套全上：
+  - **後端事件管線**：新增 `backend/services/bot_activity.py`（BotActivityHub：
+    APScheduler 執行緒 → `loop.call_soon_threadsafe` → asyncio.Queue → 單一
+    forwarder task 扇出，保證事件順序；ring buffer 60 則供新連線回放）+
+    `backend/routers/bot_activity.py`（WebSocket `/ws/bot-activity`，連上即收）。
+    `bot_manager.py` 執行循環插樁 ~10 個 emit 點（cycle_start → fetch_data →
+    compute_signal → risk_check → decision → order_submitted → cycle_end），
+    decision/order 掛在 `_record_decision`/`_record_and_notify` 單一漏斗零遺漏。
+    鐵則：`emit()` 整段吞例外 + 無事件迴圈時 no-op——可視化壞了交易照常。
+  - **Dashboard 卡片即時動畫**：新增 `frontend/src/hooks/useBotActivity.js`
+    （播放佇列：資料 100% 真事件、每階段最少顯示 600ms 人眼才看得到）+
+    `frontend/src/components/BotActivityStatus.jsx`（抓數據脈衝 / 計算掃光 /
+    決策 chip 閃現 / 待機倒數「下輪 Xs」/ 休市靜態待機）。
+    **真跑偵測器**：倒數歸零 +15 秒沒等到新一輪 → 卡片亮紅「排程未回應」。
+    WS 斷線優雅降級回原輪詢顯示；動畫色全由 NEON 色票推導。
+  - **決策即時流**：新增 `GET /bots/decisions/recent`（跨 Bot 最近決策播種）+
+    `frontend/src/components/DecisionFeed.jsx`：每輪決策（含「無交叉訊號，觀望」）
+    即時滑入 Dashboard，像看機器人的思考日誌。action 標籤/配色映射抽到
+    `frontend/src/utils/decisionMeta.js` 三處共用（DecisionsPage 改 import）。
+  - **策略視角圖表**：新增 `backend/services/indicator_overlays.py`（策略名+參數 →
+    指標序列：MA 雙線/布林三軌/唐奇安通道主圖疊線；MACD/RSI/KD/%R/ROC/ADX 振盪器
+    副圖含超買超賣參考線；公式照抄各策略檔、9 策略類零修改，composite 明確回空）+
+    `GET /bots/{id}/chart-data`（K 線+指標同一份 df 保證對齊，markers 含 TradeLog
+    真實成交 ▲▼ 與可開關的 DecisionLog 觀望點）。`LightweightChart.jsx` 加
+    candles/markers/overlays/pane 四個選用 props（v5 `createSeriesMarkers` plugin +
+    paneIndex 副圖；不傳 = 舊行為零影響），新增
+    `frontend/src/components/BotStrategyChart.jsx` 掛上 Dashboard。
+  - 測試：`tests/test_bot_activity.py`（執行緒橋保序/回放/插樁序列/hub 炸掉不影響
+    交易，11 例）、`tests/test_indicator_overlays.py`（映射覆蓋全註冊策略/格式/params
+    覆寫，6 例）、`tests/test_decision_log.py` 補 recent 端點 1 例；前端
+    `useBotActivity.test.jsx`（播放節奏/stale/feed，5 例）+ `BotActivityStatus` /
+    `DecisionFeed` / `BotStrategyChart` 元件測試 14 例。後端 466 + 前端 132 全綠。
+
 - **Backlog F 收尾：`ui-ux-pro-max` skill CLI 通電**——從上游開源 repo
   [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
   （MIT）vendor `scripts/`（search.py/core.py/design_system.py，純 stdlib 免依賴）+

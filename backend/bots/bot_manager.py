@@ -40,6 +40,7 @@ from backend.models.decision_log import (
 )
 from backend.services import market_data
 from backend.services.alpaca_client import alpaca_client
+from backend.services.bot_activity import emit as emit_activity, safe_float
 from backend.services.circuit_breaker import check_breaker
 from backend.services.notifier import notify
 from backend.services.protective_orders import (
@@ -245,6 +246,16 @@ def _record_decision(bot, signal: str, reason: str, price, action: str) -> None:
     連「沒成交但有決策」的時點都記（觀望 / 續抱 / 休市 / 購買力不足 / 熔斷），
     讓自動跑真錢的系統可事後查驗每個決定。寫入失敗不可影響交易主流程，故吞例外。
     """
+    # 這裡是所有決策分支的單一漏斗 → 順手發即時事件給前端可視化（fire-and-forget）
+    emit_activity(
+        bot, "decision", reason,
+        decision={
+            "signal": signal,
+            "action": action,
+            "reason": reason,
+            "price": safe_float(price),
+        },
+    )
     db = SessionLocal()
     try:
         db.add(DecisionLog(
@@ -302,14 +313,18 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
         return
 
     try:
+        emit_activity(bot, "cycle_start", "醒來，開始這一輪檢查")
+
         # --- 1. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
         if not ignore_market_hours and not alpaca_client.is_market_open():
             print(f"[{bot.name}] 美股休市中，本次跳過。")
             _record_decision(bot, Signal.HOLD, "美股休市中", None, ACTION_SKIPPED_MARKET_CLOSED)
             _mark_checked(bot)  # 有跑這一輪（只是休市沒動作），仍更新檢查時間
+            _emit_cycle_end(bot, "skipped_market_closed")
             return
 
         # --- 2. 查目前持倉與現價 ---
+        emit_activity(bot, "fetch_data", f"查詢 {bot.symbol} 持倉與現價")
         position = alpaca_client.get_position(bot.symbol)
         current_price = alpaca_client.get_latest_price(bot.symbol)
 
@@ -324,10 +339,28 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
             _handle_flat(bot, current_price)
 
         _mark_checked(bot)  # 這一輪成功跑完，記錄檢查時間
+        _emit_cycle_end(bot, "ok")
 
     except Exception as e:
         # 單一 Bot 出錯不應影響其他 Bot，這裡接住並通知
         notify(f"[{bot.name}] 執行時發生錯誤：{e}")
+        _emit_cycle_end(bot, "error", detail=str(e))
+
+
+def _emit_cycle_end(bot, status: str, detail: str = "") -> None:
+    """發「這一輪結束」事件：帶下一輪間隔秒數，前端據此倒數 + 偵測排程失聯。
+
+    next_run_in_sec：Bot 啟用中才有值（排程會再來）；手動執行（/run）且未啟用
+    時為 None，前端不倒數。getattr 防呆：測試假物件沒這些欄位也不炸。
+    """
+    is_active = bool(getattr(bot, "is_active", False))
+    interval = getattr(bot, "check_interval_sec", None) or 60
+    emit_activity(
+        bot, "cycle_end", detail,
+        status=status,
+        next_run_in_sec=interval if is_active else None,
+        is_active=is_active,
+    )
 
 
 def _handle_holding(bot: Bot, position, current_price: float) -> None:
@@ -344,6 +377,7 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         _persist_peak(bot, peak)
 
     # --- 風控出場判斷（止損 → 追蹤止損 → 止盈）---
+    emit_activity(bot, "risk_check", "風控檢查中（止損→追蹤止損→止盈）")
     should_exit, exit_reason = check_exit(
         entry_price=entry_price,
         current_price=current_price,
@@ -463,9 +497,11 @@ def _run_strategy(bot: Bot):
         return _run_adaptive_strategy(bot)
 
     days = required_lookback_days(bot.strategy, bot.params or {})
+    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
+    emit_activity(bot, "compute_signal", f"計算 {bot.strategy} 策略訊號")
     strategy = get_strategy(bot.strategy, bot.params or {})
     signal, reason = strategy.generate_signal(df)
 
@@ -500,11 +536,13 @@ def _run_adaptive_strategy(bot: Bot):
     from backend.services.meta_label import should_take
 
     days = settings.REGIME_MAP_DAYS
+    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線（自適應）")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
 
     try:
+        emit_activity(bot, "compute_signal", "自適應：辨識市場狀態、挑選策略中")
         regime_map = get_regime_strategy_map(bot.symbol)
     except Exception as e:
         return Signal.HOLD, f"自適應：對照表建立失敗（{e}），保守觀望"
@@ -534,6 +572,12 @@ def _run_adaptive_strategy(bot: Bot):
 
 def _record_and_notify(bot, side, qty, price, order, reason) -> None:
     """把交易記到資料庫並發通知。"""
+    # 這裡是所有成交的單一漏斗 → 順手發即時事件給前端可視化（fire-and-forget）
+    emit_activity(
+        bot, "order_submitted",
+        f"{'買進' if side == 'buy' else '賣出'} {qty} 股",
+        order={"side": side, "qty": safe_float(qty)},
+    )
     db = SessionLocal()
     try:
         log = TradeLog(

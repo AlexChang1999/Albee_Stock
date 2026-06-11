@@ -27,6 +27,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import BotAvatar from "../BotAvatar";
+import BotActivityStatus, { ActivityKeyframes } from "./BotActivityStatus";
 import { statRows, formatCheckedAgo, holdingText } from "../utils/botStats";
 
 export default function BotList({
@@ -37,9 +38,12 @@ export default function BotList({
   onEdit,
   onDelete,
   onShowDecisions,
+  activityByBot = null, // useBotActivity 的即時活動（WS 沒連上時為 null → 不顯示活動條）
 }) {
   return (
     <Card sx={{ mb: 3 }}>
+      {/* 活動動畫的 keyframes 全域註冊一次（各卡片共用） */}
+      <ActivityKeyframes />
       <CardContent>
         <Typography variant="h6" gutterBottom>
           Bot 列表（{bots.length}）
@@ -93,11 +97,20 @@ export default function BotList({
                   gap: 1,
                 }}
               >
-                <BotAvatar
-                  seed={`${b.id}-${b.name}`}
-                  size={56}
-                  active={b.is_active}
-                />
+                {/* 抓數據中 → 頭像外圈跟著脈衝（真事件驅動，不是裝飾） */}
+                <Box
+                  sx={
+                    activityByBot?.[b.id]?.phase === "fetch_data"
+                      ? { borderRadius: "50%", animation: "bot-pulse 1s ease-out infinite" }
+                      : undefined
+                  }
+                >
+                  <BotAvatar
+                    seed={`${b.id}-${b.name}`}
+                    size={56}
+                    active={b.is_active}
+                  />
+                </Box>
                 <Typography
                   variant="subtitle2"
                   noWrap
@@ -119,6 +132,9 @@ export default function BotList({
                 <Typography variant="caption" color="text.secondary" noWrap>
                   {holdingText(b.peak_price)} · {formatCheckedAgo(b.last_checked_at)}
                 </Typography>
+
+                {/* 即時活動條：此刻在抓數據/計算/決策/倒數/失聯（WS 真事件驅動） */}
+                <BotActivityStatus activity={activityByBot?.[b.id]} />
 
                 {/* 績效指標（依該 Bot 的真實交易紀錄計算；沒交易時顯示 "-"） */}
                 <Box
