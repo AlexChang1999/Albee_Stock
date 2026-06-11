@@ -13,8 +13,8 @@
 > - 程式碼加**中文註解**；策略模組鬆耦合；前端顏色吃 `theme.js`（`palette`/`NEON`），**不寫死 hex**。
 > - 每次有意義變更更新 `CHANGELOG.md`「未發布」區塊。
 
-最後更新：2026-06-10。狀態基準：`origin/develop`（Phase 11 全落地，353 tests 過、1 個 pre-existing 失敗）。
-完成順序：B -> C -> A -> D -> E -> F -> G
+最後更新：2026-06-11。狀態基準：`origin/develop`（Phase 11 全落地 + Backlog A/B/C 收尾完成，全測綠）。
+完成順序（歷史）：B -> C -> A 已完成；剩餘建議：H -> D -> E -> F -> G
 
 ---
 
@@ -22,15 +22,17 @@
 
 | # | 項目 | 類型 | 阻塞？ | 價值 |
 |---|------|------|--------|------|
-| A | Phase 11 macro 層真資料驗證（step-05 收尾） | 驗證/決策 | 待 FRED key | 高（決定一層去留） |
-| B | `/positions` 端點 + 前端持倉/未實現損益卡 | 後端+前端 | 無 | **最高（最大缺口）** |
-| C | `test_run_dry_run` pre-existing 失敗修掉 | bugfix | 無 | 中（CI 乾淨） |
+| A | Phase 11 macro 層真資料驗證（step-05 收尾） | 驗證/決策 | — | ✅ 已完成（2026-06-11，誠實砍除） |
+| B | `/positions` 端點 + 前端持倉/未實現損益卡 | 後端+前端 | — | ✅ 已完成（2026-06-11，`13ef4bb`） |
+| C | `test_run_dry_run` pre-existing 失敗修掉 | bugfix | — | ✅ 已完成（2026-06-11，`13ef4bb`） |
+| H | 維運安全軌（真錢前必備：券商端止損/心跳/自動降級） | 後端+設定 | 無 | **最高（電腦掛掉直接賠錢的洞）** |
 | D | Phase 12：策略自動探勘入庫管線 | 大 feature | 無 | 中（長線） |
 | E | 前端 UX 零碎：亮色模式/排行榜排序/Skeleton/補測試 | 前端 | 無 | 低~中 |
 | F | `ui-ux-pro-max` skill CLI（`search.py`/CSV） | 工具 | 無 | 低 |
 | G | 文件漂移：`workflow-diagrams.md`/`CLAUDE.md` 結構樹停在 Phase 6–7 | 文件 | 無 | 低 |
 
-**建議先做順序**：B（最大缺口、無阻塞）→ C（小、CI 乾淨）→ A（需先有 FRED key）→ D/E/F/G 依需求挑。
+**建議先做順序**：H（真錢前必備、無阻塞，出自
+[`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) 第四部分優先序）→ D/E/F/G 依需求挑。
 
 ---
 
@@ -74,7 +76,12 @@
 
 ---
 
-## B. `/positions` 端點 + 前端持倉卡（最高價值）★
+## B. `/positions` 端點 + 前端持倉卡（最高價值）★ ✅ 已完成（2026-06-11）
+
+> **結論：已落地**（commit `13ef4bb`）。後端 `alpaca_client.list_positions()` +
+> 唯讀 `GET /positions`（無金鑰優雅回 `[]`）+ `tests/test_positions.py`；
+> 前端 `api.getPositions()` + `PositionsCard.jsx`（含損益符號色、吃 theme）+
+> RTL 測試，已掛進 Dashboard。詳見 `CHANGELOG.md`。以下原始步驟留作歷史紀錄。
 
 ### 現況
 `backend/services/alpaca_client.py:91` 只有 `get_position(symbol)`（單檔，延遲初始化 + try 接住例外回 None）。
@@ -120,7 +127,10 @@ cd frontend && npm run test
 
 ---
 
-## C. 修 `test_run_dry_run` pre-existing 失敗
+## C. 修 `test_run_dry_run` pre-existing 失敗 ✅ 已完成（2026-06-11）
+
+> **結論：已修復**（commit `13ef4bb`，與 B 同一 PR）。全測 `pytest tests -q` 0 失敗。
+> 以下原始步驟留作歷史紀錄。
 
 ### 現況
 `tests/test_automation.py::test_run_dry_run` 在 clean develop 上就失敗（`planned=[]`——AAPL
@@ -136,6 +146,99 @@ cd frontend && npm run test
 - `venv\Scripts\python.exe -m pytest tests\test_automation.py -q` 綠。
 - 全 `venv\Scripts\python.exe -m pytest tests -q` **0 失敗**（注意：跑 `tests` 目錄，別跑 bare pytest——
   `backend/test_connection.py` 會在 import 時連 Alpaca 並 `SystemExit` 觸發 INTERNALERROR）。
+
+---
+
+## H. 維運安全軌（真錢前必備）★
+
+> 出自 [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md)
+> 第三/四部分：缺口 1（止損掛本機輪詢最危險）、缺口 2（無心跳監控）、缺口 3+4（有晉升沒降級、
+> 無 tracking error 對帳）。三條鏈彼此獨立：H1（Step 1→2→3）、H2（Step 4→5）、H3（Step 6→7）。
+> 設計決策與完整 step 契約見本節；一 step 一聚焦 commit。
+
+### H1. 券商端止損（Step 1~3）——電腦掛掉止損仍有效
+
+**設計**：券商端為主、本機為備。進場仍走 `submit_market_order`（市價、雙閘不碰），
+成交後另掛一張 **GTC 保護賣單**：`trailing_stop_pct` 有設用 Alpaca 原生 trailing stop
+（`trail_percent`，券商端自追盤中最高價）；否則 `stop_loss_pct` 用 stop 單。
+本機 `check_exit` 保留當備援；本機出場**先撤保護單再賣**（撤不掉＝券商端已成交→回填）。
+每輪 reconcile 自癒。v1 **不做止盈託管**（OCO 複雜、止盈晚 60 秒不致命）。
+**不改回測引擎**：Bot 層 TP/SL 本來就不在回測裡，盤中觸發/跳空落差由 H3 tracking error 量化。
+
+**四個陷阱（實作必處理）**：
+1. Alpaca stop/trailing 只支援**整股** → 掛保護單的 Bot 進場改 `whole_share_qty`（floor；0 股→DecisionLog 跳過）。
+2. 券商端掛著 sell stop 時股數被保留，本機直接市價賣會被拒 → **cancel-before-sell**。
+3. 券商端觸發成交本機不知道 → `_settle_broker_exit` 回填 TradeLog/DecisionLog（否則 H3 資料源錯）。
+4. 保護單在進場單成交前掛會失敗 → 掛單 best-effort，失敗交下一輪 reconcile。
+
+- **Step 1（`services/alpaca_client.py` + `tests/test_safety_valve.py`）**：
+  抽 `_assert_live_allowed()`（雙閘共用）；加 `submit_stop_order(symbol, qty, stop_price,
+  side="sell", time_in_force="gtc")`、`submit_trailing_stop_order(symbol, qty, trail_percent, ...)`、
+  `cancel_order(order_id)->bool`（已成交/查無回 False 不丟例外）、`get_order(order_id)`、
+  `get_open_orders(symbol=None)->list`（失敗回 `[]`）。測試：雙閘對三種單型一致。
+- **Step 2（新 `services/protective_orders.py` + `models/bot.py` + Alembic + 新測試）**：
+  純函式 `whole_share_qty(trade_amount, price)->int`、
+  `plan_protective_order(entry_price, *, stop_loss_pct, trailing_stop_pct)->dict|None`
+  （trailing 優先；stop_price round 2 位）、`order_matches_plan(...)->bool`（容差比對）。
+  `bots` 加 `protective_order_id`（String nullable）。
+- **Step 3（`bots/bot_manager.py` + `config.py` + `tests/test_bot_manager.py`）**：
+  `BROKER_STOP_ENABLED`（**預設 true**）。四個內部函式：`_place_protective_order`（進場後掛、
+  id 落 DB、失敗 notify 不擋主流程）、`_ensure_protective_order`（`_handle_holding` 開頭自癒）、
+  `_cancel_protective_order`（本機賣前撤；False→放棄本機賣）、`_settle_broker_exit`
+  （空手+order id→查 filled→補 TradeLog/DecisionLog+notify+清 peak/id）。
+  `_handle_flat` 整股取整；`BROKER_STOP_ENABLED=False` 行為與現狀完全一致（回歸測試保證）。
+
+**DoD**：全測綠；Paper 手動驗——建帶 stop_loss 的 Bot → Alpaca 後台見 GTC stop 單 →
+**殺後端進程，單仍掛著** → 重啟 reconcile 不重複掛。
+
+### H2. 心跳 + dead-man switch（Step 4~5）——系統死了會有人知道
+
+**設計**：兩個 job 分工——每日日報（給人看）+ 每 30 分外側 ping（給機器看）。
+外側警報用 **healthchecks.io 免費版**（period=1h、grace=1h；警報必須在系統外側）。
+
+- **Step 4（新 `services/heartbeat.py` + `config.py` + `bot_manager.py` + `main.py` + 新測試）**：
+  `build_heartbeat_message(...)` 純函式（💓 活著｜持倉 X 檔｜啟用 Bot Y｜今日決策 N｜權益 $Z）；
+  `run_daily_heartbeat()`（查詢失敗以 '?' 帶過，**心跳永不崩**、不依賴開市）；
+  `ping_deadman()`（GET timeout=10；URL 空直接 return）。config：`HEARTBEAT_PING_URL`（空=關）/
+  `HEARTBEAT_HOUR`（8）/ `HEARTBEAT_PING_INTERVAL_MIN`（30）。排程仿 `schedule_auto_deploy` 體例。
+- **Step 5（`.env.example` + 新 `docs/guides/deadman-switch-runbook.md` + `docs/README.md` 索引）**：
+  healthchecks.io 註冊/建 check/綁 Discord 步驟；警報排查清單；**每月演練**
+  （停後端 2h 驗警報真響——沒演練過的 dead-man switch 等於沒有）。不把後端 port 暴露公網。
+
+**DoD**：手動 `run_daily_heartbeat()` Discord 收到日報；實際演練停後端 → 收到外側警報。
+
+### H3. tracking error 對帳 + 自動降級（Step 6~7）——上線後唯一的品管
+
+**設計**：Paper 每回合**已實現報酬率%**（滾動近 10 回合均值，≥5 回合才比）vs
+Opportunity 的 `oos_expectancy_pct`（**用 % 不用美元**——回測複利 initial_cash=10000、
+Paper 固定 trade_amount，美元不可比）。`paper < oos × 0.5` 為一次違規（只在有新回合的日子計數）；
+**連續 3 次→自動停 Bot**（is_active=False + 移除排程 + DecisionLog + notify）。
+**不平倉、不撤保護單**（持倉保護不中斷，砍倉由人決定）；降級單向不自動恢復；與 promotion 狀態機正交。
+
+- **Step 6（`services/performance.py` + `services/optimizer.py` + `models/opportunity.py` +
+  `services/opportunity_scan.py` + Alembic + `tests/test_performance.py`）**：
+  純函式 `compute_round_trip_returns(trades)->list[dict]`（平均成本法配對，回每回合
+  profit/entry_cost/return_pct/closed_at）；optimizer 結果加
+  `metrics["oos_expectancy_pct"] = oos_m["expectancy_pct"]`（`optimizer.py:167-173` 旁）；
+  `opportunities` 加 `oos_expectancy_pct`（Float nullable），scan 讀寫帶上。
+  不改 `compute_bot_stats` 既有輸出；不回填歷史 Opportunity（掃描自然更新）。
+- **Step 7（新 `services/tracking.py` + `models/bot.py` 四欄 + Alembic + `config.py` +
+  `models/decision_log.py` + `bot_manager.py` + `main.py` + 新測試）**：
+  bots 加 `tracking_breach_count`（Int default 0）/ `tracking_last_rt_count`（Int default 0）/
+  `demoted_at`（DateTime nullable）/ `demote_reason`（String nullable）。
+  純函式 `evaluate_tracking(returns_pct, oos_expectancy_pct, *, min_round_trips=5, window=10,
+  demote_ratio=0.5)->dict`（comparable=False 不冤殺；oos≤0 視門檻 0）；
+  `run_tracking_check()` 每日跑（回合沒增加跳過；違規累計、回升歸零）；`_demote_bot`。
+  config：`TRACKING_MIN_ROUND_TRIPS=5` / `TRACKING_WINDOW=10` / `TRACKING_DEMOTE_RATIO=0.5` /
+  `TRACKING_DEMOTE_AFTER=3` / `TRACKING_CHECK_HOUR=9`。`decision_log.py` 加 `ACTION_DEMOTED = "demoted"`。
+
+**DoD**：全測綠（monkeypatch 驗連 3 次新樣本違規才降、降級後 cancel 未被呼叫）；Alembic `upgrade head` 過。
+
+### 測試指令（全項通用）
+```powershell
+venv\Scripts\python.exe -m pytest tests -q   # 跑 tests 目錄，勿 bare pytest
+venv\Scripts\alembic.exe upgrade head        # 動 schema 的 step
+```
 
 ---
 

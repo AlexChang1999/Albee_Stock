@@ -34,6 +34,13 @@
 
 ### 修正
 
+- **文件對齊（純文件、零程式）**——`docs/remaining-work-backlog.md` 補標 Backlog B/C
+  已完成（commit `13ef4bb`：`GET /positions`+持倉卡、`test_run_dry_run` 修復），總表與
+  建議順序同步更新；新增「**H. 維運安全軌（真錢前必備）**」項（券商端止損 / 心跳+dead-man
+  switch / tracking error 對帳+自動降級，三鏈七 step 寫到可餵 AI 的契約詳細度）。
+  另修 `docs/reference/one-person-company-gap-analysis.md` 第五部分與 CHANGELOG 不符的
+  描述：被砍的是 macro（Δ=-101.68），adaptive 實為 worth=True（Δ=+17.72）但預設關未上線、
+  kelly 樣本不足擱置，上線的是 meta-labeling。
 - **`database.py` 換 PostgreSQL 會崩**——`connect_args={"check_same_thread": False}` 是
   SQLite 專屬參數，硬塞給 Postgres 報 `invalid connection option "check_same_thread"`。
   改成依 `DATABASE_URL` 方言判斷只在 SQLite 才加，兌現「換 PostgreSQL 只改 .env」承諾。

@@ -168,8 +168,10 @@ Paper 階段拿實際成交 vs 回測假設對帳（呼應缺口 4 tracking erro
 - **不用交季報**：能忍短期難看、換長期 EV。
 
 **「複雜公式」的真相——你自己的 repo 已親身證明**：
-Phase 7 的 adaptive 選策略、kelly 凱利部位，Phase 11 的 macro overlay，
-**全在 OOS 真資料驗證被砍**（macro Δ=-101.68）；活下來的只有 meta-labeling 一層。
+Phase 11 的 macro overlay 在 OOS 真資料驗證被砍（worth=False、folds=207、Δ=-101.68）；
+同次驗證 adaptive 選策略雖 worth=True（folds=45、Δ=+17.72）但預設仍關、未上線；
+kelly 凱利 folds=1 < 3 樣本不足不採信、擱置；真正驗證過關且上線的只有
+meta-labeling 一層（folds=207、Δ=+38.88）。（數據出處：`CHANGELOG.md` Backlog A 收尾紀錄。）
 公式越複雜 = 可 fit 的自由度越多 = 過擬合面積越大。
 大戶的優勢從來不是公式長度，是**資料品質與執行成本**。
 
