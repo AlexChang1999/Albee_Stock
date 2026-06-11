@@ -24,7 +24,13 @@
 //   - 放開時把新價格換算成百分比，呼叫 onPriceLineDrag 通知父元件存回後端
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createChart, CandlestickSeries, LineStyle } from "lightweight-charts";
+import {
+  createChart,
+  createSeriesMarkers,
+  CandlestickSeries,
+  LineSeries,
+  LineStyle,
+} from "lightweight-charts";
 
 import { api } from "./api";
 import { useLiveQuote } from "./hooks/useLiveQuote";
@@ -35,12 +41,20 @@ export default function LightweightChart({
   height = 500,
   priceLines = [],
   onPriceLineDrag,
+  // ----- 策略可視化（Stage 4）三個選用 props：不傳 = 行為與舊版完全一致 -----
+  candles = null, // 外部餵 K 線（/bots/{id}/chart-data 回的）；null = 自己抓 /bars
+  markers = null, // 買賣/決策標記（已轉成 lightweight-charts marker 格式、依時間排序）
+  overlays = null, // 主圖疊線 [{ id, title, color(hex), data: [{time,value}] }]
+  pane = null, // 振盪器副圖 { title, series: [...同上], levels: [數值參考線] }
 }) {
   const containerRef = useRef(null); // 圖表掛載的 <div>
   const chartRef = useRef(null); // chart 實例
   const seriesRef = useRef(null); // 蠟燭 series 實例
   const lastBarRef = useRef(null); // 最後一根 K 棒（即時報價要更新它）
   const priceLineRefs = useRef([]); // 已畫上去的水位線物件，方便之後清掉
+  const markersPluginRef = useRef(null); // v5 marker plugin（買賣標記）
+  const overlaySeriesRef = useRef([]); // 主圖疊線 series（換 Bot 時要清掉重畫）
+  const paneSeriesRef = useRef([]); // 副圖 series（同上）
 
   // 拖曳用：每條可編輯線對應的「線物件 + 中繼資料 + 目前價格」，順序與下面的
   // editableLines 一致。把手 DOM、目前價格都用 ref 存，拖曳時直接改 DOM/物件，
@@ -93,6 +107,8 @@ export default function LightweightChart({
 
     chartRef.current = chart;
     seriesRef.current = series;
+    // v5 的買賣標記改成 plugin 形式（不是 v4 的 series.setMarkers）：掛載時建一次
+    markersPluginRef.current = createSeriesMarkers(series, []);
 
     // 容器大小改變時（拖曳調整高度 / 視窗縮放），讓圖表跟著縮放
     const ro = new ResizeObserver(() => {
@@ -112,14 +128,28 @@ export default function LightweightChart({
       lastBarRef.current = null;
       priceLineRefs.current = [];
       editableObjsRef.current = [];
+      markersPluginRef.current = null;
+      overlaySeriesRef.current = [];
+      paneSeriesRef.current = [];
     };
   }, [height]);
 
-  // ---------- 2. 載入歷史蠟燭（symbol 改變時重抓）----------
+  // ---------- 2. 載入歷史蠟燭（symbol 改變時重抓；外部餵 candles 時直接用）----------
   useEffect(() => {
     let cancelled = false;
     const series = seriesRef.current;
-    if (!series || !symbol) return;
+    if (!series) return;
+
+    // 外部餵資料模式（策略視角圖：candles 來自 /bots/{id}/chart-data，
+    // 與指標同一份 df 算出，保證時間軸對齊）→ 不自己抓 /bars
+    if (candles) {
+      series.setData(candles);
+      lastBarRef.current = candles.length ? candles[candles.length - 1] : null;
+      chartRef.current?.timeScale().fitContent();
+      setStatus(candles.length ? "ok" : "empty");
+      return;
+    }
+    if (!symbol) return;
 
     setStatus("loading");
     api
@@ -143,7 +173,98 @@ export default function LightweightChart({
     return () => {
       cancelled = true;
     };
-  }, [symbol]);
+  }, [symbol, candles]);
+
+  // ---------- 2b. 買賣/決策標記（markers 改變時重設）----------
+  useEffect(() => {
+    markersPluginRef.current?.setMarkers(markers || []);
+  }, [markers]);
+
+  // ---------- 2c. 主圖指標疊線（overlays 改變時清舊畫新）----------
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    overlaySeriesRef.current.forEach((s) => {
+      try {
+        chart.removeSeries(s);
+      } catch {
+        // series 已隨 chart 卸載 → 略過
+      }
+    });
+    overlaySeriesRef.current = [];
+    (overlays || []).forEach((ov) => {
+      // paneIndex 0 = 主圖（與 K 線同軸）
+      const s = chart.addSeries(
+        LineSeries,
+        {
+          color: ov.color,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          title: ov.title || "",
+        },
+        0
+      );
+      s.setData(ov.data || []);
+      overlaySeriesRef.current.push(s);
+    });
+  }, [overlays]);
+
+  // ---------- 2d. 振盪器副圖（pane 改變時清舊畫新）----------
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    paneSeriesRef.current.forEach((s) => {
+      try {
+        chart.removeSeries(s);
+      } catch {
+        // series 已隨 chart 卸載 → 略過
+      }
+    });
+    paneSeriesRef.current = [];
+    if (!pane || !pane.series?.length) return;
+
+    pane.series.forEach((ln, i) => {
+      // paneIndex 1 = 第一次 addSeries 會自動建出副圖區
+      const s = chart.addSeries(
+        LineSeries,
+        {
+          color: ln.color,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: true,
+          title: ln.title || "",
+        },
+        1
+      );
+      s.setData(ln.data || []);
+      // 水平參考線（超買/超賣/零軸）掛在第一條 series 上即可
+      if (i === 0) {
+        (pane.levels || []).forEach((lvl) => {
+          s.createPriceLine({
+            price: lvl,
+            color: "rgba(154,169,194,0.5)",
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: "",
+          });
+        });
+      }
+      paneSeriesRef.current.push(s);
+    });
+
+    // 副圖高度調成主圖的約 1/3（API 不存在時靜默略過，不影響畫圖）
+    try {
+      const panes = chart.panes();
+      if (panes[1]?.setStretchFactor) {
+        panes[0].setStretchFactor(3);
+        panes[1].setStretchFactor(1);
+      }
+    } catch {
+      // 版本差異 → 用預設比例
+    }
+  }, [pane]);
 
   // ---------- 3. 即時報價：更新最後一根 K 棒 ----------
   useEffect(() => {

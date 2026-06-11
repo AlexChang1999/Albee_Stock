@@ -27,7 +27,8 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity
+from backend.services.bot_activity import hub as activity_hub
 
 
 def _resume_active_bots() -> None:
@@ -56,6 +57,8 @@ def _resume_active_bots() -> None:
 async def lifespan(app: FastAPI):
     # --- 啟動時 ---
     init_db()  # 把資料庫的表建好（如果還沒建）
+    # Bot 活動事件中樞接上事件迴圈（必須在恢復排程之前——排程一接回來就會發事件）
+    activity_hub.attach_loop()
     _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
     # 模式 B：掛上盤前自動部署的每日定時工作（時刻讀 DB 規則；是否真的部署仍由 enabled 總開關控制）
     _db = SessionLocal()
@@ -152,6 +155,7 @@ app.include_router(orders.router)
 app.include_router(presets.router)
 app.include_router(chat.router)
 app.include_router(quotes.router)
+app.include_router(bot_activity.router)
 app.include_router(fundamentals.router)
 app.include_router(bars.router)
 app.include_router(recommendations.router)

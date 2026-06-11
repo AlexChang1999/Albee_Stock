@@ -167,6 +167,12 @@ export const api = {
   // 某 Bot 最近的決策紀錄（含沒成交的觀望/跳過），依時間倒序
   getBotDecisions: (botId, limit = 50) =>
     request(`/bots/${botId}/decisions?limit=${limit}`),
+  // 跨所有 Bot 的最近決策（Dashboard 決策即時流開頁播種用）
+  getRecentDecisions: (limit = 30) =>
+    request(`/bots/decisions/recent?limit=${limit}`),
+  // 策略視角圖表資料（K 線 + 指標疊圖 + 買賣/觀望標記，同一份 df 保證對齊）
+  getBotChartData: (botId, days = 120) =>
+    request(`/bots/${botId}/chart-data?days=${days}`),
 
   // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
   // 路標清單（每筆 run_id / file / strategy / symbol / summary）

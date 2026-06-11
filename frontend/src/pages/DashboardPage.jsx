@@ -13,11 +13,17 @@ import AccountCard from "../components/AccountCard";
 import PositionsCard from "../components/PositionsCard";
 import BotList from "../components/BotList";
 import AutomationPanel from "../components/AutomationPanel";
+import DecisionFeed from "../components/DecisionFeed";
+import BotStrategyChart from "../components/BotStrategyChart";
+import { useBotActivity } from "../hooks/useBotActivity";
 
 export default function DashboardPage() {
   const { account, bots, loading, onToggleActive, onRun, onEdit, onDelete, reload } =
     useOutletContext();
   const navigate = useNavigate();
+  // Bot 即時活動（WS 真事件）：卡片動畫吃 activityByBot、決策流吃 feed；
+  // 斷線時卡片傳 null 優雅降級回輪詢顯示
+  const { connected, activityByBot, feed } = useBotActivity();
 
   return (
     <Box>
@@ -45,7 +51,12 @@ export default function DashboardPage() {
         onEdit={onEdit}
         onDelete={onDelete}
         onShowDecisions={() => navigate("/decisions")}
+        activityByBot={connected ? activityByBot : null}
       />
+      {/* 決策即時流：每輪決策（含觀望）即時滑入，像看機器人的思考日誌 */}
+      <DecisionFeed feed={feed} />
+      {/* 策略視角：選 Bot 看指標疊圖 + 真實買賣 ▲▼ 標記（策略可視化） */}
+      <BotStrategyChart bots={bots} />
     </Box>
   );
 }

@@ -23,21 +23,8 @@ import {
 } from "@mui/material";
 import { useOutletContext } from "react-router-dom";
 import { api } from "../api";
-import { NEON } from "../theme";
-
-// action → 顯示標籤 + 配色（涵蓋有成交與沒成交的決策）
-const ACTION_META = {
-  bought: { label: "買進", color: NEON.green },
-  sold: { label: "賣出", color: NEON.red },
-  hold: { label: "觀望/續抱", color: "text.secondary" },
-  skipped_market_closed: { label: "休市跳過", color: NEON.magenta },
-  skipped_no_buying_power: { label: "購買力不足", color: NEON.magenta },
-  skipped_circuit_breaker: { label: "熔斷跳過", color: NEON.magenta },
-};
-
-function actionMeta(action) {
-  return ACTION_META[action] || { label: action || "—", color: "text.secondary" };
-}
+// action → 標籤/配色映射抽到 utils 共用（卡片動畫、決策流也用同一套）
+import { actionMeta } from "../utils/decisionMeta";
 
 export default function DecisionsPage() {
   const { bots } = useOutletContext();

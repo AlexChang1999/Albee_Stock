@@ -15,9 +15,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.config import settings
 from backend.database import get_db
 from backend.models import Bot, TradeLog, DecisionLog
 from backend.bots.bot_manager import bot_manager, run_bot_once
+from backend.routers.bars import _to_candles
+from backend.services import market_data
+from backend.services.indicator_overlays import compute_overlays
 from backend.services.performance import compute_bot_stats
 from backend.services.alpaca_client import alpaca_client
 
@@ -215,6 +219,38 @@ def run_bot_now(bot_id: int, db: Session = Depends(get_db)):
     return {"message": f"Bot {bot.name} 已執行一次"}
 
 
+@router.get("/decisions/recent")
+def get_recent_decisions(limit: int = 30, db: Session = Depends(get_db)):
+    """
+    取得「跨所有 Bot」的最近決策紀錄，依時間倒序、預設 30 筆。
+
+    給 Dashboard 的「決策即時流」開頁播種用（之後靠 WebSocket 即時追加）。
+    注意：這條路由必須宣告在 /{bot_id}/decisions 之前，否則 "decisions"
+    會被當成 bot_id 吃掉而 422。
+    """
+    rows = (
+        db.query(DecisionLog, Bot.name)
+        .outerjoin(Bot, Bot.id == DecisionLog.bot_id)
+        .order_by(DecisionLog.created_at.desc(), DecisionLog.id.desc())
+        .limit(max(1, min(limit, 200)))  # 夾在 1~200，防一次撈爆
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "bot_id": r.bot_id,
+            "bot_name": bot_name or f"Bot #{r.bot_id}",
+            "symbol": r.symbol,
+            "signal": r.signal,
+            "reason": r.reason,
+            "price": r.price,
+            "action": r.action,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r, bot_name in rows
+    ]
+
+
 @router.get("/{bot_id}/decisions")
 def get_bot_decisions(bot_id: int, limit: int = 50, db: Session = Depends(get_db)):
     """
@@ -243,6 +279,72 @@ def get_bot_decisions(bot_id: int, limit: int = 50, db: Session = Depends(get_db
         }
         for r in rows
     ]
+
+
+@router.get("/{bot_id}/chart-data")
+def get_bot_chart_data(bot_id: int, days: int = 120, db: Session = Depends(get_db)):
+    """
+    一次回傳「策略視角圖表」所需的全部資料（Stage 4 策略可視化）：
+
+    - candles：日 K 線（與 /bars 同格式，走統一資料路徑 market_data + DATA_SOURCE）
+    - overlays / pane：該 Bot 策略「看的指標」序列（主圖疊線 / 振盪器副圖）
+    - markers：真實成交點（TradeLog ▲▼）+ 決策觀望點（DecisionLog，前端可開關）
+
+    candles 與指標用**同一份 df** 計算，保證時間軸對齊。
+    """
+    bot = _get_bot_or_404(db, bot_id)
+    try:
+        df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"取得 K 線失敗：{e}")
+
+    indicator = compute_overlays(bot.strategy, bot.params or {}, df)
+
+    # 成交標記：該 Bot 的所有真實成交（時間取日期字串，對齊日 K 的 time 格式）
+    markers = []
+    trades = (
+        db.query(TradeLog)
+        .filter(TradeLog.bot_id == bot_id)
+        .order_by(TradeLog.created_at.asc())
+        .all()
+    )
+    for t in trades:
+        if not t.created_at:
+            continue
+        markers.append({
+            "time": t.created_at.strftime("%Y-%m-%d"),
+            "kind": "trade",
+            "side": t.side,
+            "price": t.price,
+            "text": f"{'買' if t.side == 'buy' else '賣'} {t.qty} 股 @ ${t.price:.2f}" if t.price else "",
+        })
+
+    # 決策觀望點（沒成交但有決策的時點；前端預設關、可開關顯示）
+    decisions = (
+        db.query(DecisionLog)
+        .filter(DecisionLog.bot_id == bot_id, DecisionLog.action == "hold")
+        .order_by(DecisionLog.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    for d in decisions:
+        if not d.created_at:
+            continue
+        markers.append({
+            "time": d.created_at.strftime("%Y-%m-%d"),
+            "kind": "decision",
+            "action": d.action,
+            "reason": d.reason or "",
+        })
+
+    return {
+        "symbol": bot.symbol,
+        "strategy": bot.strategy,
+        "candles": _to_candles(df),
+        "overlays": indicator["overlays"],
+        "pane": indicator["pane"],
+        "markers": markers,
+    }
 
 
 @router.post("/{bot_id}/start")
