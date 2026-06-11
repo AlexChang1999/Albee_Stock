@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI):
         # Phase 12 step-02：掛上探勘橋每日 job（收件匣素材 → LLM triage → candidate；
         # DISCOVERY_ENABLED=false = 完全不掛，行為與沒這功能一樣）
         bot_manager.schedule_discovery(settings.DISCOVERY_HOUR)
+        # Phase 12 step-03：掛上候選自動驗證每日 job（candidate → 既有 OOS 閘 →
+        # validated/rejected，判準零修改；AUTO_VALIDATE_ENABLED=false = 完全不掛）
+        bot_manager.schedule_auto_validate(settings.AUTO_VALIDATE_HOUR)
         # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
         bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)

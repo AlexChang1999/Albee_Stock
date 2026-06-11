@@ -716,6 +716,30 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_auto_validate(self, hour: int) -> None:
+        """
+        掛上「候選自動批次驗證」的每日定時工作（Phase 12 step-03）。
+
+        每天 hour 時跑一次 run_auto_validate（candidate → 既有 OOS 閘 → validated/rejected，
+        判準零修改；不自動晉升 curated）。AUTO_VALIDATE_ENABLED=false 代表完全不掛：
+        移除既有 job（若有）並返回（run_auto_validate 內部還有一道開關雙保險）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.auto_validate import run_auto_validate
+
+        job_id = "auto_validate"
+        if not settings.AUTO_VALIDATE_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_auto_validate,
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
     def schedule_collector_scan(self, interval_minutes: int) -> None:
         """
         掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。

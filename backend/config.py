@@ -185,6 +185,21 @@ class Settings:
     DISCOVERY_HOUR: int = int(os.getenv("DISCOVERY_HOUR", "7"))
 
     # ========================================================
+    # 候選自動批次驗證 — OOS 閘排程化（Phase 12 step-03）
+    # ========================================================
+    # 每日定時把知識庫的 candidate 批次送進**既有** evolution.validate_candidate
+    # （walk-forward OOS 閘，判準零修改）→ 自然流轉 validated / rejected，不等人逐筆按。
+    # ★ 不自動晉升 curated（人在迴路鐵則）；單筆失敗不擋整批、連續 3 次才標 rejected。
+    #   - AUTO_VALIDATE_ENABLED：總開關（預設 false，不掛排程、行為與沒這功能一樣）。
+    #   - AUTO_VALIDATE_BATCH_SIZE：一輪最多驗幾筆（回測吃 CPU，防排程時段跑不完）。
+    #   - AUTO_VALIDATE_HOUR：每日幾點跑（24 小時制，預設 8 = discovery(7) 之後）。
+    #   - AUTO_VALIDATE_SYMBOL：驗證用標的（candidate 無自帶 symbol，統一基準才可比）。
+    AUTO_VALIDATE_ENABLED: bool = os.getenv("AUTO_VALIDATE_ENABLED", "false").lower() in ("1", "true", "yes")
+    AUTO_VALIDATE_BATCH_SIZE: int = int(os.getenv("AUTO_VALIDATE_BATCH_SIZE", "3"))
+    AUTO_VALIDATE_HOUR: int = int(os.getenv("AUTO_VALIDATE_HOUR", "8"))
+    AUTO_VALIDATE_SYMBOL: str = os.getenv("AUTO_VALIDATE_SYMBOL", "SPY")
+
+    # ========================================================
     # 政治專討員 — Discord 事件流（Phase 10 step-05）
     # ========================================================
     # 從 Discord 頻道偵測政治貼文（例如川普發文鏡像）→ 本機 Ollama 判讀 → 接既有風險煞車。

@@ -17,6 +17,18 @@
 
 ### 新增
 
+- **Phase 12 step-03：候選自動批次驗證（OOS 閘排程化）**——新增
+  `backend/services/auto_validate.py`：每日定時取知識庫 status=candidate 至多
+  `AUTO_VALIDATE_BATCH_SIZE` 筆，逐筆呼叫**既有** `evolution.validate_candidate`
+  （walk-forward OOS 閘，判準零修改）自然流轉 validated/rejected；不自動晉升 curated。
+  失敗隔離：單筆例外不擋整批，失敗計數記 `oos_metrics["auto_validate"]`（免遷移），
+  連續 3 次才標 rejected + `rejected_by="auto_validate"`（與 evolution verdict-reject
+  可稽核區分；驗證成功時計數自然歸零）。設定 `AUTO_VALIDATE_ENABLED`（預設 false，
+  完全不掛排程）/ `AUTO_VALIDATE_BATCH_SIZE` / `AUTO_VALIDATE_HOUR` /
+  `AUTO_VALIDATE_SYMBOL`（候選無自帶 symbol，統一基準才可比）；排程掛
+  `bot_manager.schedule_auto_validate`。測試 8 案（monkeypatch validate_candidate，
+  不回測不連網）。
+
 - **Phase 12 step-02：探勘橋（raw find → LLM 產候選）**——新增
   `backend/services/discovery.py`：每日定時取收件匣 status=new 素材（至多
   `DISCOVERY_BATCH_SIZE` 筆），本機 Ollama 判讀「在講哪種既有策略 + 建議參數」，
