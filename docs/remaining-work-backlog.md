@@ -254,6 +254,10 @@ venv\Scripts\alembic.exe upgrade head        # 動 schema 的 step
 
 ## D. Phase 12：策略自動探勘入庫管線（大 feature，長線）
 
+> **2026-06-11 更新：藍圖已完成** —— [`history/phase-12-strategy-discovery/`](history/phase-12-strategy-discovery/README.md)
+> （README + step-01~05 契約檔：collector 通電 / 探勘橋 / 自動驗證 / 漏斗報表 / 端到端誠實檢討）。
+> 程式未開工；開工時從 step-01 起、一次一步。
+
 ### 現況
 Phase 11 README「不在本 Phase 範圍」明記「策略自動探勘入庫 → 排 Phase 12」。
 `backend/services/collector.py`（Phase 10 step-04 蒐集員）已存在但開關預設關（`COLLECTOR_INTERVAL_MIN=0`、

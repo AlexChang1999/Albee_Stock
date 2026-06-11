@@ -17,6 +17,11 @@
 
 ### 新增
 
+- **Phase 12 藍圖（backlog D Step 1）**——`docs/history/phase-12-strategy-discovery/`：
+  README（原目標錨點/現況盤點/架構/5 步路線/防 slop 邊界/Phase DoD）+ step-01~05 契約檔
+  （collector 通電/探勘橋 raw→LLM 候選/自動 OOS 驗證/漏斗報表+待審提醒/端到端誠實檢討）。
+  程式未開工；預設全關、人在迴路晉升不變、LLM 只提既有策略參數不生成程式碼。
+
 - **壓力測試前端按鈕**——`BacktestResultCard` 加「🎲 壓力測試」鈕，打
   `POST /backtest/stress/{run_id}` 顯示權益 p5/p50/p95、回撤分布、破產機率，
   破產機率 >5% 出警告；`api.js` 加 `stressBacktestRun()`。測試 4 案（mock api）。
