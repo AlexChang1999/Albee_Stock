@@ -1,5 +1,10 @@
 # Macro 層真資料驗證 Runbook（Backlog Item A / Phase 11 step-05 收尾）
 
+> **✅ 已於 2026-06-11 執行完畢，結論：砍除。** 籃子定為 `SPY QQQ AAPL MSFT NVDA`；
+> 真 FRED 資料（41,604 筆觀測）下 macro 列 **worth=False、folds=207、Δ=-101.68** →
+> 走步驟 4 的「誠實砍」分支（移除 `MacroOverlayStrategy` 等，FRED 資料層保留）。
+> 本檔留作歷史紀錄與未來同類驗證的範本。
+
 > 對應 [`remaining-work-backlog.md` §A](../remaining-work-backlog.md) 與
 > [Phase 11 step-05 藍圖](../history/phase-11-macro-data/step-05-macro-layer-validation.md)。
 > 本檔是「拿到 FRED key 後照做即可」的機械式步驟單。**開工前先讀**

@@ -2,6 +2,13 @@
 
 > **Phase 11 能不能信的關鍵。** 沒有它，前 4 步只是「用總經數據更精緻地騙自己」。回到 [Phase 11 索引](README.md)。
 
+> **✅ 真資料驗證完成（2026-06-11）→ 結論：砍除。**
+> 灌入真 FRED 序列（7 series、41,604 筆觀測）後，對 SPY QQQ AAPL MSFT NVDA 跑 walk-forward：
+> macro 層 **worth=False、folds=207（≥ 門檻 3）、Δ=-101.68**（baseline EV 91.17 → candidate -10.51）。
+> a-priori risk-off 煞車在樣本外大幅扣分 → 依本檔「沒加分就砍」鐵律移除 `MacroOverlayStrategy`
+> 與 macro 驗證池；FRED 資料層（client/快取/特徵）保留。框架把無效層判死＝它正常工作。
+> 詳見 `CHANGELOG.md`。
+
 ## 目標
 
 用樣本外（OOS）walk-forward，證明「加上 macro 特徵」真的贏過「純價量 baseline」。
