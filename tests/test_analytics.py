@@ -26,6 +26,7 @@ from backend.services.analytics import (
     returns_from_equity,
     extended_metrics,
     tearsheet_html,
+    var_cvar,
 )
 
 
@@ -61,6 +62,41 @@ def test_extended_metrics_empty_and_short_safe():
     for bad in ([], [100.0]):
         m = extended_metrics(bad)
         assert all(v is None for v in m.values())
+
+
+def test_var_cvar_known_quantile():
+    # 100 筆報酬：90 筆 +1%、10 筆尾部（-2%~-6% 各兩筆），分位數可手算：
+    # 排序後第 5 百分位落在兩個 -4% 之間 → VaR = 4.0；
+    # 尾部 (<= -4%) 為 -6,-6,-5,-5,-4,-4，平均 -5% → CVaR = 5.0
+    tail = [-0.06, -0.06, -0.05, -0.05, -0.04, -0.04, -0.03, -0.03, -0.02, -0.02]
+    rets = pd.Series([0.01] * 90 + tail)
+    var, cvar = var_cvar(rets, confidence=0.95)
+    assert var == 4.0
+    assert cvar == 5.0
+    assert cvar >= var  # 破線後平均一定不比門檻輕
+
+
+def test_var_cvar_short_series_returns_none():
+    # 樣本 < 20 筆 → 尾部沒統計意義，回 (None, None)
+    assert var_cvar(pd.Series([0.01] * 19)) == (None, None)
+    assert var_cvar(pd.Series(dtype=float)) == (None, None)
+    assert var_cvar(None) == (None, None)
+
+
+def test_var_cvar_all_positive_returns_negative_var():
+    # 全正報酬：最差日仍在賺 → VaR 為負（誠實回報，不掩飾）
+    rets = pd.Series([0.01, 0.02, 0.005] * 10)
+    var, cvar = var_cvar(rets)
+    assert var is not None and var < 0
+
+
+def test_extended_metrics_includes_var_cvar_keys():
+    m = extended_metrics(_sample_equity())
+    assert "var_95_pct" in m and "cvar_95_pct" in m
+    # 250 日的波動曲線算得出尾部數字
+    assert m["var_95_pct"] is not None
+    assert m["cvar_95_pct"] is not None
+    assert m["cvar_95_pct"] >= m["var_95_pct"]
 
 
 def test_tearsheet_html_writes_file(tmp_path):

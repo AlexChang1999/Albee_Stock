@@ -58,6 +58,13 @@ export default function BacktestResultCard({ metrics, title, runId, children }) 
         {metrics.extended?.sortino != null && (
           <Chip size="small" label={`Sortino ${metrics.extended.sortino}`} />
         )}
+        {/* 尾部風險：VaR=最差 5% 交易日的單日虧損門檻；CVaR=破線後的平均虧損 */}
+        {metrics.extended?.var_95_pct != null && (
+          <Chip size="small" label={`VaR95 ${metrics.extended.var_95_pct}%`} />
+        )}
+        {metrics.extended?.cvar_95_pct != null && (
+          <Chip size="small" label={`CVaR95 ${metrics.extended.cvar_95_pct}%`} />
+        )}
       </Stack>
 
       {children}

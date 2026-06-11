@@ -3,10 +3,12 @@
 ========
 用歷史資料模擬策略表現，不會真的下單。
 
-兩種模式：
-- POST /backtest      ：手動指定「策略 + 參數」跑一次。
-- POST /auto-backtest ：全自動掃描——程式自己把 8 種策略 × 各自參數網格全跑一遍，
-                        依期望值 EV 排名挑最佳，最佳組合自動存進回測歷史（一鍵最強）。
+三種模式：
+- POST /backtest               ：手動指定「策略 + 參數」跑一次。
+- POST /auto-backtest          ：全自動掃描——程式自己把 8 種策略 × 各自參數網格全跑一遍，
+                                 依期望值 EV 排名挑最佳，最佳組合自動存進回測歷史（一鍵最強）。
+- POST /backtest/stress/{run_id}：對已存的回測跑蒙地卡羅壓力測試（bootstrap 重抽日報酬），
+                                 回傳「換個順序重來 N 次」的風險分布；按需計算、不持久化。
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -16,7 +18,9 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.database import get_db
 from backend.models import BacktestRun
+from backend.services.analytics import returns_from_equity
 from backend.services.backtest_engine import run_backtest
+from backend.services.monte_carlo import stress_summary
 from backend.services.optimizer import run_auto_backtest
 
 router = APIRouter(tags=["Backtest"])
@@ -57,6 +61,50 @@ def backtest(payload: BacktestRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"回測失敗：{e}")
+
+
+class StressRequest(BaseModel):
+    """壓力測試參數（全部有預設值，可整包不填）。"""
+    n_paths: int = 1000              # 模擬路徑數
+    seed: int | None = None          # 隨機種子（給定則可重現）
+    drawdown_threshold_pct: float = 20.0  # 「回撤超過 X%」的機率門檻
+    ruin_threshold_pct: float = 50.0      # 「破產」定義：回撤超過此 %
+
+
+@router.post("/backtest/stress/{run_id}")
+def backtest_stress(run_id: int, payload: StressRequest = StressRequest(),
+                    db: Session = Depends(get_db)):
+    """
+    對一筆已存的回測歷史跑蒙地卡羅壓力測試。
+
+    流程：載入該筆的 equity_curve → 轉日報酬 → bootstrap 重抽出 N 條模擬路徑 →
+    回傳最終權益百分位、回撤分布、破產機率等統計。按需計算、不寫回 DB
+    （想換門檻重跑就再打一次，metrics JSON 保持精簡）。
+    """
+    run = db.query(BacktestRun).filter(BacktestRun.id == run_id).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"找不到回測紀錄 id={run_id}")
+
+    equity_curve = (run.metrics or {}).get("equity_curve")
+    if not equity_curve:
+        raise HTTPException(status_code=400, detail="這筆回測沒有 equity_curve，無法壓力測試")
+
+    rets = returns_from_equity(equity_curve)
+    initial_equity = float((run.metrics or {}).get("initial_cash") or equity_curve[0])
+    try:
+        summary = stress_summary(
+            rets,
+            initial_equity=initial_equity,
+            n_paths=payload.n_paths,
+            seed=payload.seed,
+            drawdown_threshold_pct=payload.drawdown_threshold_pct,
+            ruin_threshold_pct=payload.ruin_threshold_pct,
+        )
+    except ValueError as e:  # 日報酬筆數不足等輸入問題
+        raise HTTPException(status_code=400, detail=f"壓力測試失敗：{e}")
+
+    return {"run_id": run_id, "symbol": run.symbol, "strategy_key": run.strategy_key,
+            **summary}
 
 
 def _entry_summary(entry: dict) -> dict:

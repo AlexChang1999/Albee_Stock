@@ -15,6 +15,20 @@
 
 ## [未發布]
 
+### 新增
+
+- **VaR/CVaR 尾部風險指標**——`backend/services/analytics.py` 新增 `var_cvar()`
+  （歷史模擬法，純 pandas 分位數、不依賴 quantstats），`extended_metrics()` 回傳
+  `var_95_pct` / `cvar_95_pct`，自動流入 `BacktestRun.metrics` JSON（零遷移）。
+  前端 `BacktestResultCard` 加 VaR95/CVaR95 chip。測試：`tests/test_analytics.py` 補 4 案。
+- **蒙地卡羅壓力測試**——新 `backend/services/monte_carlo.py`：bootstrap 重抽回測
+  日報酬產 N 條模擬路徑（不假設常態；捨棄 GBM 與 antithetic variates，理由見 docstring），
+  輸出最終權益 p5/p50/p95、回撤分布、破產機率。新端點
+  `POST /backtest/stress/{run_id}`（按需計算、不持久化）。測試：`tests/test_monte_carlo.py`（7 案）。
+- **RL 可行性評估文件**——`docs/reference/rl-feasibility-assessment.md`：
+  DQN/PPO 交易員評估，結論現階段 No-Go（日線資料量餵不飽深度 RL + OOS 鐵則下
+  過擬合成本極高），列明四項重啟條件；對照表標明各量化概念在本專案的對應實作。
+
 ### 移除
 
 - **Backlog A 收尾：macro overlay 層真資料驗證 → 誠實砍除**——取得 FRED API key 後灌入真
