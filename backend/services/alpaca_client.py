@@ -8,6 +8,11 @@ Alpaca API 封裝
 - get_account()           取得帳戶資訊
 - get_position(symbol)    查某檔股票目前持倉
 - submit_market_order()   送出市價單（買/賣）
+- submit_stop_order()     送出停損單（GTC，託管在券商端，斷電仍有效）
+- submit_trailing_stop_order()  送出原生追蹤止損單（券商端自追盤中最高價）
+- cancel_order()          撤單（撤不掉回 False，多半代表已成交）
+- get_order()             查單一訂單現況
+- get_open_orders()       列出未成交訂單（reconcile 用）
 - get_bars()              取得歷史 K 線資料（給策略算指標）
 - get_latest_price()      取得最新成交價
 """
@@ -17,8 +22,13 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import (
+    GetOrdersRequest,
+    MarketOrderRequest,
+    StopOrderRequest,
+    TrailingStopOrderRequest,
+)
+from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestTradeRequest
 from alpaca.data.timeframe import TimeFrame
@@ -109,6 +119,24 @@ class AlpacaClient:
             return []
 
     # ---------- 下單 ----------
+    def _assert_live_allowed(self) -> None:
+        """
+        實盤安全閥（所有下單共用的同一道閘，第一道就擋）。
+        連到實盤(真錢) 但沒有明確開啟 ALLOW_LIVE_TRADING → 直接拒絕，不送出。
+        這道檢查刻意放在最前面：早於建立 client、早於任何真錢動作。
+        市價/停損/追蹤止損所有 submit_* 都必須先過這裡，新增單型不可繞過。
+        """
+        if not settings.IS_PAPER and not settings.ALLOW_LIVE_TRADING:
+            raise RuntimeError(
+                "拒絕下單：目前連到『實盤(真錢)』環境，但安全閥未開啟。"
+                "若確定要用真錢交易，請在 .env 設定 ALLOW_LIVE_TRADING=true。"
+            )
+
+    @staticmethod
+    def _to_tif(time_in_force: str) -> TimeInForce:
+        """把 "day"/"gtc" 字串轉成 Alpaca 的 TimeInForce 列舉。"""
+        return TimeInForce.GTC if time_in_force.lower() == "gtc" else TimeInForce.DAY
+
     def submit_market_order(self, symbol: str, qty: float, side: str):
         """
         送出市價單。
@@ -117,14 +145,7 @@ class AlpacaClient:
         :param side: "buy" 或 "sell"
         :return: Alpaca 的訂單物件
         """
-        # === 實盤安全閥（所有下單的唯一出口，第一道就擋）===
-        # 連到實盤(真錢) 但沒有明確開啟 ALLOW_LIVE_TRADING → 直接拒絕，不送出。
-        # 這道檢查刻意放在最前面：早於建立 client、早於任何真錢動作。
-        if not settings.IS_PAPER and not settings.ALLOW_LIVE_TRADING:
-            raise RuntimeError(
-                "拒絕下單：目前連到『實盤(真錢)』環境，但安全閥未開啟。"
-                "若確定要用真錢交易，請在 .env 設定 ALLOW_LIVE_TRADING=true。"
-            )
+        self._assert_live_allowed()  # 實盤安全閥（雙閘）
 
         order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
 
@@ -135,6 +156,97 @@ class AlpacaClient:
             time_in_force=TimeInForce.DAY,  # 當日有效
         )
         return self.trading.submit_order(order_request)
+
+    def submit_stop_order(
+        self,
+        symbol: str,
+        qty: float,
+        stop_price: float,
+        side: str = "sell",
+        time_in_force: str = "gtc",
+    ):
+        """
+        送出停損單（stop order）。
+        預設 GTC：掛在「券商伺服器端」直到成交或撤單——本機當機/斷網/重開機，
+        止損照樣執行。這是維運安全軌「電腦掛掉不裸奔」的核心。
+        注意：Alpaca 的 stop 單只支援整股（qty 必須是整數股數）。
+        :param stop_price: 觸發價（跌破即以市價出場）
+        """
+        self._assert_live_allowed()  # 實盤安全閥（雙閘，與市價單同一道）
+
+        order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+        order_request = StopOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=order_side,
+            stop_price=stop_price,
+            time_in_force=self._to_tif(time_in_force),
+        )
+        return self.trading.submit_order(order_request)
+
+    def submit_trailing_stop_order(
+        self,
+        symbol: str,
+        qty: float,
+        trail_percent: float,
+        side: str = "sell",
+        time_in_force: str = "gtc",
+    ):
+        """
+        送出原生追蹤止損單（trailing stop order）。
+        由券商端自己追蹤盤中最高價（HWM），比本機每分鐘輪詢精準，且斷電不失效。
+        注意：同樣只支援整股。
+        :param trail_percent: 回檔百分比「數字」，例如 3.0 代表從最高點回檔 3% 觸發
+        """
+        self._assert_live_allowed()  # 實盤安全閥（雙閘，與市價單同一道）
+
+        order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+        order_request = TrailingStopOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=order_side,
+            trail_percent=trail_percent,
+            time_in_force=self._to_tif(time_in_force),
+        )
+        return self.trading.submit_order(order_request)
+
+    def cancel_order(self, order_id: str) -> bool:
+        """
+        撤單。回傳是否成功撤掉。
+        已成交/已撤/查無此單 → 回 False、不丟例外。
+        呼叫端據此判斷「券商端保護單是不是已經先成交了」：
+        本機要出場前先撤保護單，撤不掉就代表券商端已處理，放棄本機賣出。
+        """
+        try:
+            self.trading.cancel_order_by_id(order_id)
+            return True
+        except Exception:
+            return False
+
+    def get_order(self, order_id: str):
+        """
+        查單一訂單現況（status / filled_qty / filled_avg_price）。
+        查不到（id 錯、連線失敗）回 None，讓上層優雅降級。
+        """
+        try:
+            return self.trading.get_order_by_id(order_id)
+        except Exception:
+            return None
+
+    def get_open_orders(self, symbol: str | None = None) -> list:
+        """
+        列出未成交（open）訂單，可選擇只看某一檔。
+        reconcile 自癒用：每輪檢查券商端保護單是否還活著。
+        連線/金鑰失敗回空清單（優雅降級，與 list_positions 同款）。
+        """
+        try:
+            request = GetOrdersRequest(
+                status=QueryOrderStatus.OPEN,
+                symbols=[symbol] if symbol else None,
+            )
+            return self.trading.get_orders(filter=request)
+        except Exception:
+            return []
 
     # ---------- 資料 ----------
     def get_latest_price(self, symbol: str) -> float:

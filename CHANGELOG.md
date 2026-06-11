@@ -32,8 +32,21 @@
   - 同次驗證的保留層數據：adaptive worth=True（folds=45、Δ=+17.72）、
     meta worth=True（folds=207、Δ=+38.88）；kelly folds=1 < 3 樣本不足不採信。
 
+### 新增
+
+- **維運安全軌 H1 Step 1：`alpaca_client` 訂單原語 + 安全閥外推**——為「券商端止損」
+  鋪路：實盤雙閘檢查抽成 `_assert_live_allowed()`（市價/停損/追蹤止損所有 `submit_*`
+  共用同一道閘，新增單型不可繞過）；新增 `submit_stop_order`（GTC stop 單，託管券商端、
+  本機斷電仍有效）、`submit_trailing_stop_order`（原生 trailing stop，券商端自追盤中
+  最高價）、`cancel_order`（撤不掉回 False 不丟例外——代表券商端已成交）、`get_order`、
+  `get_open_orders`（reconcile 用，失敗回 `[]` 優雅降級）。`tests/test_safety_valve.py`
+  補三條：雙閘對三種單型一致擋/放、cancel 已成交回 False。
+
 ### 修正
 
+- **`requirements.txt` 重複釘版擋住安裝**——`psycopg2-binary` 同檔出現 `==2.9.12`
+  與 `==2.9.10` 兩行（後者為 29de1e5 誤加孤行），`pip install -r` 直接
+  ResolutionImpossible。刪除孤行、保留有註解的 2.9.12。
 - **文件對齊（純文件、零程式）**——`docs/remaining-work-backlog.md` 補標 Backlog B/C
   已完成（commit `13ef4bb`：`GET /positions`+持倉卡、`test_run_dry_run` 修復），總表與
   建議順序同步更新；新增「**H. 維運安全軌（真錢前必備）**」項（券商端止損 / 心跳+dead-man

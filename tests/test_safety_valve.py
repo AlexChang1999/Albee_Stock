@@ -2,11 +2,12 @@
 實盤交易安全閥測試
 ==================
 這是跟「真錢」有關的防線，務必測到位。
-驗證 submit_market_order 的安全閥行為：
+驗證所有 submit_*（市價/停損/追蹤止損）的安全閥行為：
 
 - 連到實盤(真錢) 且 ALLOW_LIVE_TRADING 關 → 拒絕下單（丟 RuntimeError）。
 - 連到實盤 且 ALLOW_LIVE_TRADING 開 → 放行。
 - Paper(模擬) → 不受安全閥影響，直接放行。
+- cancel_order 對「已成交/查無」的單回 False、不丟例外。
 
 用 monkeypatch 改設定、並把底層交易 client 換成假的，
 所以不需真金鑰、不會真的下單。
@@ -40,6 +41,12 @@ class FakeTrading:
     def submit_order(self, order_request):
         self.called = True
         return "fake_order"
+
+
+class FakeTradingCancelFails:
+    """假的交易 client：撤單一律丟例外（模擬訂單已成交/查無此單）。"""
+    def cancel_order_by_id(self, order_id):
+        raise RuntimeError("order already filled")
 
 
 def test_live_without_flag_is_blocked(monkeypatch):
@@ -82,6 +89,44 @@ def test_paper_is_allowed(monkeypatch):
     assert result == "fake_order", result
     assert fake.called is True
     print("✅ Paper 模式放行測試通過")
+
+
+def test_live_without_flag_blocks_stop_orders(monkeypatch):
+    """實盤 + 安全閥關 → 停損/追蹤止損單也一律被擋（與市價單同一道閘）。"""
+    monkeypatch.setattr(settings, "IS_PAPER", False)
+    monkeypatch.setattr(settings, "ALLOW_LIVE_TRADING", False)
+    fake = FakeTrading()
+    monkeypatch.setattr(alpaca_client, "_trading", fake)
+
+    with pytest.raises(RuntimeError, match="拒絕下單"):
+        alpaca_client.submit_stop_order("AAPL", 1, stop_price=95.0)
+    with pytest.raises(RuntimeError, match="拒絕下單"):
+        alpaca_client.submit_trailing_stop_order("AAPL", 1, trail_percent=3.0)
+
+    assert fake.called is False, "安全閥沒擋住停損單，竟然真的送出！"
+    print("✅ 實盤未開閘 → 停損/追蹤止損單一律被擋測試通過")
+
+
+def test_paper_allows_stop_orders(monkeypatch):
+    """Paper(模擬) → 停損/追蹤止損單放行（與市價單一致）。"""
+    monkeypatch.setattr(settings, "IS_PAPER", True)
+    monkeypatch.setattr(settings, "ALLOW_LIVE_TRADING", False)
+    fake = FakeTrading()
+    monkeypatch.setattr(alpaca_client, "_trading", fake)
+
+    assert alpaca_client.submit_stop_order("AAPL", 1, stop_price=95.0) == "fake_order"
+    assert alpaca_client.submit_trailing_stop_order("AAPL", 1, trail_percent=3.0) == "fake_order"
+    assert fake.called is True
+    print("✅ Paper 模式停損/追蹤止損單放行測試通過")
+
+
+def test_cancel_order_returns_false_when_already_filled(monkeypatch):
+    """撤單失敗（已成交/查無）→ 回 False、不丟例外（呼叫端據此判斷券商端已處理）。"""
+    monkeypatch.setattr(settings, "IS_PAPER", True)
+    monkeypatch.setattr(alpaca_client, "_trading", FakeTradingCancelFails())
+
+    assert alpaca_client.cancel_order("some-order-id") is False
+    print("✅ 撤單已成交回 False 測試通過")
 
 
 if __name__ == "__main__":
