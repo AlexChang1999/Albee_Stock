@@ -43,6 +43,7 @@
 | [`reference/workflow-diagrams.md`](reference/workflow-diagrams.md) | 系統工作流圖（Mermaid：全景/決策流水線/回測 EV/層驗證）。 |
 | [`reference/roadmap-strategy-workbench.md`](reference/roadmap-strategy-workbench.md) | 策略工作台 roadmap（Phase 5）。 |
 | [`reference/human-vs-ai-operation.md`](reference/human-vs-ai-operation.md) | 人機操作落差 + 分階段上線（跑真錢前必讀）。 |
+| [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) | 一人公司缺口盤點（願景 vs 現況 + 前置進料未通電 + 上線後維運缺口 + 優先序）。 |
 | [`reference/financial-services-reference.md`](reference/financial-services-reference.md) | 金融服務參考。 |
 | [`reference/strategies/`](reference/strategies/) | 個別策略筆記（如 `williams_r.md`）。 |
 

@@ -43,6 +43,15 @@
 
 ### 新增
 
+- **一人公司缺口分析文件（純文件、零程式變更）**——把使用者「一人公司」願景（自動抓策略/
+  抓總經/回測/人審核/Paper→真錢/全自動進出場+決策記錄）對照專案現況做缺口盤點，存
+  [`docs/reference/one-person-company-gap-analysis.md`](docs/reference/one-person-company-gap-analysis.md)：
+  願景對照表（管線已蓋八成）+ 前置進料缺口 A~E（蒐集員沒料吃/策略文字→程式人工斷層/
+  watchlist 手動/macro 定位/政治員鏡像頻道）+ 上線後維運缺口 1~9（**止損掛本機輪詢最危險**、
+  無心跳監控、有晉升沒降級、無 tracking error 對帳、部位 reconcile、SQLite 無備份、
+  組合相關性、PDT/稅務、資料品質閘）+ 建議優先序（真錢前必備：券商端止損→心跳→自動降級）+
+  二次盤點補充（F 事件日曆沒接〔經查 `event_risk` 只吃情緒分數、無真實財報/FOMC 日曆源〕、
+  G 倖存者偏差、H 日線止損落差、與大戶比拚的誠實定位）。`docs/README.md` 索引同步加列。
 - **Backlog B：`GET /positions` 端點 + 前端持倉卡（填掉最大缺口）**——原本只有
   `alpaca_client.get_position(symbol)`（單檔），前端看不到手上部位與浮動損益：
   - `services/alpaca_client.py`：新增 `list_positions()`（包 `trading.get_all_positions()`，
