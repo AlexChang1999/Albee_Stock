@@ -17,6 +17,12 @@
 
 ### 新增
 
+- **Phase 12 觀察期開跑前 checklist**——backlog D 項加完整開跑待辦：`.env` 必填
+  （Alpaca 金鑰或 `DATA_SOURCE=yfinance`、feeds、兩個 ENABLED 開關、本機 Ollama、
+  通知管道）、要常駐的程式（ollama serve、後端 24/7——排程器活在後端行程裡）、
+  串接驗通指令（test_connection / overview / 三段手動跑一輪）、起跑儀式（快照 +
+  判準凍結）。缺哪項哪段靜默不跑，全列出來防「以為在跑其實沒跑」。
+
 - **Phase 12 step-05：端到端驗收模板**——新增
   `docs/history/phase-12-strategy-discovery/review-e2e.md`（兩週觀察數據表：收料量/
   垃圾率/OOS 通過率〔分母排除 `rejected_by=auto_validate` 操作性放棄〕/curated 增量 +

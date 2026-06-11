@@ -263,6 +263,46 @@ venv\Scripts\alembic.exe upgrade head        # 動 schema 的 step
 > [`history/phase-12-strategy-discovery/review-e2e.md`](history/phase-12-strategy-discovery/review-e2e.md)
 > 模板 → 留 / 降級 / 砍三選一。藍圖：[`history/phase-12-strategy-discovery/`](history/phase-12-strategy-discovery/README.md)。
 
+### 觀察期開跑前 checklist（在常駐機器，照順序做）
+
+> 管線預設全關；下面每一項缺一個，對應段就靜默不跑（設計如此，不會報錯）。
+> 另參 [`guides/home-boot-checklist.md`](guides/home-boot-checklist.md)（開機基礎）與
+> [`guides/collector-feeds-guide.md`](guides/collector-feeds-guide.md)（feed 挑選 + robots 檢查）。
+
+**1. 程式環境**
+- [ ] `git pull`（develop 已含 step-01~04）
+- [ ] `setup.bat`（依賴 + `alembic upgrade head`）
+
+**2. `.env` 必填（缺哪項哪段不跑）**
+- [ ] `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` / `ALPACA_BASE_URL`（paper）——
+      auto_validate 回測抓 K 線走 `DATA_SOURCE=alpaca`（預設）；不想用金鑰可改 `DATA_SOURCE=yfinance`
+- [ ] `COLLECTOR_RSS_FEEDS`（照 feeds guide 挑 2~3 源）+ `COLLECTOR_INTERVAL_MIN=60` → 收料段
+- [ ] `DISCOVERY_ENABLED=true` → 探勘橋（`DISCOVERY_HOUR` 預設 7 可不動）
+- [ ] `AUTO_VALIDATE_ENABLED=true` → 自動驗證（`AUTO_VALIDATE_HOUR=8` / `AUTO_VALIDATE_SYMBOL=SPY` 預設可不動）
+- [ ] `LLM_BASE_URL=http://localhost:11434/v1` + `LLM_MODEL=llama3.1`（`LLM_ALLOW_CLOUD` **維持 false**，素材不外送）
+- [ ] 通知擇一：`DISCORD_WEBHOOK_URL` 或 LINE token——心跳「validated 待審」提醒要送得出去，否則人在迴路斷線
+
+**3. 要開（常駐）的程式**
+- [ ] `ollama serve` + `ollama pull llama3.1`——探勘橋每日 7 點要用；連不上 = 整批跳過不誤殺，但等於那天沒跑
+- [ ] 後端 `start_backend.bat`（uvicorn）**24/7 常駐**——APScheduler 活在後端行程裡，
+      排程時刻（7 收料 triage / 8 驗證+心跳）沒開機 = 當天管線整段空轉
+- [ ] （選配）healthchecks.io ping URL 填 `HEARTBEAT_PING_URL`——順便補 H2 欠的演練
+
+**4. 串接驗通（開跑日一次性）**
+- [ ] `venv\Scripts\python.exe backend\test_connection.py`（Alpaca 金鑰有效）
+- [ ] 開 `http://127.0.0.1:8000/docs` 打 `GET /company/overview`，確認 `discovery_funnel` 區塊在
+- [ ] （可選）手動各跑一輪驗通路，不等隔天排程：
+      ```powershell
+      venv\Scripts\python.exe -c "from backend.services.collector import run_collector_scan; print(run_collector_scan())"
+      venv\Scripts\python.exe -c "from backend.services.discovery import run_discovery_batch; print(run_discovery_batch())"
+      venv\Scripts\python.exe -c "from backend.services.auto_validate import run_auto_validate; print(run_auto_validate())"
+      ```
+
+**5. 起跑儀式**
+- [ ] 快照 `discovery_funnel` JSON 貼進 review-e2e.md「觀察設定」、填起迄日（起日 +14 天）
+- [ ] 兩週內人只做 LibraryPage promote/reject，**不**手動推其他狀態、**不**調 OOS 門檻（判準凍結）
+- [ ] 迄日再快照、回填數據、留/降級/砍三選一
+
 ### 現況
 Phase 11 README「不在本 Phase 範圍」明記「策略自動探勘入庫 → 排 Phase 12」。
 `backend/services/collector.py`（Phase 10 step-04 蒐集員）已存在但開關預設關（`COLLECTOR_INTERVAL_MIN=0`、
