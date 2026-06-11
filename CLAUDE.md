@@ -136,7 +136,9 @@ Albee_Stock/
 │   │   ├── collector.py       # 爬蟲蒐集員（RSS，Phase 10 step-04，預設關）
 │   │   ├── political.py       # Discord 政治員（煞車，Phase 10 step-05，bridge 預設關）
 │   │   ├── fred_client.py / macro_data.py / macro_features.py # FRED 總經資料地基（Phase 11）
-│   │   └── orderflow_proxy.py # 籌碼面 proxy 特徵（Phase 11）
+│   │   ├── orderflow_proxy.py # 籌碼面 proxy 特徵（Phase 11）
+│   │   ├── discovery.py       # 探勘橋：raw find → LLM 產候選（Phase 12 step-02，預設關）
+│   │   └── auto_validate.py   # 候選自動批次 OOS 驗證（Phase 12 step-03，判準零修改，預設關）
 │   ├── strategies/        # 交易策略模組（每個策略一個檔案）
 │   │   ├── base.py        # 策略基底類別
 │   │   ├── ma_crossover.py    # 均線交叉
@@ -232,6 +234,8 @@ Albee_Stock/
 | Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06：知識庫模型/LLM 提案/組合引擎/OOS 驗證管線/排行+使用時機/人在迴路審核，藍圖 [`docs/history/phase-8-strategy-evolution/`](docs/history/phase-8-strategy-evolution/README.md)） |
 | Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08：sidebar+路由外殼/交易/回測歷史/方案/探討（+後端讀取端點）/決策/進化+知識庫/助手抽屜，藍圖 [`docs/history/phase-9-frontend-workstation/`](docs/history/phase-9-frontend-workstation/README.md)） |
 | Phase 10 | AI 交易公司（編排層 + 戰情頁：市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07：戰情頁/常駐機會清單/因子表/爬蟲蒐集員/Discord 政治員/董事會核准頁/開機常駐化，藍圖 [`docs/history/phase-10-ai-company/`](docs/history/phase-10-ai-company/README.md)；step-05 政治員為「煞車」且 bridge 預設關，連真 Discord 需先有同步川普貼文的鏡像頻道） |
+| Phase 11 | 總經 + 籌碼資料地基（FRED 序列入庫 + macro 特徵 + orderflow proxy，餵 Phase 7 狀態機） | ✅ 完成（藍圖 [`docs/history/phase-11-macro-data/`](docs/history/phase-11-macro-data/README.md)；macro 層真資料 OOS 驗證無加分，2026-06-11 誠實砍除——資料地基留著、層不上線） |
+| Phase 12 | 策略自動探勘入庫管線（collector 收料 → LLM 探勘橋產候選 → 自動 OOS 驗證 → 漏斗報表 + 人在迴路晉升） | 🔶 step-01~04 已實作（collector 通電 guide/探勘橋 `discovery.py`/自動驗證 `auto_validate.py`/戰情漏斗卡 + 心跳待審行，藍圖 [`docs/history/phase-12-strategy-discovery/`](docs/history/phase-12-strategy-discovery/README.md)）；step-05 兩週觀察待常駐機器開跑（模板 [`review-e2e.md`](docs/history/phase-12-strategy-discovery/review-e2e.md)），跑滿後留/降級/砍三選一。預設全關（`DISCOVERY_ENABLED`/`AUTO_VALIDATE_ENABLED`=false）；晉升 curated 仍只能由人觸發 |
 
 > **改版子軌**：[`docs/history/redesign/`](docs/history/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
 > **跑真錢前必讀**：[`docs/reference/human-vs-ai-operation.md`](docs/reference/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。
