@@ -46,6 +46,7 @@
 | 檔案 | 用途 |
 |------|------|
 | [`reference/workflow-diagrams.md`](reference/workflow-diagrams.md) | 系統工作流圖（Mermaid 6 張：全景/決策流水線/回測 EV/層驗證/知識庫→AI 公司軌含 Phase 12 探勘管線/手工新增策略）。 |
+| [`reference/frontend-pages-map.md`](reference/frontend-pages-map.md) | 前端 17 頁地圖（Mermaid 小圖×6）：四條工作流 + 開第一隻 Bot 步驟 + When/What/Why 對照 + 各頁資料由誰產生。 |
 | [`reference/roadmap-strategy-workbench.md`](reference/roadmap-strategy-workbench.md) | 策略工作台 roadmap（Phase 5）。 |
 | [`reference/human-vs-ai-operation.md`](reference/human-vs-ai-operation.md) | 人機操作落差 + 分階段上線（跑真錢前必讀）。 |
 | [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) | 一人公司缺口盤點（願景 vs 現況 + 前置進料未通電 + 上線後維運缺口 + 優先序）。 |

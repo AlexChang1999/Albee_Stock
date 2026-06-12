@@ -17,6 +17,11 @@
 
 ### 新增
 
+- **文件：前端頁面地圖**（`docs/reference/frontend-pages-map.md`）——sidebar 17 頁
+  拆四條工作流（探勘入庫/研究回測/上線執行/情報檢討），Mermaid 小圖×6（拆小張
+  橫排避免瀏覽器縮太小）+ 開第一隻 Bot step-by-step + 模擬交易 When/What/Why
+  對照表（含「為何選這支股」缺口註記）+ 各頁資料由誰產生。docs/README.md 索引同步。
+
 - **抓取效率升級：批次多檔抓取 + 並行 I/O + 限流**——瓶頸調查確認「慢在逐檔 HTTP
   往返，不在 RAM」（快取已是磁碟 parquet），把傳輸層批次化、判準零修改：
   - **批次 K 線**：`alpaca_client.get_bars_multi()` / `yfinance_client.get_bars_multi()` /
