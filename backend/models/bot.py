@@ -60,6 +60,12 @@ class Bot(Base):
     # 為何存進資料庫而非記憶體：後端重啟後追蹤止損才不會把最高價歸零、保護中斷一段時間。
     peak_price = Column(Float, nullable=True)
 
+    # 券商端保護單 id（維運安全軌 H1，內部狀態非使用者設定）。
+    # 進場後掛在 Alpaca 的 GTC stop / trailing stop 單的訂單 id；None = 沒掛。
+    # 存 DB 的理由同 peak_price：後端重啟後才知道券商端還掛著哪張保護單，
+    # 不會重複掛單、也能在它成交後回填交易紀錄。
+    protective_order_id = Column(String, nullable=True)
+
     # 自適應模式（Phase 7 step-03）：開啟時不固定用 strategy 欄位的策略，
     # 而是每輪先算當下「市場狀態」，查「狀態→最佳策略對照表」挑策略。
     # 預設關（False）＝沿用固定策略，向後相容。狀態無可信策略時保守觀望（不亂下注）。
@@ -90,6 +96,20 @@ class Bot(Base):
 
     # 提議達標證據摘要 / 退回理由（人看的一句話，詳細軌跡另寫 explorations 記憶）
     promotion_reason = Column(String, nullable=True)
+
+    # ----- tracking error 自動降級（維運安全軌 H3）-----
+    # 「回測 OOS 期望值 vs Paper 實跑」每日對帳：實跑連續低於門檻 → 自動停 Bot（人再決定）。
+    # 降級只停新決策，不平倉、不撤券商端保護單；單向不自動恢復（重啟走既有 /bots/{id}/start）。
+
+    # 連續違規次數（每日對帳：違規 +1、回到門檻上歸零；達 TRACKING_DEMOTE_AFTER 即降級）
+    tracking_breach_count = Column(Integer, nullable=False, default=0)
+
+    # 上次對帳時的完整回合數——回合數沒增加就跳過不計數，防同一批樣本連日重複扣分
+    tracking_last_rt_count = Column(Integer, nullable=False, default=0)
+
+    # 被自動降級的時間 / 原因（None = 沒被降級過；給前端與審計看）
+    demoted_at = Column(DateTime, nullable=True)
+    demote_reason = Column(String, nullable=True)
 
     def __repr__(self) -> str:
         return f"<Bot {self.id} {self.name} ({self.strategy} on {self.symbol})>"

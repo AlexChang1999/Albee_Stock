@@ -16,6 +16,7 @@
   用本地樣本測（不連網）。fetch_url / run_collector_scan 才碰網路 / DB。
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from urllib.parse import urlparse
 from xml.etree import ElementTree
@@ -133,6 +134,36 @@ def _host(url: str) -> str:
         return ""
 
 
+def parse_keywords(raw: str) -> list[str]:
+    """把逗號分隔的監控關鍵字字串清成清單（去空白、去重、保留原大小寫供顯示）。純函式。"""
+    seen, out = set(), []
+    for part in (raw or "").split(","):
+        kw = part.strip()
+        if kw and kw.lower() not in seen:
+            seen.add(kw.lower())
+            out.append(kw)
+    return out
+
+
+def tag_watch_rows(rows: list[dict], keywords: list[str]) -> int:
+    """
+    未上市公司關鍵字監控：對每列素材比對標題+摘要（不分大小寫），
+    命中就在 row["tags"] 寫入 "watch:<關鍵字>"（多個用逗號接）。純函式、就地標記。
+
+    :return: 命中的列數（給通知用）。
+    """
+    if not keywords:
+        return 0
+    hits = 0
+    for row in rows or []:
+        text = f"{row.get('title', '')} {row.get('summary', '')}".lower()
+        matched = [kw for kw in keywords if kw.lower() in text]
+        if matched:
+            row["tags"] = ",".join(f"watch:{kw}" for kw in matched)
+            hits += 1
+    return hits
+
+
 def dedup_rows(rows: list[dict]) -> list[dict]:
     """同一批內依 source_url 去重（保留第一筆）。純函式。"""
     seen, out = set(), []
@@ -151,9 +182,9 @@ def upsert_finds(db, rows: list[dict]) -> dict:
     （保留既有 status，避免把人已 triaged/discarded 的東西又打回 new）。
 
     冪等：同一批 rows 連跑兩次，第二次全部跳過、不重複堆積。
-    :return: {"inserted": 新增數, "skipped": 已存在跳過數}
+    :return: {"inserted": 新增數, "skipped": 已存在跳過數, "watch_hits": 新增中命中監控標籤數}
     """
-    inserted = skipped = 0
+    inserted = skipped = watch_hits = 0
     for row in dedup_rows(rows):
         url = row.get("source_url")
         if not url:
@@ -173,17 +204,21 @@ def upsert_finds(db, rows: list[dict]) -> dict:
             summary=row.get("summary") or "",
             fetched_at=datetime.now(),
             status="new",
+            tags=row.get("tags"),  # 監控關鍵字命中標籤（tag_watch_rows 寫入，可空）
         ))
         inserted += 1
+        if row.get("tags"):
+            watch_hits += 1
     db.commit()
-    return {"inserted": inserted, "skipped": skipped}
+    return {"inserted": inserted, "skipped": skipped, "watch_hits": watch_hits}
 
 
 def fetch_url(url: str) -> str | None:
     """
     抓單一網址的內容（best-effort）。帶 User-Agent 與逾時；任何錯誤回 None、不丟例外。
 
-    尊重節流：呼叫端逐一抓、別並發猛打，避免被封 IP。
+    尊重節流：同一個網域每輪只打一次（feed 清單本身就一站一條）；
+    並行只發生在「不同網域之間」（collect_from_feeds 的小 ThreadPool），不對單站猛打。
     """
     import requests
 
@@ -202,14 +237,22 @@ def fetch_url(url: str) -> str | None:
 
 def collect_from_feeds(feeds: list[str]) -> list[dict]:
     """
-    逐一抓 RSS feed 並解析成素材列（best-effort）。單一 feed 失敗不影響其他。
+    抓 RSS feed 並解析成素材列（best-effort）。單一 feed 失敗不影響其他。
+
+    多條 feed 用小 ThreadPool「並行」抓（不同網域互不打擾；同站每輪仍只一次請求），
+    N 條 feed 的網路往返疊在一起。解析（parse_rss）回主執行緒做，純 CPU 很快。
 
     這裡只走 RSS（最穩、最尊重來源）。HTML 列表頁解析（parse_html_listing）保留給
     確有需求時呼叫，預設不主動爬任意網站。
     """
+    feeds = list(feeds or [])
+    if not feeds:
+        return []
+    workers = max(1, min(settings.FETCH_MAX_WORKERS, len(feeds)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        pages = pool.map(fetch_url, feeds)  # 失敗的 feed 回 None（fetch_url 已吞錯）
     rows = []
-    for url in feeds or []:
-        xml = fetch_url(url)
+    for url, xml in zip(feeds, pages):
         if not xml:
             continue
         rows.extend(parse_rss(xml, source=_host(url)))
@@ -232,14 +275,20 @@ def run_collector_scan() -> None:
     if not rows:
         return
 
+    # 未上市公司關鍵字監控：收料順手比對（SpaceX 等回不了測的公司，留檔追蹤）
+    tag_watch_rows(rows, parse_keywords(settings.PRIVATE_WATCH_KEYWORDS))
+
     db = SessionLocal()
     try:
         result = upsert_finds(db, rows)
         if result["inserted"] > 0:
-            notifier.notify(
+            msg = (
                 f"📰 市場蒐集員收到 {result['inserted']} 篇新策略素材"
                 f"（跳過 {result['skipped']} 篇已收過）。到「市場蒐集員」頁消化。"
             )
+            if result.get("watch_hits"):
+                msg += f"\n🛰️ 其中 {result['watch_hits']} 篇命中監控關鍵字（{settings.PRIVATE_WATCH_KEYWORDS}）。"
+            notifier.notify(msg)
     finally:
         db.close()
 

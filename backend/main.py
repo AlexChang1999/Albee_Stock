@@ -27,7 +27,8 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity
+from backend.services.bot_activity import hub as activity_hub
 
 
 def _resume_active_bots() -> None:
@@ -56,6 +57,8 @@ def _resume_active_bots() -> None:
 async def lifespan(app: FastAPI):
     # --- 啟動時 ---
     init_db()  # 把資料庫的表建好（如果還沒建）
+    # Bot 活動事件中樞接上事件迴圈（必須在恢復排程之前——排程一接回來就會發事件）
+    activity_hub.attach_loop()
     _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
     # 模式 B：掛上盤前自動部署的每日定時工作（時刻讀 DB 規則；是否真的部署仍由 enabled 總開關控制）
     _db = SessionLocal()
@@ -67,6 +70,22 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_opportunity_scan(_cfg.scan_interval_min)
         # Phase 10 step-04：掛上市場蒐集員收料 job（每 N 分鐘抓 RSS；0=關，沒設 feed 也會跳過）
         bot_manager.schedule_collector_scan(settings.COLLECTOR_INTERVAL_MIN)
+        # Phase 12 step-02：掛上探勘橋每日 job（收件匣素材 → LLM triage → candidate；
+        # DISCOVERY_ENABLED=false = 完全不掛，行為與沒這功能一樣）
+        bot_manager.schedule_discovery(settings.DISCOVERY_HOUR)
+        # Phase 12 step-03：掛上候選自動驗證每日 job（candidate → 既有 OOS 閘 →
+        # validated/rejected，判準零修改；AUTO_VALIDATE_ENABLED=false = 完全不掛）
+        bot_manager.schedule_auto_validate(settings.AUTO_VALIDATE_HOUR)
+        # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
+        bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
+        bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)
+        # 維運安全軌 H3：tracking error 每日對帳（連續違規自動降級停 Bot，人再決定）
+        bot_manager.schedule_tracking_check(settings.TRACKING_CHECK_HOUR)
+        # 每日領導股回測紀錄（只落 BacktestRun、不下單；LEADER_BACKTEST_ENABLED=false = 不掛）
+        bot_manager.schedule_leader_backtest(settings.LEADER_BACKTEST_HOUR)
+        # 開機補跑：家用電腦不是 24/7——啟動時把「時刻已過 + 今天還沒跑」的每日 job
+        # 依管線順序立刻補跑（必須排在所有 schedule_* 之後，設定才齊）。
+        bot_manager.schedule_catchup_on_boot()
     finally:
         _db.close()
     print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")
@@ -136,6 +155,7 @@ app.include_router(orders.router)
 app.include_router(presets.router)
 app.include_router(chat.router)
 app.include_router(quotes.router)
+app.include_router(bot_activity.router)
 app.include_router(fundamentals.router)
 app.include_router(bars.router)
 app.include_router(recommendations.router)
@@ -149,3 +169,5 @@ app.include_router(promotion.router)
 app.include_router(factors.router)
 app.include_router(collector.router)
 app.include_router(political.router)
+app.include_router(macro.router)
+app.include_router(positions.router)

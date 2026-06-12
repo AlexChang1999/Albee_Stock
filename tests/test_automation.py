@@ -20,11 +20,49 @@ except Exception:
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from contextlib import contextmanager
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
+from backend.database import Base, get_db
 from backend.main import app
 from backend.services import automation
+from backend.services.alpaca_client import alpaca_client
 from backend.services.automation import plan_deployments
+
+
+# ---------- 共用：注入空 DB 的隔離 client ----------
+@contextmanager
+def _isolated_client(tmp_path):
+    """
+    用臨時 SQLite（Bot 表空）覆寫 get_db。
+
+    為何需要：run_auto_deploy 會 db.query(Bot).all() 取 existing_symbols 去重。
+    若走 dev DB，剛好有同名 Bot（如 AAPL）→ 候選被去重剔除 → planned 空、測試假性失敗。
+    注入空表後 existing_symbols 為空，測試結果只取決於 stub 的海選/門檻，確定性。
+    """
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'app_auto.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    TestingSession = sessionmaker(bind=engine)
+
+    def _override():
+        db = TestingSession()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = _override
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def _rec(symbol, ev, wr):
@@ -91,13 +129,17 @@ def test_get_automation():
     print("✅ GET /automation 通過")
 
 
-def test_run_dry_run(monkeypatch):
+def test_run_dry_run(tmp_path, monkeypatch):
     """
     POST /automation/run?force=true&dry_run=true：
     用假海選餵兩檔，只有過雙門檻的應出現在 planned，且不寫 DB（dry_run）。
+
+    三層隔離確保確定性（不依賴 dev DB / 真 Alpaca 帳戶）：
+    - 規則：stub get_config 成固定門檻（不受 automation_config 列被別測改過影響）。
+    - 海選：stub screen_watchlist 餵固定兩檔。
+    - DB：_isolated_client 注入空 Bot 表（existing_symbols 空，候選不被同名 Bot 去重）。
+    - 帳戶：stub get_account 丟例外 → available_cash=None、跳過資金閘（不看真帳戶餘額）。
     """
-    # 規則改吃 DB 後，門檻來自 automation_config；這裡 stub 成固定預設值，
-    # 讓本測試不受 dev DB 既有規則列（可能被別的測試改過）影響，維持確定性。
     class _Cfg:
         enabled = True
         ev_threshold = 150.0
@@ -114,7 +156,12 @@ def test_run_dry_run(monkeypatch):
             _rec("TSLA", ev=10, wr=51),    # EV 不過
         ]},
     )
-    with TestClient(app) as client:
+    # 不連真 Alpaca：讓資金閘走「查不到帳戶 → 略過」分支，結果不依賴帳戶餘額
+    def _boom():
+        raise RuntimeError("no account in test")
+    monkeypatch.setattr(alpaca_client, "get_account", _boom)
+
+    with _isolated_client(tmp_path) as client:
         resp = client.post("/automation/run?force=true&dry_run=true")
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -125,20 +172,12 @@ def test_run_dry_run(monkeypatch):
 
 
 if __name__ == "__main__":
+    # 純函式 + GET 端點可直跑；test_run_dry_run 需 tmp_path / monkeypatch / DB 隔離，
+    # 走 pytest 才能拿到那些 fixture，這裡不重覆它，請改用：
+    #     venv\Scripts\python.exe -m pytest tests\test_automation.py -q
     test_plan_filters_by_thresholds()
     test_plan_skips_existing_and_respects_slots()
     test_plan_no_slots()
     test_get_automation()
-    # __main__ 直跑：手動替換海選再還原
-    _orig = automation.screener.screen_watchlist
-    automation.screener.screen_watchlist = lambda **kwargs: {"recommendations": [
-        _rec("AAPL", 200, 60), _rec("TSLA", 10, 51)]}
-    try:
-        with TestClient(app) as client:
-            resp = client.post("/automation/run?force=true&dry_run=true")
-            body = resp.json()
-            assert body["dry_run"] is True and "AAPL" in [p["symbol"] for p in body["planned"]], body
-        print("✅ POST /automation/run dry_run 通過")
-    finally:
-        automation.screener.screen_watchlist = _orig
-    print("\n🎉 全部自動部署測試通過！")
+    print("✅ 純函式 + GET /automation 通過")
+    print("ℹ️  test_run_dry_run 請用 pytest 跑（需 fixture）：python -m pytest tests\\test_automation.py -q")

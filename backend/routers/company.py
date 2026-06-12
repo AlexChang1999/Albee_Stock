@@ -13,10 +13,12 @@
 """
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import Bot, DecisionLog, Opportunity
+from backend.models import Bot, DecisionLog, Opportunity, RawStrategyFind
+from backend.models.strategy_knowledge import StrategyKnowledge
 from backend.services.alpaca_client import alpaca_client
 from backend.services.automation_config import get_config
 from backend.services.circuit_breaker import check_breaker
@@ -36,6 +38,33 @@ def _account_best_effort() -> dict | None:
         }
     except Exception:
         return None
+
+
+def _funnel_counts(db: Session) -> dict:
+    """
+    探勘漏斗計數（Phase 12 step-04，純讀）：兩張表各依 status group-count。
+
+    顯式列出全部狀態鍵（缺的補 0），空庫時 shape 也穩定，前端不用防 undefined。
+    淘汰率 = rejected / (validated + rejected)；無分母回 None（前端顯示 —）。
+    """
+    raw = dict(
+        db.query(RawStrategyFind.status, func.count(RawStrategyFind.id))
+        .group_by(RawStrategyFind.status)
+        .all()
+    )
+    knw = dict(
+        db.query(StrategyKnowledge.status, func.count(StrategyKnowledge.id))
+        .group_by(StrategyKnowledge.status)
+        .all()
+    )
+    validated, rejected = knw.get("validated", 0), knw.get("rejected", 0)
+    return {
+        "raw": {s: raw.get(s, 0) for s in ("new", "triaged", "built", "discarded")},
+        "knowledge": {s: knw.get(s, 0) for s in ("candidate", "validated", "rejected", "curated")},
+        "rejection_rate_pct": (
+            round(rejected / (validated + rejected) * 100, 1) if (validated + rejected) else None
+        ),
+    }
 
 
 @router.get("/overview")
@@ -122,4 +151,6 @@ def company_overview(decisions_limit: int = 10, db: Session = Depends(get_db)):
         "circuit_breaker": breaker,
         "decisions": decisions,
         "opportunities": opportunities,
+        # 探勘漏斗（Phase 12 step-04）：raw 收件匣 + 知識庫各狀態計數 + 淘汰率（純讀）
+        "discovery_funnel": _funnel_counts(db),
     }

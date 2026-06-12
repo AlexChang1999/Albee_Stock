@@ -1,0 +1,454 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "sqlite_to_neon_migration_flow",
+        "label": "SQLite \u2192 Neon \u642c\u9077\u6d41\u7a0b\uff08\u5099\u4efd\u2192\u5efa schema\u2192\u642c\u8cc7\u6599\u2192\u9a57\u8b49\uff09",
+        "nodes": [
+          "explorations_2026_06_12_neon_postgres_setup_sqlite",
+          "explorations_2026_06_12_neon_postgres_setup_alembic",
+          "explorations_2026_06_12_neon_postgres_setup_migrate_once_py",
+          "explorations_2026_06_12_neon_postgres_setup_postgresql",
+          "explorations_2026_06_12_neon_postgres_setup_neon"
+        ],
+        "relation": "participate_in",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "explorations/2026-06-12-neon-postgres-setup.md"
+      },
+      {
+        "id": "zero_code_db_switch",
+        "label": "DATABASE_URL \u9a45\u52d5\u7684\u96f6\u7a0b\u5f0f\u78bc\u8cc7\u6599\u5eab\u5207\u63db",
+        "nodes": [
+          "explorations_2026_06_12_neon_postgres_setup_config_py",
+          "explorations_2026_06_12_neon_postgres_setup_database_url",
+          "explorations_2026_06_12_neon_postgres_setup_sqlite",
+          "explorations_2026_06_12_neon_postgres_setup_postgresql"
+        ],
+        "relation": "form",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "explorations/2026-06-12-neon-postgres-setup.md"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "label": "Neon",
+      "file_type": "concept",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u9078\u578b\u6c7a\u7b56",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_neon",
+      "community": 2,
+      "norm_label": "neon"
+    },
+    {
+      "label": "SQLite (albee_stock.db)",
+      "file_type": "concept",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u80cc\u666f\u8207\u52d5\u6a5f",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_sqlite",
+      "community": 0,
+      "norm_label": "sqlite (albee_stock.db)"
+    },
+    {
+      "label": "PostgreSQL 17",
+      "file_type": "concept",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u9078\u578b\u6c7a\u7b56",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_postgresql",
+      "community": 2,
+      "norm_label": "postgresql 17"
+    },
+    {
+      "label": "DATABASE_URL",
+      "file_type": "rationale",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u80cc\u666f\u8207\u52d5\u6a5f",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_database_url",
+      "community": 0,
+      "norm_label": "database_url"
+    },
+    {
+      "label": "backend/config.py",
+      "file_type": "code",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u80cc\u666f\u8207\u52d5\u6a5f",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_config_py",
+      "community": 0,
+      "norm_label": "backend/config.py"
+    },
+    {
+      "label": "Alembic",
+      "file_type": "concept",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5be6\u969b\u57f7\u884c\u6b65\u9a5f step 5",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_alembic",
+      "community": 3,
+      "norm_label": "alembic"
+    },
+    {
+      "label": "migrate_once.py",
+      "file_type": "code",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5be6\u969b\u57f7\u884c\u6b65\u9a5f step 6",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_migrate_once_py",
+      "community": 0,
+      "norm_label": "migrate_once.py"
+    },
+    {
+      "label": "seed-row PK collision",
+      "file_type": "rationale",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_seed_row_pk_collision",
+      "community": 3,
+      "norm_label": "seed-row pk collision"
+    },
+    {
+      "label": "\u53cd FK \u9806\u5e8f\u6e05\u7a7a + \u6b63 FK \u9806\u5e8f\u63d2\u5165\uff08\u55ae\u4e00\u4ea4\u6613\uff09",
+      "file_type": "rationale",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1 \u4fee\u6b63",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_reverse_fk_truncate_fix",
+      "community": 0,
+      "norm_label": "\u53cd fk \u9806\u5e8f\u6e05\u7a7a + \u6b63 fk \u9806\u5e8f\u63d2\u5165(\u55ae\u4e00\u4ea4\u6613)"
+    },
+    {
+      "label": "PowerShell \u5167\u5d4c python -c \u5f15\u865f\u9003\u9038\u5751",
+      "file_type": "rationale",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 3",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_powershell_quote_escaping",
+      "community": 1,
+      "norm_label": "powershell \u5167\u5d4c python -c \u5f15\u865f\u9003\u9038\u5751"
+    },
+    {
+      "label": "automation_config\uff08\u55ae\u5217\u8a2d\u5b9a\u8868\uff09",
+      "file_type": "code",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1 / \u5751 2",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_automation_config",
+      "community": 3,
+      "norm_label": "automation_config(\u55ae\u5217\u8a2d\u5b9a\u8868)"
+    },
+    {
+      "label": "docs/guides/setup-postgres-sync.md",
+      "file_type": "document",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5f8c\u7e8c\u6587\u4ef6\u843d\u5730",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_setup_postgres_sync_guide",
+      "community": 1,
+      "norm_label": "docs/guides/setup-postgres-sync.md"
+    },
+    {
+      "label": "docs/guides/home-boot-checklist.md",
+      "file_type": "document",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5f8c\u7e8c\u6587\u4ef6\u843d\u5730",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_home_boot_checklist",
+      "community": 1,
+      "norm_label": "docs/guides/home-boot-checklist.md"
+    },
+    {
+      "label": "psycopg2-binary",
+      "file_type": "code",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5be6\u969b\u57f7\u884c\u6b65\u9a5f step 1",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_psycopg2",
+      "community": 2,
+      "norm_label": "psycopg2-binary"
+    },
+    {
+      "label": "Neon auto-suspend \u51b7\u555f\u52d5",
+      "file_type": "rationale",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u71df\u904b\u6ce8\u610f",
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_auto_suspend",
+      "community": 2,
+      "norm_label": "neon auto-suspend \u51b7\u555f\u52d5"
+    },
+    {
+      "label": "explorations/INDEX.md\uff08\u63a2\u8a0e\u8def\u6a19\u7d22\u5f15\uff09",
+      "file_type": "document",
+      "source_file": "explorations/INDEX.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_index_index",
+      "community": 1,
+      "norm_label": "explorations/index.md(\u63a2\u8a0e\u8def\u6a19\u7d22\u5f15)"
+    },
+    {
+      "label": "2026-06-12 Neon Postgres \u642c\u9077\u5be6\u9304",
+      "file_type": "document",
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "explorations_2026_06_12_neon_postgres_setup_doc",
+      "community": 1,
+      "norm_label": "2026-06-12 neon postgres \u642c\u9077\u5be6\u9304"
+    }
+  ],
+  "links": [
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u71df\u904b\u6ce8\u610f",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_auto_suspend",
+      "target": "explorations_2026_06_12_neon_postgres_setup_neon"
+    },
+    {
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u9078\u578b\u6c7a\u7b56",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_neon",
+      "target": "explorations_2026_06_12_neon_postgres_setup_postgresql"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u80cc\u666f\u8207\u52d5\u6a5f\uff08\u7559\u7a7a\u9000\u56de SQLite\uff09",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_database_url",
+      "target": "explorations_2026_06_12_neon_postgres_setup_sqlite"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "step 6",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_migrate_once_py",
+      "target": "explorations_2026_06_12_neon_postgres_setup_sqlite"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "step 5\uff08\u5efa schema\uff09",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_alembic",
+      "target": "explorations_2026_06_12_neon_postgres_setup_postgresql"
+    },
+    {
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "step 6",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_migrate_once_py",
+      "target": "explorations_2026_06_12_neon_postgres_setup_postgresql"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "step 1 / \u9078\u578b\u6c7a\u7b56",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_psycopg2",
+      "target": "explorations_2026_06_12_neon_postgres_setup_postgresql"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u80cc\u666f\u8207\u52d5\u6a5f",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_config_py",
+      "target": "explorations_2026_06_12_neon_postgres_setup_database_url"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1\uff08\u9077\u79fb\u7a2e\u5b50\u5217\u5c0e\u81f4\u649e PK\uff09",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_alembic",
+      "target": "explorations_2026_06_12_neon_postgres_setup_seed_row_pk_collision"
+    },
+    {
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1 \u4fee\u6b63\uff08\u56de\u5beb\u9032 runbook \u8173\u672c\u7bc4\u672c\uff09",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_reverse_fk_truncate_fix",
+      "target": "explorations_2026_06_12_neon_postgres_setup_migrate_once_py"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1 \u4fee\u6b63",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_reverse_fk_truncate_fix",
+      "target": "explorations_2026_06_12_neon_postgres_setup_seed_row_pk_collision"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 1\uff08automation_config_pkey id=1\uff09",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_seed_row_pk_collision",
+      "target": "explorations_2026_06_12_neon_postgres_setup_automation_config"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5751 3",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_powershell_quote_escaping",
+      "target": "explorations_2026_06_12_neon_postgres_setup_doc"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u80cc\u666f\u8207\u52d5\u6a5f / \u5f8c\u7e8c\u6587\u4ef6\u843d\u5730",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_doc",
+      "target": "explorations_2026_06_12_neon_postgres_setup_setup_postgres_sync_guide"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md",
+      "source_location": "\u5f8c\u7e8c\u6587\u4ef6\u843d\u5730",
+      "weight": 1.0,
+      "source": "explorations_2026_06_12_neon_postgres_setup_doc",
+      "target": "explorations_2026_06_12_neon_postgres_setup_home_boot_checklist"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/INDEX.md",
+      "source_location": "line 6",
+      "weight": 1.0,
+      "source": "explorations_index_index",
+      "target": "explorations_2026_06_12_neon_postgres_setup_doc"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "sqlite_to_neon_migration_flow",
+      "label": "SQLite \u2192 Neon \u642c\u9077\u6d41\u7a0b\uff08\u5099\u4efd\u2192\u5efa schema\u2192\u642c\u8cc7\u6599\u2192\u9a57\u8b49\uff09",
+      "nodes": [
+        "explorations_2026_06_12_neon_postgres_setup_sqlite",
+        "explorations_2026_06_12_neon_postgres_setup_alembic",
+        "explorations_2026_06_12_neon_postgres_setup_migrate_once_py",
+        "explorations_2026_06_12_neon_postgres_setup_postgresql",
+        "explorations_2026_06_12_neon_postgres_setup_neon"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md"
+    },
+    {
+      "id": "zero_code_db_switch",
+      "label": "DATABASE_URL \u9a45\u52d5\u7684\u96f6\u7a0b\u5f0f\u78bc\u8cc7\u6599\u5eab\u5207\u63db",
+      "nodes": [
+        "explorations_2026_06_12_neon_postgres_setup_config_py",
+        "explorations_2026_06_12_neon_postgres_setup_database_url",
+        "explorations_2026_06_12_neon_postgres_setup_sqlite",
+        "explorations_2026_06_12_neon_postgres_setup_postgresql"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "explorations/2026-06-12-neon-postgres-setup.md"
+    }
+  ],
+  "built_at_commit": "322864e418ba5e25bbde8d2b34f2acecc3c97ee0"
+}

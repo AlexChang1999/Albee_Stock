@@ -125,6 +125,8 @@ def test_screen_watchlist_sorts_by_ev_then_sentiment(monkeypatch):
                             "strategy_key": "rsi", "params": {"period": 14},
                             "metrics": {"oos_expected_value": 50.0, "oos_win_rate_pct": 60},
                         }})
+    # 第三層前的批次暖快取也換掉（避免真打網路）
+    monkeypatch.setattr(screener.bar_cache, "get_bars_cached_multi", lambda *a, **k: {})
     out = screener.screen_watchlist()
     syms = [r["symbol"] for r in out["recommendations"]]
     assert syms == ["TSLA", "AAPL"], syms  # EV 相同 → 情緒高的 TSLA 在前

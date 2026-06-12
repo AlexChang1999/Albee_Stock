@@ -27,7 +27,6 @@ export default function ExplorationsPage() {
   useEffect(() => {
     api
       .getExplorations()
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       .then(setEntries)
       .catch((e) => setErr(e.message));
   }, []);

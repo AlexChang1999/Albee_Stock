@@ -78,3 +78,39 @@ def get_bars(symbol: str, days: int = 60) -> pd.DataFrame:
     # 維持「原始未還原」價格，行為比較貼近 Alpaca 的原始 K 線。
     raw = ticker.history(period=f"{days}d", auto_adjust=False)
     return _normalize(raw)
+
+
+def get_bars_multi(symbols: list[str], days: int = 60) -> dict[str, pd.DataFrame]:
+    """
+    一次抓「多檔」日 K（yf.download 批次下載），回 {symbol: DataFrame}。
+
+    每檔格式與 get_bars() 完全一致（重用同一個 _normalize 轉換）。
+    抓不到的檔回空 DataFrame——key 仍在，呼叫端不用接 KeyError。
+    """
+    # 大寫正規化 + 保序去重；空清單直接回空 dict，不打網路
+    symbols = list(dict.fromkeys(s.upper() for s in symbols))
+    if not symbols:
+        return {}
+    # 單檔時 yf.download 不回多層欄位（形狀與多檔不同，是個坑）→ 直接走單檔路徑
+    if len(symbols) == 1:
+        return {symbols[0]: get_bars(symbols[0], days=days)}
+
+    raw = yf.download(
+        tickers=symbols,
+        period=f"{days}d",
+        auto_adjust=False,
+        group_by="ticker",   # 欄位按 (ticker, 欄名) 分層，好逐檔切出來
+        progress=False,
+        threads=True,        # yfinance 內建多執行緒下載
+    )
+
+    result: dict[str, pd.DataFrame] = {}
+    for sym in symbols:
+        try:
+            # 切出該檔的子表（index 仍是日期、欄位首字大寫）→ 重用 _normalize。
+            # 缺檔時 yfinance 給整欄 NaN → dropna 後變空，_normalize 回空 DataFrame。
+            one = raw[sym].dropna(how="all")
+        except (KeyError, TypeError):
+            one = None
+        result[sym] = _normalize(one)
+    return result

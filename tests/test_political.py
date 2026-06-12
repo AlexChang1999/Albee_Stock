@@ -198,6 +198,52 @@ def test_handle_message_records_and_filters(monkeypatch, tmp_path):
     assert db.query(PoliticalEvent).count() == 1  # 沒新增
 
 
+# ---------- 5b. 啟動回補：防重 + 該不該收 ----------
+def test_event_exists_dedup(tmp_path):
+    """同 (author, posted_at) 已落表 → True；不同 → False（回補防重鍵）。"""
+    db = _session(tmp_path)
+    now = datetime.now()
+    record_event(
+        db, source="discord:c", author="realDonaldTrump", text="tariffs",
+        posted_at=now, verdict={"label": "bearish", "score": -80, "reason": "x"},
+    )
+    assert political.event_exists(db, author="realDonaldTrump", posted_at=now) is True
+    assert political.event_exists(db, author="realDonaldTrump", posted_at=now + timedelta(seconds=1)) is False
+    assert political.event_exists(db, author="someone_else", posted_at=now) is False
+
+
+def test_should_backfill_message(monkeypatch):
+    """回補只收「有文字 + 過作者過濾」的訊息；空白 / 純圖片（空文字）不收。"""
+    monkeypatch.setattr(political_watcher.settings, "POLITICAL_AUTHOR_FILTER", "trump")
+    assert political_watcher._should_backfill_message("Big news", "TrumpTruthSocial_Bot") is True
+    assert political_watcher._should_backfill_message("", "TrumpTruthSocial_Bot") is False
+    assert political_watcher._should_backfill_message("   ", "TrumpTruthSocial_Bot") is False
+    assert political_watcher._should_backfill_message("Big news", "someone_else") is False
+    # 過濾留空 = 收全頻道
+    monkeypatch.setattr(political_watcher.settings, "POLITICAL_AUTHOR_FILTER", "")
+    assert political_watcher._should_backfill_message("hello", "anyone") is True
+    # 內容指紋防回音：自己警報 / 心跳的固定開頭不收（舊 webhook 留在頻道的歷史警報）
+    assert political_watcher._should_backfill_message("🏛️ 政治風險訊號：xxx 偏空", "anyone") is False
+    assert political_watcher._should_backfill_message("💓 [心跳] 2026-06-12 系統存活", "anyone") is False
+
+
+def test_own_notification_guard():
+    """自我回饋防護：自己通知 webhook 發的訊息要認得出來、不能吃。"""
+    wid = political_watcher._notifier_webhook_id(
+        "https://discord.com/api/webhooks/123456789/secret-token"
+    )
+    assert wid == "123456789"
+    # 同 webhook id（不論 int / str）→ 是自己的通知 → 擋
+    assert political_watcher._is_own_notification(123456789, wid) is True
+    assert political_watcher._is_own_notification("123456789", wid) is True
+    # 不同 webhook（鏡像 bot）/ 非 webhook 訊息 → 放行
+    assert political_watcher._is_own_notification(999, wid) is False
+    assert political_watcher._is_own_notification(None, wid) is False
+    # 沒設通知 webhook → 不過濾
+    assert political_watcher._notifier_webhook_id("") == ""
+    assert political_watcher._is_own_notification(123, "") is False
+
+
 # ---------- 6. GET /political/events + /political/risk ----------
 @contextmanager
 def _isolated_client(tmp_path):

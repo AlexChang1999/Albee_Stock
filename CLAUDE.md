@@ -9,10 +9,12 @@
 
 - **後端**: Python 3.13 + FastAPI
 - **前端**: React (Vite)
-- **資料庫**: SQLite (開發) → 未來可換 PostgreSQL
+- **資料庫**: Neon 雲端 PostgreSQL（2026-06 起正式使用，多台電腦共用同一份資料；
+  `.env` 沒填 `DATABASE_URL` 自動退回本機 SQLite。**新電腦完整設置流程**見
+  [`docs/guides/setup-postgres-sync.md`](docs/guides/setup-postgres-sync.md)）
 - **交易 API**: Alpaca Markets API (免費版)
 - **即時報價**: Alpaca WebSocket
-- **回測引擎**: backtrader
+- **回測引擎**: 自寫引擎（`backend/services/backtest_engine.py`，隔日成交 + 含成本；原規劃 backtrader 未採用）
 - **通知**: LINE Notify → 未來擴充 Discord / Telegram
 - **任務排程**: APScheduler
 
@@ -24,7 +26,7 @@
 | 交易 API | alpaca-py（官方新版；舊的 alpaca-trade-api 已停止維護） |
 | 資料處理 | pandas, numpy |
 | 技術指標 | 用 pandas 自算（避開 ta-lib 在 Windows 難安裝的問題） |
-| 回測 | backtrader |
+| 回測 | 自寫 `backtest_engine.py`（pandas；未用 backtrader） |
 | 通知 | line-bot-sdk, requests |
 | 排程 | apscheduler |
 | 資料庫 ORM | sqlalchemy |
@@ -49,10 +51,14 @@ Albee_Stock/
 ├── alembic/               # 資料庫遷移
 │   ├── env.py             # 接專案 config 的 DATABASE_URL + model metadata
 │   └── versions/          # 每次 schema 變更一個遷移檔
-├── docs/
-│   ├── skill-guidelines.md    # 撰寫 Skill 的守則
-│   ├── workflow-diagrams.md   # 系統工作流圖（Mermaid：全景/決策流水線/回測EV/層驗證）
-│   └── how-to-add-strategy.md # 新增策略 runbook
+├── docs/                  # 文件（依用途分四夾；打開先看 README.md 索引）
+│   ├── README.md              # 文件地圖（四大分組 + 各檔用途）
+│   ├── ai-implementation-guardrails.md  # 開工前必讀：反 slop / 對齊原目標合約
+│   ├── remaining-work-backlog.md        # 進行中未完成工作盤點（A~G，可餵 AI）
+│   ├── history/               # 完成過的開發藍圖（phase-6~11 + redesign，歷史報告素材）
+│   ├── guides/                # 操作教學（setup / 使用說明 / how-to-add-strategy / skill 守則…）
+│   ├── reference/             # 概念規格（workflow-diagrams / roadmap / human-vs-ai / strategies…）
+│   └── ux/                    # 前端 UX（ux-workflow / ux-audit）
 ├── scripts/
 │   └── validate_layers.py     # 層驗證 CLI（Phase 7：跑 watchlist 印各層 verdict 表）
 ├── backend/
@@ -62,25 +68,60 @@ Albee_Stock/
 │   ├── test_connection.py # Alpaca 連線測試腳本
 │   ├── routers/           # API 路由（依功能拆檔）
 │   │   ├── bots.py        # Bot 管理（CRUD/啟停/執行/績效）
-│   │   ├── backtest.py    # 回測 API
+│   │   ├── backtest.py    # 回測 API（手動/全自動掃描/蒙地卡羅壓力測試）
 │   │   ├── orders.py      # 交易紀錄 API
+│   │   ├── positions.py   # 持倉清單 API（GET /positions，含浮動損益；無金鑰優雅回 []）
 │   │   ├── presets.py     # 策略方案 CRUD + 一鍵回測 + 回測歷史（依 EV 排序）
 │   │   ├── chat.py        # 本機 LLM 思考助手（對話 + 兩段式事後檢討）
-│   │   └── strategies.py  # 策略清單單一來源（GET /strategies，Phase 6 step-10）
+│   │   ├── strategies.py  # 策略清單單一來源（GET /strategies，Phase 6 step-10）
+│   │   ├── quotes.py / bars.py # 即時報價 / 歷史 K 線（給前端圖表）
+│   │   ├── fundamentals.py    # 基本面/財報/新聞（yfinance）
+│   │   ├── recommendations.py # AI 海選推薦（redesign P2）
+│   │   ├── automation.py      # 模式 B 自動化規則（redesign P4）
+│   │   ├── explorations.py    # 探討檔案記憶唯讀端點（Phase 9）
+│   │   ├── knowledge.py       # 策略知識庫 CRUD/驗證/晉升（Phase 8）
+│   │   ├── company.py         # 公司戰情聚合（Phase 10 step-01）
+│   │   ├── opportunities.py   # 常駐機會清單（Phase 10 step-02）
+│   │   ├── factors.py         # 因子數值表 + CSV 匯出（Phase 10 step-03）
+│   │   ├── collector.py       # 市場蒐集員收件匣（Phase 10 step-04）
+│   │   ├── political.py       # 政治事件流 + 風險煞車（Phase 10 step-05）
+│   │   ├── promotion.py       # 董事會核准 Bot 上真錢（Phase 10 step-06）
+│   │   └── macro.py           # 總經序列查詢（Phase 11，FRED 資料地基）
 │   ├── models/            # SQLAlchemy 資料模型
-│   │   ├── bot.py         # Bot 模型
+│   │   ├── bot.py         # Bot 模型（含風控欄位 + 保護單 id + tracking 降級欄位）
 │   │   ├── trade.py       # 交易紀錄模型
 │   │   ├── strategy_preset.py # 策略方案（參數組合）
 │   │   ├── backtest_run.py    # 回測歷史（含 EV 指標 + 檢討摘要）
 │   │   ├── decision_log.py    # 決策審計軌跡（Phase 6 step-08，含沒成交但有決策的時點）
-│   │   └── portfolio_state.py # 組合權益峰值（Phase 6 step-09 回撤熔斷用，單列持久化）
+│   │   ├── portfolio_state.py # 組合權益峰值（Phase 6 step-09 回撤熔斷用，單列持久化）
+│   │   ├── automation_config.py # 模式 B 自動化規則（存 DB 可編輯，redesign P4）
+│   │   ├── strategy_knowledge.py # 策略知識庫（candidate→validated→curated，Phase 8）
+│   │   ├── opportunity.py     # 常駐探勘機會（含 OOS 指標，Phase 10）
+│   │   ├── factor_snapshot.py # 因子快照（Phase 10 step-03）
+│   │   ├── raw_strategy_find.py # 蒐集員 raw 素材（Phase 10 step-04）
+│   │   ├── political_event.py # 政治事件（Phase 10 step-05）
+│   │   └── macro_series.py    # 總經序列（FRED，Phase 11）
 │   ├── services/          # 業務邏輯
-│   │   ├── alpaca_client.py   # Alpaca API 封裝（延遲初始化）
+│   │   ├── alpaca_client.py   # Alpaca API 封裝（延遲初始化 + 雙閘 + 保護單/撤單）
+│   │   ├── market_data.py     # 統一資料源（回測=實盤同路，Phase 6）
+│   │   ├── bar_cache.py       # K 線快取
+│   │   ├── yfinance_client.py / fundamentals.py # yfinance 報價備源 / 基本面
 │   │   ├── backtest_engine.py # 回測引擎（含期望值 EV + 成本模型 + 隔日成交）
-│   │   ├── performance.py     # Bot 績效指標計算
+│   │   ├── vectorized_engine.py # 向量化回測（海選加速）
+│   │   ├── optimizer.py       # 全自動掃描（策略×參數網格，OOS EV 排名）
+│   │   ├── screener.py        # AI 海選漏斗（量能→情緒→EV）
+│   │   ├── analytics.py       # 延伸績效指標（Sharpe/Sortino/VaR/CVaR + tear sheet）
+│   │   ├── monte_carlo.py     # 蒙地卡羅壓力測試（bootstrap 重抽日報酬）
+│   │   ├── performance.py     # Bot 績效指標計算（含每回合報酬配對）
 │   │   ├── capital.py         # 組合層資金/購買力守門（Phase 6 step-05，純函式 plan_capital）
 │   │   ├── circuit_breaker.py # 組合回撤熔斷（Phase 6 step-09，只擋進不擋出）
-│   │   ├── notifier.py        # 通知服務（LINE 等）
+│   │   ├── risk_manager.py    # Bot 層止盈/止損/追蹤止損出場（Phase 4）
+│   │   ├── protective_orders.py # 券商端 GTC 保護單規劃（backlog H1）
+│   │   ├── heartbeat.py       # 每日心跳日報 + dead-man ping（backlog H2）
+│   │   ├── tracking.py        # tracking error 對帳 + 自動降級（backlog H3）
+│   │   ├── notifier.py        # 通知服務（LINE / Discord）
+│   │   ├── quote_stream.py    # Alpaca WebSocket 即時報價
+│   │   ├── llm.py             # LLM 客戶端（本機 Ollama，外送閘）
 │   │   ├── explorations.py    # 探討/檢討檔案記憶（INDEX 路標 + 內容檔，防路徑穿越）
 │   │   ├── regime_features.py # 市場狀態特徵（Phase 7 step-01）
 │   │   ├── regime.py          # 狀態分類（Phase 7 step-02）
@@ -89,7 +130,17 @@ Albee_Stock/
 │   │   ├── meta_label.py      # meta-labeling 二級過濾（Phase 7 step-05）
 │   │   ├── event_risk.py      # 事件風險閘（Phase 7 step-06，只煞車不猜方向）
 │   │   ├── validation.py      # 防過擬合框架（Phase 7 step-07：walk-forward/purged k-fold/層閘）
-│   │   └── layer_validation.py # 層驗證 harness（baseline-vs-candidate 樣本外比較各層加分）
+│   │   ├── layer_validation.py # 層驗證 harness（baseline-vs-candidate 樣本外比較各層加分）
+│   │   ├── strategy_generator.py # LLM 提案策略參數（Phase 8 step-02）
+│   │   ├── evolution.py       # 知識庫候選 OOS 驗證管線（Phase 8 step-04）
+│   │   ├── automation.py / automation_config.py # 模式 B 自動部署 + 規則（redesign P4）
+│   │   ├── opportunity_scan.py # 常駐探勘機會掃描（Phase 10 step-02）
+│   │   ├── collector.py       # 爬蟲蒐集員（RSS，Phase 10 step-04，預設關）
+│   │   ├── political.py       # Discord 政治員（煞車，Phase 10 step-05，bridge 預設關）
+│   │   ├── fred_client.py / macro_data.py / macro_features.py # FRED 總經資料地基（Phase 11）
+│   │   ├── orderflow_proxy.py # 籌碼面 proxy 特徵（Phase 11）
+│   │   ├── discovery.py       # 探勘橋：raw find → LLM 產候選（Phase 12 step-02，預設關）
+│   │   └── auto_validate.py   # 候選自動批次 OOS 驗證（Phase 12 step-03，判準零修改，預設關）
 │   ├── strategies/        # 交易策略模組（每個策略一個檔案）
 │   │   ├── base.py        # 策略基底類別
 │   │   ├── ma_crossover.py    # 均線交叉
@@ -115,11 +166,12 @@ Albee_Stock/
 │       ├── BotAvatar.jsx      # Bot 頭像元件（深藍發光徽章）
 │       ├── LightweightChart.jsx  # 原生 K 線圖（lightweight-charts，取代舊 TradingView iframe，redesign P1）
 │       ├── pages/             # 各路由頁（Dashboard/Trades/BacktestRuns/Presets/Explorations/
-│       │                      #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/BacktestTools）
+│       │                      #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/BacktestTools/
+│       │                      #   Company/Opportunities→戰情頁內/Factors/Collector/Political/Promotion，Phase 10）
 │       ├── components/        # 畫面區塊元件
 │       │   ├── SidebarLayout  # 左側導覽外殼（Phase 9 step-01）
 │       │   ├── AssistantDrawer  # 思考助手全站抽屜（Phase 9 step-08，右下浮動鈕）
-│       │   ├── Header / AccountCard / BotList / Stat / ConfirmDialog
+│       │   ├── Header / AccountCard / PositionsCard / BotList / Stat / ConfirmDialog
 │       │   ├── BacktestPanel / TradesTable / EditBotDialog / KnowledgeCard
 │       │   ├── RecommendationsPanel / AutomationPanel  # AI 海選推薦 / 模式 B 自動化規則（redesign P2/P4）
 │       │   ├── ChartGrid / LiveQuote / EquitySparkline / BacktestResultCard
@@ -136,6 +188,40 @@ Albee_Stock/
 │   └── test_api.py
 ```
 
+## 檔案放置規範（新增檔案放哪 — Claude 與人都遵守）
+
+> docs/ 已依用途分四夾（2026-06 重整，零刪除）。**新增任何檔前先想清楚歸哪夾**，
+> 別再丟回 docs/ 根或亂塞，否則很快又積成一坨找不到。命名沿用既有風格（kebab-case、Phase 用 `phase-N-主題/`）。
+
+### 文件（docs/）
+
+| 要新增的東西 | 放這裡 | 例 |
+|--------------|--------|-----|
+| 某 Phase 的開工藍圖 / step 契約 | `docs/history/phase-N-主題/`（含 in-progress；做完不用搬） | `docs/history/phase-12-strategy-discovery/README.md` |
+| 「AI 終端機改版」子軌文件 | `docs/history/redesign/` | `docs/history/redesign/phase-5-xxx.md` |
+| 操作教學 / runbook / 安裝 / 使用說明 / 上線檢查表 | `docs/guides/` | `docs/guides/how-to-deploy.md` |
+| 概念 / 規格 / 路線圖 / 工作流圖 / 個別策略筆記 | `docs/reference/`（策略筆記進 `reference/strategies/`） | `docs/reference/strategies/macd.md` |
+| 前端 UX 稽核 / 工作流 | `docs/ux/` | `docs/ux/ux-audit-2026-12.md` |
+| 反 slop 開工合約、進行中 backlog | **docs/ 根**（只有這兩類留根，最常讀） | — |
+
+- **新增文件後**：更新 [`docs/README.md`](docs/README.md) 索引表那一列（它是文件地圖，漏了就等於沒人找得到）。
+- **連結用相對路徑**並確認解析得到；搬移既有檔一律 `git mv`（保歷史血緣），改完 grep 驗證無殘斷連結。
+
+### 程式碼（backend/ · frontend/ · tests/ · scripts/）
+
+| 要新增的東西 | 放這裡 |
+|--------------|--------|
+| 交易策略模組（一策略一檔，鬆耦合） | `backend/strategies/<name>.py`（+ 註冊 + 前端 `constants.js` 清單 + 測試） |
+| 業務邏輯 / 服務 | `backend/services/<name>.py` |
+| API 路由（依功能拆檔） | `backend/routers/<name>.py`，並在 `backend/main.py` 掛上 router |
+| SQLAlchemy 資料模型 | `backend/models/<name>.py`（改欄位走 Alembic，**勿手動 ALTER**） |
+| 前端頁面 / 區塊元件 / Hook / 純函式工具 | `frontend/src/{pages,components,hooks,utils}/`（元件測試同層 `*.test.jsx`） |
+| 測試 | `tests/test_<主題>.py`（**扁平結構**，勿建子資料夾） |
+| 維運 / CLI 腳本 | `scripts/` |
+
+- **root 維持乾淨**：只放慣例頂層檔（`CLAUDE.md`/`README.md`/`CHANGELOG.md`/`*.bat`/設定檔）。
+  `.bat` 用 `%~dp0` 錨定 root，**不要搬進子資料夾**（雙擊路徑會壞）。新文件一律進 `docs/`、新腳本進 `scripts/`。
+
 ## 開發階段
 
 | 階段 | 內容 | 狀態 |
@@ -144,19 +230,21 @@ Albee_Stock/
 | Phase 2 | Web UI + 回測引擎 | ✅ 完成（前端 + TradingView 看板 + 回測引擎） |
 | Phase 3 | 多 Bot 管理 + 更多策略 | ✅ 完成（Bot CRUD/啟停、績效指標、8 種策略、分頁式 UI、CI） |
 | Phase 4 | 自動交易監聽系統 + 實盤切換準備 | ✅ 完成（風控欄位 + 止盈/止損/追蹤止損出場、追蹤止損最高價持久化、開市判斷、實盤雙閘安全閥、Alembic 遷移、監聽狀態可視化、Discord 通知） |
-| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地：策略工作台 UI、Preset CRUD、EV 回測歷史、本機 Ollama 助手、explorations 檔案記憶；roadmap：[`docs/roadmap-strategy-workbench.md`](docs/roadmap-strategy-workbench.md)） |
-| Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10，藍圖 [`docs/phase-6/`](docs/phase-6/README.md)） |
-| Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07：特徵/狀態分類/選策略/凱利/meta-labeling/事件風險閘/驗證框架，藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)；機制就位，各層 OOS 加分待 step-07 驗證後決定去留） |
-| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06：知識庫模型/LLM 提案/組合引擎/OOS 驗證管線/排行+使用時機/人在迴路審核，藍圖 [`docs/phase-8-strategy-evolution/`](docs/phase-8-strategy-evolution/README.md)） |
-| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08：sidebar+路由外殼/交易/回測歷史/方案/探討（+後端讀取端點）/決策/進化+知識庫/助手抽屜，藍圖 [`docs/phase-9-frontend-workstation/`](docs/phase-9-frontend-workstation/README.md)） |
-| Phase 10 | AI 交易公司（編排層 + 戰情頁：市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07：戰情頁/常駐機會清單/因子表/爬蟲蒐集員/Discord 政治員/董事會核准頁/開機常駐化，藍圖 [`docs/phase-10-ai-company/`](docs/phase-10-ai-company/README.md)；step-05 政治員為「煞車」且 bridge 預設關，連真 Discord 需先有同步川普貼文的鏡像頻道） |
+| Phase 5 | 策略工作台 + 本機 LLM 思考助手 + 期望值最優 | 🚧 進行中（核心已落地：策略工作台 UI、Preset CRUD、EV 回測歷史、本機 Ollama 助手、explorations 檔案記憶；roadmap：[`docs/reference/roadmap-strategy-workbench.md`](docs/reference/roadmap-strategy-workbench.md)） |
+| Phase 6 | 可信度地基（讓回測 EV ≈ 實盤 EV：成本/隔日成交/樣本外 OOS/統一資料路徑/組合風控/決策審計） | ✅ 完成（step-01~10，藍圖 [`docs/history/phase-6/`](docs/history/phase-6/README.md)） |
+| Phase 7 | 自適應市場狀態（狀態辨識→選策略 + 分數凱利 + meta-labeling + 防過擬合驗證） | ✅ 完成（step-01~07：特徵/狀態分類/選策略/凱利/meta-labeling/事件風險閘/驗證框架，藍圖 [`docs/history/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)；機制就位，各層 OOS 加分待 step-07 驗證後決定去留） |
+| Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06：知識庫模型/LLM 提案/組合引擎/OOS 驗證管線/排行+使用時機/人在迴路審核，藍圖 [`docs/history/phase-8-strategy-evolution/`](docs/history/phase-8-strategy-evolution/README.md)） |
+| Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08：sidebar+路由外殼/交易/回測歷史/方案/探討（+後端讀取端點）/決策/進化+知識庫/助手抽屜，藍圖 [`docs/history/phase-9-frontend-workstation/`](docs/history/phase-9-frontend-workstation/README.md)） |
+| Phase 10 | AI 交易公司（編排層 + 戰情頁：市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07：戰情頁/常駐機會清單/因子表/爬蟲蒐集員/Discord 政治員/董事會核准頁/開機常駐化，藍圖 [`docs/history/phase-10-ai-company/`](docs/history/phase-10-ai-company/README.md)；step-05 政治員為「煞車」且 bridge 預設關，連真 Discord 需先有同步川普貼文的鏡像頻道） |
+| Phase 11 | 總經 + 籌碼資料地基（FRED 序列入庫 + macro 特徵 + orderflow proxy，餵 Phase 7 狀態機） | ✅ 完成（藍圖 [`docs/history/phase-11-macro-data/`](docs/history/phase-11-macro-data/README.md)；macro 層真資料 OOS 驗證無加分，2026-06-11 誠實砍除——資料地基留著、層不上線） |
+| Phase 12 | 策略自動探勘入庫管線（collector 收料 → LLM 探勘橋產候選 → 自動 OOS 驗證 → 漏斗報表 + 人在迴路晉升） | 🔶 step-01~04 已實作（collector 通電 guide/探勘橋 `discovery.py`/自動驗證 `auto_validate.py`/戰情漏斗卡 + 心跳待審行，藍圖 [`docs/history/phase-12-strategy-discovery/`](docs/history/phase-12-strategy-discovery/README.md)）；step-05 兩週觀察待常駐機器開跑（模板 [`review-e2e.md`](docs/history/phase-12-strategy-discovery/review-e2e.md)），跑滿後留/降級/砍三選一。預設全關（`DISCOVERY_ENABLED`/`AUTO_VALIDATE_ENABLED`=false）；晉升 curated 仍只能由人觸發 |
 
-> **改版子軌**：[`docs/redesign/`](docs/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
-> **跑真錢前必讀**：[`docs/human-vs-ai-operation.md`](docs/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。
+> **改版子軌**：[`docs/history/redesign/`](docs/history/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
+> **跑真錢前必讀**：[`docs/reference/human-vs-ai-operation.md`](docs/reference/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。
 
 ## ⚠️ AI 自動 coding 前必讀
 
-任何 AI（或人）拿 `docs/phase-*/` 藍圖**自己 coding** 前，**必讀並遵守**
+任何 AI（或人）拿 `docs/history/phase-*/` 藍圖**自己 coding** 前，**必讀並遵守**
 [`docs/ai-implementation-guardrails.md`](docs/ai-implementation-guardrails.md)——防止「偏離原目標」與「產生 vibe slop」的合約：
 開工前讀原目標錨點 + 對應 step、coding 中守反 slop 規則、收工前對完成定義 DoD。一次一步、永遠對齊原目標。
 
@@ -173,6 +261,10 @@ Albee_Stock/
 ## 環境變數（.env 需要的欄位）
 
 ```
+# 資料庫（雲端 Neon PG；留空/註解掉＝退回本機 SQLite）
+# 連線字串從 Neon Dashboard → Connect 複製；新電腦設置見 docs/guides/setup-postgres-sync.md
+DATABASE_URL=postgresql://neondb_owner:<密碼>@ep-xxxx.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+
 ALPACA_API_KEY=你的_API_Key
 ALPACA_SECRET_KEY=你的_Secret_Key
 ALPACA_BASE_URL=https://paper-api.alpaca.markets  # Paper Trading
@@ -249,8 +341,9 @@ cd frontend && npm run dev
   - 新電腦/全新 DB：`venv\Scripts\alembic.exe upgrade head` 一行建好（`setup.bat` 已含）。
   - **SQLite 必備坑**：`alembic/env.py` 已設 `render_as_batch=True`。SQLite 的 `ALTER`
     很弱（不能改/刪欄位），沒開 batch 模式，未來改欄位的遷移會失敗。
-  - DB 連線讀 `config.py` 的 `DATABASE_URL`（可由 `.env` 覆寫）。未來換 PostgreSQL
-    只要在 `.env` 設 `DATABASE_URL=postgresql://...`，程式不用改。
+  - DB 連線讀 `config.py` 的 `DATABASE_URL`（可由 `.env` 覆寫）。**現已指向 Neon 雲端
+    PostgreSQL**（`.env` 設 `DATABASE_URL=postgresql://...`，程式零改；沒填則退回本機
+    SQLite）。設定/換機 runbook：`docs/guides/setup-postgres-sync.md`。
 
 ## 可用的 MCP Server
 
@@ -290,5 +383,5 @@ cd frontend && npm run dev
 
 ## 撰寫 Skill
 
-要新增 Skill（放在 `.claude/skills/`）時，請先讀 [`docs/skill-guidelines.md`](docs/skill-guidelines.md)：
+要新增 Skill（放在 `.claude/skills/`）時，請先讀 [`docs/guides/skill-guidelines.md`](docs/guides/skill-guidelines.md)：
 避坑指南、漸進式揭露、記憶能力、按需觸發的危險操作 Hook 四大原則。

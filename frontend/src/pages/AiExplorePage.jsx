@@ -7,6 +7,8 @@ import { useOutletContext } from "react-router-dom";
 import RecommendationsPanel from "../components/RecommendationsPanel";
 
 export default function AiExplorePage() {
-  const { onDeploy } = useOutletContext();
-  return <RecommendationsPanel onDeploy={onDeploy} />;
+  const { onDeploy, status } = useOutletContext();
+  return (
+    <RecommendationsPanel onDeploy={onDeploy} liveArmed={status?.live_armed} />
+  );
 }

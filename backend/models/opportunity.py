@@ -44,6 +44,10 @@ class Opportunity(Base):
     oos_expected_value = Column(Float, nullable=True)
     oos_win_rate_pct = Column(Float, nullable=True)
 
+    # OOS 期望值佔本金 %（維運安全軌 H3：tracking error 對帳的回測側基準。
+    # 回測全進全出複利 vs Paper 固定 trade_amount，美元 EV 不可直接比，用 % 歸一化）
+    oos_expectancy_pct = Column(Float, nullable=True)
+
     # 海選時順手帶上的新聞情緒（dict 或 None；只當次要排序加權，不當主訊號）
     sentiment = Column(JSON, nullable=True)
 

@@ -15,6 +15,500 @@
 
 ## [未發布]
 
+### 變更
+
+- **資料庫切換 Neon 雲端 PostgreSQL（2026-06-12）**——`DATABASE_URL` 指向 Neon 免費
+  PG 17（新加坡 `ap-southeast-1`），兩台電腦共用同一份資料、換機零搬遷；沒填
+  `DATABASE_URL` 仍自動退回本機 SQLite，程式零改。一次性搬遷已完成（Alembic 建表
+  20 遷移／15 表 + SQLite 資料搬入；踩坑：遷移種子列會撞 PK，搬遷腳本需先清表再插入，
+  已記錄）。**新電腦完整設置流程見 [`docs/guides/setup-postgres-sync.md`](docs/guides/setup-postgres-sync.md)
+  的「換電腦 / 新電腦」一節**（git pull 後照做即可）。
+
+### 新增
+
+- **政治員啟動回補**——watcher 啟動時（`on_ready`）自動抓 Discord 頻道最近
+  `POLITICAL_BACKFILL_LIMIT`（預設 5，0=關）筆「有文字內容」的歷史貼文，走既有
+  判讀＋落表路徑補進 `political_events`：電腦非 24h 開機也不漏啟動前的政治情緒。
+  防重用 `(author, posted_at)` 天然鍵（`political.event_exists`，免加欄位免遷移）；
+  回補由舊到新處理保時序、失敗只印警告不影響即時監聽。測試 +2（防重/該不該收）。
+
+### 修正
+
+- **政治員自我回饋迴圈防護**——系統通知 webhook（`DISCORD_WEBHOOK_URL`）若指向
+  watcher 監看的同一頻道，自己的風險警報會被自己讀回去判讀 → 再發警報 → 無限迴圈
+  （實測踩到，15 秒一筆洗版）。修法：①即時監聽與回補都依 webhook id 跳過自己通知
+  webhook 發的訊息（`_is_own_notification`）；②啟動時偵測「通知 webhook 與監看頻道
+  同頻道」印 🚨 設定錯誤警告。正解仍是通知用獨立頻道的專屬 webhook。測試 +1。
+
+- **文件：前端頁面地圖**（`docs/reference/frontend-pages-map.md`）——sidebar 17 頁
+  拆四條工作流（探勘入庫/研究回測/上線執行/情報檢討），Mermaid 小圖×6（拆小張
+  橫排避免瀏覽器縮太小）+ 開第一隻 Bot step-by-step + 模擬交易 When/What/Why
+  對照表（含「為何選這支股」缺口註記）+ 各頁資料由誰產生。docs/README.md 索引同步。
+
+- **抓取效率升級：批次多檔抓取 + 並行 I/O + 限流**——瓶頸調查確認「慢在逐檔 HTTP
+  往返，不在 RAM」（快取已是磁碟 parquet），把傳輸層批次化、判準零修改：
+  - **批次 K 線**：`alpaca_client.get_bars_multi()` / `yfinance_client.get_bars_multi()` /
+    `market_data.get_bars_multi()`——一次請求抓 N 檔（Alpaca `StockBarsRequest`
+    原生吃 list；yfinance 走 `yf.download` 批次），每檔契約與單檔版逐欄一致、
+    缺檔回空 DataFrame。watchlist 掃描從「N 檔 N 次往返」變 1 次。
+  - **批次快取**：`bar_cache.get_bars_cached_multi()`——逐檔查 parquet 快取分三桶
+    （全命中 0 API / 無快取整段 / 尾缺口），有缺口的桶批次補抓（最多 2 次 HTTP），
+    缺口判定/合併/切片重用單檔版同一組純函式，結果與逐檔跑完全一致（有測試守門）；
+    批次失敗自動退單檔舊路徑。單檔 `get_bars_cached` 一字未動。
+  - **批次報價**：`alpaca_client.get_latest_prices()` + `quote_stream` 輪詢改批次——
+    一輪所有訂閱股票 1 次請求（原本每 5 秒逐檔各打一次）。
+  - **限流保險絲**：`alpaca_client` 加 token bucket（`ALPACA_RATE_LIMIT_PER_MIN`，
+    預設 200 = Alpaca 免費版額度；0=不限流），所有資料 API 同一個桶，
+    交易單不限流（下單延遲不可接受）。防標的一多被 429 打爆。
+  - **並行 I/O**：FRED 多序列（`fred_client.get_observations_multi`，DB upsert 仍
+    序列化）與 collector 多條 RSS 改小 ThreadPool 並行（`FETCH_MAX_WORKERS`，
+    預設 4；同站每輪仍只一次請求，不對單站猛打）。
+  - **呼叫端接上**：screener 第一層批次抓 + 第三層回測前批次暖快取、
+    `opportunity_scan.collect_factor_snapshots` 批次、每日領導股回測前批次暖快取。
+  - 測試：新增 `tests/test_batch_fetch.py`（12 案：契約一致/單請求/缺檔打底/
+    零 API 命中/混桶/失敗 fallback/批次=單檔一致性/限流/時鐘倒退防卡死），
+    `test_quotes.py` 隨批次輪詢同步更新。
+  - 實測（10 檔 × 60 天、冷快取、yfinance 備源、暖 session 後）：批次 0.32s vs
+    逐檔 1.31s ≈ **4.1x**；暖快取第二次 0.05s（0 次外部 API）。Alpaca 源為真正
+    單請求批次，預期倍數更高。回測網格並行（P3）量測後暫不做——抓取已非瓶頸。
+
+- **Bot 活動即時可視化（真跑偵測器 + 策略可視化）**——解決「前端無法確認機器人
+  是真跑還是假跑」：Bot 一輪執行 <1 秒、前端 30 秒輪詢，中間全黑盒。四件套全上：
+  - **後端事件管線**：新增 `backend/services/bot_activity.py`（BotActivityHub：
+    APScheduler 執行緒 → `loop.call_soon_threadsafe` → asyncio.Queue → 單一
+    forwarder task 扇出，保證事件順序；ring buffer 60 則供新連線回放）+
+    `backend/routers/bot_activity.py`（WebSocket `/ws/bot-activity`，連上即收）。
+    `bot_manager.py` 執行循環插樁 ~10 個 emit 點（cycle_start → fetch_data →
+    compute_signal → risk_check → decision → order_submitted → cycle_end），
+    decision/order 掛在 `_record_decision`/`_record_and_notify` 單一漏斗零遺漏。
+    鐵則：`emit()` 整段吞例外 + 無事件迴圈時 no-op——可視化壞了交易照常。
+  - **Dashboard 卡片即時動畫**：新增 `frontend/src/hooks/useBotActivity.js`
+    （播放佇列：資料 100% 真事件、每階段最少顯示 600ms 人眼才看得到）+
+    `frontend/src/components/BotActivityStatus.jsx`（抓數據脈衝 / 計算掃光 /
+    決策 chip 閃現 / 待機倒數「下輪 Xs」/ 休市靜態待機）。
+    **真跑偵測器**：倒數歸零 +15 秒沒等到新一輪 → 卡片亮紅「排程未回應」。
+    WS 斷線優雅降級回原輪詢顯示；動畫色全由 NEON 色票推導。
+  - **決策即時流**：新增 `GET /bots/decisions/recent`（跨 Bot 最近決策播種）+
+    `frontend/src/components/DecisionFeed.jsx`：每輪決策（含「無交叉訊號，觀望」）
+    即時滑入 Dashboard，像看機器人的思考日誌。action 標籤/配色映射抽到
+    `frontend/src/utils/decisionMeta.js` 三處共用（DecisionsPage 改 import）。
+  - **策略視角圖表**：新增 `backend/services/indicator_overlays.py`（策略名+參數 →
+    指標序列：MA 雙線/布林三軌/唐奇安通道主圖疊線；MACD/RSI/KD/%R/ROC/ADX 振盪器
+    副圖含超買超賣參考線；公式照抄各策略檔、9 策略類零修改，composite 明確回空）+
+    `GET /bots/{id}/chart-data`（K 線+指標同一份 df 保證對齊，markers 含 TradeLog
+    真實成交 ▲▼ 與可開關的 DecisionLog 觀望點）。`LightweightChart.jsx` 加
+    candles/markers/overlays/pane 四個選用 props（v5 `createSeriesMarkers` plugin +
+    paneIndex 副圖；不傳 = 舊行為零影響），新增
+    `frontend/src/components/BotStrategyChart.jsx` 掛上 Dashboard。
+  - 測試：`tests/test_bot_activity.py`（執行緒橋保序/回放/插樁序列/hub 炸掉不影響
+    交易，11 例）、`tests/test_indicator_overlays.py`（映射覆蓋全註冊策略/格式/params
+    覆寫，6 例）、`tests/test_decision_log.py` 補 recent 端點 1 例；前端
+    `useBotActivity.test.jsx`（播放節奏/stale/feed，5 例）+ `BotActivityStatus` /
+    `DecisionFeed` / `BotStrategyChart` 元件測試 14 例。後端 466 + 前端 132 全綠。
+
+- **Backlog F 收尾：`ui-ux-pro-max` skill CLI 通電**——從上游開源 repo
+  [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+  （MIT）vendor `scripts/`（search.py/core.py/design_system.py，純 stdlib 免依賴）+
+  `data/` 全套 CSV（含 stacks/；排除未引用的開發雜檔 draft.csv/_sync_all.py），附
+  `LICENSE-upstream.txt` 署名。SKILL.md 適配註記同步：「CLI 不可用」改為本專案
+  Windows 跑法（`venv\Scripts\python.exe ...\search.py "<查詢>" --domain ux`；
+  script 自帶 UTF-8 stdout 修正不踩 cp950 坑）。靜態掃描確認無網路/子行程/eval，
+  唯一檔案寫入是 `--persist` 明確要求時。backlog F 標 ✅。
+- **免費 VM 常駐部署指南**——新增 `docs/guides/free-vm-deployment.md`：Phase 12
+  step-05 兩週觀察的常駐機器方案。比較表載明只有 Oracle Cloud Always Free
+  Ampere A1（4 OCPU/24GB，永久免費）跑得動 Ollama 8B（AWS 已改 6 個月 credits 制、
+  1GB 小機載不動模型）；含開通步驟（搶 A1 容量應對、不開 8000 對公網）、Linux 裝機、
+  兩個 Linux 限定坑（APScheduler 吃伺服器本地時間→必設 Asia/Taipei；
+  `start_backend.bat` 看門狗改 systemd `Restart=always`）、SSH tunnel 看戰情頁、
+  備援方案（小 VM + Groq/Gemini 免費層，`LLM_ALLOW_CLOUD=true` 外送邊界：僅公開
+  RSS 素材可外送、策略私有探討留本機）。`docs/README.md` 索引 + backlog D
+  checklist 同步補 VM 選項。
+
+- **開機補跑 + 自我修復三層防護（家用電腦非 24/7 也能跑滿每日管線）**——
+  - 新增 `backend/services/catchup.py`：後端啟動時檢查「今天該跑而沒跑」的每日 job
+    （discovery → auto_validate → 領導股回測 → 心跳 → tracking 對帳，含 collector 預跑），
+    時辰已過就立刻補跑；同日去重靠新表 `job_run_log`（`backend/models/job_run_log.py`，
+    Alembic 遷移 `2639cd3d3e17`），**只記成功**——失敗不落帳、下次開機自然重試。
+    `make_daily_idempotent` 同時包住排程 cron job，補跑與 cron 互不重複執行。
+    開關 `CATCHUP_ON_BOOT`（預設開）。
+  - APScheduler 加 `coalesce=True` + `misfire_grace_time=3600`：電腦睡眠喚醒後
+    一小時內的錯過排程會合併補發一次，不再靜默跳過。
+  - `start_backend.bat` 加看門狗迴圈：後端崩潰／斷線退出後等 10 秒自動重啟
+    （搭配開機補跑，重啟即接回當日管線，人不在家也能自我修復）。
+- **每日領導股回測紀錄**——新增 `backend/services/daily_watch.py`：每天對
+  `LEADER_BACKTEST_SYMBOLS`（預設 AAPL/MSFT/NVDA/GOOGL/AMZN/META/TSLA）各跑一輪
+  全自動掃描（optimizer，OOS EV 排名），把每檔冠軍存成 `BacktestRun`
+  （`preset_id=None`、`is_good=False`，不灌人工策展榜）；單檔失敗不擋其他檔、
+  全數失敗拋例外讓補跑機制之後重試。排程 `LEADER_BACKTEST_HOUR`（預設 10 點），
+  開關 `LEADER_BACKTEST_ENABLED`、回看 `LEADER_BACKTEST_DAYS`（預設 365）。
+- **未上市公司關鍵字監控（SpaceX 等回不了測的公司）**——collector 收料時比對
+  `PRIVATE_WATCH_KEYWORDS`（逗號分隔，預設 `SpaceX`），命中標題/摘要的素材寫入
+  `raw_strategy_finds.tags`（`watch:<關鍵字>`，新欄位含索引）；通知附命中數，
+  `GET /collector/finds?tag=watch:SpaceX` 可過濾查閱。
+- 測試：新增 `tests/test_catchup.py`（同日冪等/補跑順序/失敗重試/領導股回測，11 例）、
+  `tests/test_collector.py` 補關鍵字監控 3 例；新增 `tests/conftest.py` 測試環境
+  全域關閉開機補跑閘（TestClient 起 lifespan 時不真跑背景管線、不互染 monkeypatch）。
+
+- **工作流圖完善（6 張）**——`docs/reference/workflow-diagrams.md`：圖 5 從
+  Phase 8–11 擴成 8–12（補 discovery 探勘橋 → auto_validate OOS 閘 → 漏斗報表的
+  自動探勘管線，標註預設全關 + 開跑 checklist / 驗收模板連結）；新增圖 6
+  「手工新增策略工作流」（點子 → 調參數免寫程式 / strategy-builder skill /
+  手動六落地點 → 收尾驗證 → OOS 證明 → 手動 Bot / 自動海選 / 知識庫三用途，
+  含「沒加 PARAM_GRIDS 自動化軌看不見」坑註）；對照表補 discovery / auto_validate
+  與圖 6 列；`docs/README.md` 索引同步。
+
+- **Phase 12 觀察期開跑前 checklist**——backlog D 項加完整開跑待辦：`.env` 必填
+  （Alpaca 金鑰或 `DATA_SOURCE=yfinance`、feeds、兩個 ENABLED 開關、本機 Ollama、
+  通知管道）、要常駐的程式（ollama serve、後端 24/7——排程器活在後端行程裡）、
+  串接驗通指令（test_connection / overview / 三段手動跑一輪）、起跑儀式（快照 +
+  判準凍結）。缺哪項哪段靜默不跑，全列出來防「以為在跑其實沒跑」。
+
+- **Phase 12 step-05：端到端驗收模板**——新增
+  `docs/history/phase-12-strategy-discovery/review-e2e.md`（兩週觀察數據表：收料量/
+  垃圾率/OOS 通過率〔分母排除 `rejected_by=auto_validate` 操作性放棄〕/curated 增量 +
+  optimizer 網格基準對照 + 留/降級/砍三選一判準 + 判準凍結聲明）。兩週觀察需在常駐
+  機器全開連跑後回填；backlog D 項與 phase-12 README 狀態同步為「step-01~04 已實作」。
+
+- **Phase 12 step-04：探勘漏斗報表 + 待審提醒（人在迴路收口）**——
+  `/company/overview` 加 `discovery_funnel` 區塊（raw 收件匣 + 知識庫各狀態
+  group-count + 淘汰率，純讀無遷移）；每日心跳日報加一行
+  「探勘漏斗：candidate X｜validated 待審 Y」（查不到以 ? 帶過，心跳永不崩、
+  不另開通知管道）；戰情頁加「探勘漏斗」部門卡（四段計數 + validated 待審徽章，
+  點擊跳既有 LibraryPage 策展，零新增審核入口；吃 theme 色）。
+  測試：後端漏斗聚合 2 案 + 心跳漏斗行 2 案、前端漏斗卡 2 案。
+
+- **Phase 12 step-03：候選自動批次驗證（OOS 閘排程化）**——新增
+  `backend/services/auto_validate.py`：每日定時取知識庫 status=candidate 至多
+  `AUTO_VALIDATE_BATCH_SIZE` 筆，逐筆呼叫**既有** `evolution.validate_candidate`
+  （walk-forward OOS 閘，判準零修改）自然流轉 validated/rejected；不自動晉升 curated。
+  失敗隔離：單筆例外不擋整批，失敗計數記 `oos_metrics["auto_validate"]`（免遷移），
+  連續 3 次才標 rejected + `rejected_by="auto_validate"`（與 evolution verdict-reject
+  可稽核區分；驗證成功時計數自然歸零）。設定 `AUTO_VALIDATE_ENABLED`（預設 false，
+  完全不掛排程）/ `AUTO_VALIDATE_BATCH_SIZE` / `AUTO_VALIDATE_HOUR` /
+  `AUTO_VALIDATE_SYMBOL`（候選無自帶 symbol，統一基準才可比）；排程掛
+  `bot_manager.schedule_auto_validate`。測試 8 案（monkeypatch validate_candidate，
+  不回測不連網）。
+
+- **Phase 12 step-02：探勘橋（raw find → LLM 產候選）**——新增
+  `backend/services/discovery.py`：每日定時取收件匣 status=new 素材（至多
+  `DISCOVERY_BATCH_SIZE` 筆），本機 Ollama 判讀「在講哪種既有策略 + 建議參數」，
+  有提案 → 建 `StrategyKnowledge` candidate、find 標 built + 回填 `knowledge_id`；
+  不相關/解析失敗 → 標 discarded（原因落新欄 `triage_note`，決策可回查）。
+  LLM 連不上 = 整批跳過不標記。設定 `DISCOVERY_ENABLED`（預設 false，完全不掛排程）
+  / `DISCOVERY_BATCH_SIZE` / `DISCOVERY_HOUR`；排程掛 `bot_manager.schedule_discovery`。
+  Alembic 遷移加 `raw_strategy_finds.knowledge_id`/`triage_note` 兩 nullable 欄。
+  守界線：LLM 只提既有策略參數（composite/非數字參數/低信心一律拒）、不生成程式碼、
+  不外送雲端（`cloud_blocked` 閘）、不下單。測試 11 案（monkeypatch llm，不連網）。
+
+- **Phase 12 step-01：collector 通電指南 + 邊界測試**——新增
+  `docs/guides/collector-feeds-guide.md`（推薦 RSS 來源、robots.txt 檢查步驟、
+  `.env` 設定範例、驗收 runbook、「關掉就回全關」說明），`docs/README.md` 索引補列；
+  `tests/test_collector.py` 補 3 個邊界測試（CDATA/HTML 摘要、單一 feed 失敗容錯、
+  `_parse_feeds` 字串清洗）。collector 本體零修改（藍圖明定只准修 bug）。
+  真 feed 連跑 3~7 天觀察為人工驗收，待使用者填 `.env` 執行。
+
+- **Phase 12 藍圖（backlog D Step 1）**——`docs/history/phase-12-strategy-discovery/`：
+  README（原目標錨點/現況盤點/架構/5 步路線/防 slop 邊界/Phase DoD）+ step-01~05 契約檔
+  （collector 通電/探勘橋 raw→LLM 候選/自動 OOS 驗證/漏斗報表+待審提醒/端到端誠實檢討）。
+  程式未開工；預設全關、人在迴路晉升不變、LLM 只提既有策略參數不生成程式碼。
+
+- **壓力測試前端按鈕**——`BacktestResultCard` 加「🎲 壓力測試」鈕，打
+  `POST /backtest/stress/{run_id}` 顯示權益 p5/p50/p95、回撤分布、破產機率，
+  破產機率 >5% 出警告；`api.js` 加 `stressBacktestRun()`。測試 4 案（mock api）。
+- **亮色模式切換（backlog E1）**——`theme.js` 改 `buildTheme(mode)` 雙 palette、
+  `index.css` 以 `body[data-mode="light"]` 切整套 CSS 變數，sidebar 加切換鈕、
+  選擇存 localStorage；NEON 數據色兩模式共用。
+- **排行榜欄位排序（backlog E2）**——`AutoBacktestPanel` 排行榜加 `TableSortLabel`
+  + `aria-sort`（EV/EV%/報酬/勝率/回撤/交易皆可排），冠軍列改依「策略+參數」
+  判斷不受排序影響。
+- **Skeleton 載入態（backlog E3）**——`AccountCard`/`BotList`/`TradesTable` 載入中
+  改畫 MUI `<Skeleton>` 佔位，分得清「載入中」與「真的沒資料」；
+  `loading` 經 outlet context 傳到各頁。
+- **元件測試（backlog E4）**——新增 `AccountCard.test.jsx`（含 Skeleton 態）、
+  `BacktestResultCard.test.jsx`；前端 27 檔 111 tests 全綠。
+
+### 變更
+
+- **文件漂移修正（backlog G）**——`CLAUDE.md` 結構樹補齊 Phase 8–11 + backlog H
+  的 routers/models/services；`docs/reference/workflow-diagrams.md` 新增
+  「圖 5：Phase 8–11 知識庫 → AI 公司軌」（含兩個人工關卡與維運安全軌）。
+
+- **VaR/CVaR 尾部風險指標**——`backend/services/analytics.py` 新增 `var_cvar()`
+  （歷史模擬法，純 pandas 分位數、不依賴 quantstats），`extended_metrics()` 回傳
+  `var_95_pct` / `cvar_95_pct`，自動流入 `BacktestRun.metrics` JSON（零遷移）。
+  前端 `BacktestResultCard` 加 VaR95/CVaR95 chip。測試：`tests/test_analytics.py` 補 4 案。
+- **蒙地卡羅壓力測試**——新 `backend/services/monte_carlo.py`：bootstrap 重抽回測
+  日報酬產 N 條模擬路徑（不假設常態；捨棄 GBM 與 antithetic variates，理由見 docstring），
+  輸出最終權益 p5/p50/p95、回撤分布、破產機率。新端點
+  `POST /backtest/stress/{run_id}`（按需計算、不持久化）。測試：`tests/test_monte_carlo.py`（7 案）。
+- **RL 可行性評估文件**——`docs/reference/rl-feasibility-assessment.md`：
+  DQN/PPO 交易員評估，結論現階段 No-Go（日線資料量餵不飽深度 RL + OOS 鐵則下
+  過擬合成本極高），列明四項重啟條件；對照表標明各量化概念在本專案的對應實作。
+
+### 移除
+
+- **Backlog A 收尾：macro overlay 層真資料驗證 → 誠實砍除**——取得 FRED API key 後灌入真
+  序列（7 個 series、41,604 筆觀測），以 `scripts/validate_layers.py SPY QQQ AAPL MSFT NVDA`
+  跑 walk-forward 層驗證。macro 列 verdict：**worth=False、folds=207（遠超門檻 3）、
+  Δ=-101.68**（baseline EV 91.17 → candidate -10.51）——a-priori risk-off 煞車在樣本外
+  大幅扣分，依 Phase 7「真資料下無 OOS 加分就砍」鐵律移除：
+  - `services/layer_validation.py`：刪 `MacroOverlayStrategy` / `_macro_risk_off` /
+    `_build_features` / `validate_macro_layer`，`validate_symbol`/`validate_layers`
+    取下 macro 池（也不再需要 DB session）。
+  - `scripts/validate_layers.py`：印表迴圈移除 `"macro"`。
+  - 刪 `tests/test_macro_layer.py`（整檔測被砍的 overlay 層）。
+  - **保留**：FRED 資料層（`macro_data` / `fred_client` / `macro_features` /
+    `orderflow_proxy` / `routers/macro.py`）——被否決的是煞車層，不是資料源。
+  - 同次驗證的保留層數據：adaptive worth=True（folds=45、Δ=+17.72）、
+    meta worth=True（folds=207、Δ=+38.88）；kelly folds=1 < 3 樣本不足不採信。
+
+### 新增
+
+- **維運安全軌 H3 Step 7：tracking error 評估 + 自動降級（「有晉升、沒降級」補完）**——
+  - 新增 `services/tracking.py`：`evaluate_tracking` 純函式（Paper 滾動近 10 回合
+    均報酬率% vs 機會清單 OOS expectancy_pct × 0.5 折扣；樣本 < 5 回合或無基準
+    不對帳不冤殺；OOS≤0 門檻夾 0）；`run_tracking_check` 每日對帳（只在「有新回合」
+    的日子計數防重複扣分；違規累計、回升歸零）；連續 3 次違規 → `_demote_bot`
+    自動停 Bot（is_active=False + 移除排程）+ DecisionLog(`demoted`) + 通知。
+  - **降級邊界（刻意保守）**：只停新決策，**不平倉、不撤券商端保護單**（持倉保護
+    不中斷，砍倉由人決定）；單向不自動恢復（重啟走既有 `POST /bots/{id}/start`）；
+    與 promotion 狀態機正交（approved_live 一樣會被降級停跑）。
+  - `bots` 加 `tracking_breach_count` / `tracking_last_rt_count` / `demoted_at` /
+    `demote_reason` 四欄（Alembic `c5d6e7f8a9b0`）；config 五鍵 `TRACKING_*`；
+    `bot_manager.schedule_tracking_check`（每日 `TRACKING_CHECK_HOUR` 時，預設 9）。
+    `tests/test_tracking.py` 十條全綠；全套件 397 passed。
+- **維運安全軌 H3 Step 6：tracking error 資料管**——把「可比的兩個數字」各自接出來：
+  - **Paper 側**：`performance.compute_round_trip_returns(trades)` 純函式——
+    平均成本法把交易紀錄配成完整回合，回每回合 `profit / entry_cost / return_pct /
+    closed_at`（邊界行為與 `compute_bot_stats` 一致：孤兒賣單跳過、部分平倉按比例）。
+  - **回測側**：optimizer 結果補 `oos_expectancy_pct`（OOS 期望值佔本金 %）；
+    `opportunities` 表加同名欄（Alembic `b4c5d6e7f8a9`），常駐掃描讀寫帶上、
+    舊列下次掃描自然回填（不做歷史回填）。
+  - **為何用 %**：回測全進全出複利（initial_cash）vs Paper 固定 trade_amount，
+    美元 EV 不可直接比，一律 % 歸一化（仍是近似，分母不同——文件誠實標註）。
+- **維運安全軌 H2 Step 5：dead-man switch 外側設定 + runbook（純文件/設定）**——
+  `.env.example` 補 `BROKER_STOP_ENABLED` / `HEARTBEAT_*` 四鍵與註解；新增
+  [`docs/guides/deadman-switch-runbook.md`](docs/guides/deadman-switch-runbook.md)：
+  healthchecks.io 免費版設定步驟（period=1h+grace=1h）、警報響起的六步排查順序、
+  **每月演練**流程（沒演練過的 dead-man switch 等於沒有）。`docs/README.md` 索引同步加列。
+- **維運安全軌 H2 Step 4：每日心跳 + dead-man ping**——一人公司沒有同事盯系統：
+  - 新增 `services/heartbeat.py`：`run_daily_heartbeat()` 每日定時發「💓 活著｜持倉 X 檔｜
+    啟用 Bot Y 個｜今日決策 N 筆｜權益 $Z」日報（任何查詢失敗以 "?" 帶過照樣發——
+    **心跳永不崩**、不依賴開市）；`ping_deadman()` 每 N 分鐘對外側監測服務
+    （healthchecks.io）GET 一次，本機掛掉 → ping 停 → 外側主動發警報
+    （警報必須在系統外側：本機死了發不出「我死了」的通知）。
+  - config 三鍵：`HEARTBEAT_PING_URL`（留空＝dead-man 關）/ `HEARTBEAT_HOUR`（預設 8）/
+    `HEARTBEAT_PING_INTERVAL_MIN`（預設 30）。bot_manager 加 `schedule_heartbeat` /
+    `schedule_deadman_ping` 兩個排程方法（仿既有體例），main.py lifespan 掛載。
+    `tests/test_heartbeat.py` 七條全綠。
+- **維運安全軌 H1 Step 3：bot_manager 接上券商端止損託管（核心收尾）**——
+  「電腦掛掉止損仍有效」正式生效（`BROKER_STOP_ENABLED` 預設開，關掉=完全退回
+  舊版本機輪詢，回歸測試保證）：
+  - **進場**：有止損/追蹤止損設定的 Bot 改買整股（買不起 1 股跳過+記審計），
+    市價單成交後另掛一張 GTC 保護賣單到券商端（trailing 優先用原生 trailing stop，
+    否則 stop 單），訂單 id 落 DB。掛失敗不擋主流程（本機輪詢備援）+ 通知警告。
+  - **每輪自癒**（`_ensure_protective_order`）：持倉但保護單失蹤/參數漂移 → 撤舊補掛
+    （涵蓋重啟、手動撤單、改風控參數）。best-effort 不阻斷。
+  - **本機出場先撤單**（`_cancel_protective_order`）：券商端掛著 sell stop 會保留股數，
+    不撤市價賣會被拒；撤不掉=券商端已成交 → 放棄本機賣出防雙重賣。
+  - **券商端成交回填**（`_settle_broker_exit`）：空手但 DB 記著保護單 id → 查單，
+    已成交就用「實際成交價」補記 TradeLog/DecisionLog + 通知 + 清 peak/id——
+    否則績效統計與 tracking error 對帳的資料源會斷鏈。
+  - 本機 `check_exit` 輪詢完整保留當備援（belt-and-suspenders）；止盈 v1 不託管
+    （OCO 複雜、晚 60 秒不致命）。回測引擎不動：Bot 層 TP/SL 本來就不在回測內，
+    盤中觸發/跳空落差由 H3 tracking error 量化。`tests/test_bot_manager.py` 補 8 條。
+- **維運安全軌 H1 Step 2：保護單規劃純函式 + `Bot.protective_order_id`**——新增
+  `services/protective_orders.py` 三個純函式：`whole_share_qty`（Alpaca stop 單只支援
+  整股 → 進場股數 floor 取整，買不起 1 股回 0）、`plan_protective_order`（trailing 優先
+  於固定 stop；trail_percent 小數→百分比數字轉換；stop_price round 2 位）、
+  `order_matches_plan`（reconcile 容差比對，預設 0.5%）。`bots` 表加
+  `protective_order_id`（Alembic `a3b4c5d6e7f8`）：DB 記住券商端保護單 id，
+  重啟後不重複掛單、成交後能回填。`tests/test_protective_orders.py` 全分支覆蓋。
+- **維運安全軌 H1 Step 1：`alpaca_client` 訂單原語 + 安全閥外推**——為「券商端止損」
+  鋪路：實盤雙閘檢查抽成 `_assert_live_allowed()`（市價/停損/追蹤止損所有 `submit_*`
+  共用同一道閘，新增單型不可繞過）；新增 `submit_stop_order`（GTC stop 單，託管券商端、
+  本機斷電仍有效）、`submit_trailing_stop_order`（原生 trailing stop，券商端自追盤中
+  最高價）、`cancel_order`（撤不掉回 False 不丟例外——代表券商端已成交）、`get_order`、
+  `get_open_orders`（reconcile 用，失敗回 `[]` 優雅降級）。`tests/test_safety_valve.py`
+  補三條：雙閘對三種單型一致擋/放、cancel 已成交回 False。
+
+### 修正
+
+- **`requirements.txt` 重複釘版擋住安裝**——`psycopg2-binary` 同檔出現 `==2.9.12`
+  與 `==2.9.10` 兩行（後者為 29de1e5 誤加孤行），`pip install -r` 直接
+  ResolutionImpossible。刪除孤行、保留有註解的 2.9.12。
+- **文件對齊（純文件、零程式）**——`docs/remaining-work-backlog.md` 補標 Backlog B/C
+  已完成（commit `13ef4bb`：`GET /positions`+持倉卡、`test_run_dry_run` 修復），總表與
+  建議順序同步更新；新增「**H. 維運安全軌（真錢前必備）**」項（券商端止損 / 心跳+dead-man
+  switch / tracking error 對帳+自動降級，三鏈七 step 寫到可餵 AI 的契約詳細度）。
+  另修 `docs/reference/one-person-company-gap-analysis.md` 第五部分與 CHANGELOG 不符的
+  描述：被砍的是 macro（Δ=-101.68），adaptive 實為 worth=True（Δ=+17.72）但預設關未上線、
+  kelly 樣本不足擱置，上線的是 meta-labeling。
+- **`database.py` 換 PostgreSQL 會崩**——`connect_args={"check_same_thread": False}` 是
+  SQLite 專屬參數，硬塞給 Postgres 報 `invalid connection option "check_same_thread"`。
+  改成依 `DATABASE_URL` 方言判斷只在 SQLite 才加，兌現「換 PostgreSQL 只改 .env」承諾。
+- **本機 `.env` 編碼修復（不進 git，僅記錄）**——檔案曾被以錯誤編碼存檔，中文註解全變
+  亂碼且數個 `KEY=VALUE` 被黏進註解行（dotenv 讀不到）。已依 `.env.example` 範本重建
+  （UTF-8 無 BOM），27 個鍵值經雜湊比對零遺失；亂碼版備份於 `.env.garbled.bak`。
+
+### 新增
+
+- **一人公司缺口分析文件（純文件、零程式變更）**——把使用者「一人公司」願景（自動抓策略/
+  抓總經/回測/人審核/Paper→真錢/全自動進出場+決策記錄）對照專案現況做缺口盤點，存
+  [`docs/reference/one-person-company-gap-analysis.md`](docs/reference/one-person-company-gap-analysis.md)：
+  願景對照表（管線已蓋八成）+ 前置進料缺口 A~E（蒐集員沒料吃/策略文字→程式人工斷層/
+  watchlist 手動/macro 定位/政治員鏡像頻道）+ 上線後維運缺口 1~9（**止損掛本機輪詢最危險**、
+  無心跳監控、有晉升沒降級、無 tracking error 對帳、部位 reconcile、SQLite 無備份、
+  組合相關性、PDT/稅務、資料品質閘）+ 建議優先序（真錢前必備：券商端止損→心跳→自動降級）+
+  二次盤點補充（F 事件日曆沒接〔經查 `event_risk` 只吃情緒分數、無真實財報/FOMC 日曆源〕、
+  G 倖存者偏差、H 日線止損落差、與大戶比拚的誠實定位）。`docs/README.md` 索引同步加列。
+- **Backlog B：`GET /positions` 端點 + 前端持倉卡（填掉最大缺口）**——原本只有
+  `alpaca_client.get_position(symbol)`（單檔），前端看不到手上部位與浮動損益：
+  - `services/alpaca_client.py`：新增 `list_positions()`（包 `trading.get_all_positions()`，
+    連線/金鑰失敗回 `[]`，優雅降級）。
+  - 新增 `routers/positions.py`（唯讀 `GET /positions`）：把每個 Position 映成
+    `symbol/qty/avg_entry_price/current_price/market_value/unrealized_pl/unrealized_plpc`
+    （數字轉 float），無金鑰/失敗回空清單、不丟 500；掛進 `main.py`。
+  - 前端 `api.getPositions()` + `components/PositionsCard.jsx`（自含資料、掛上 Dashboard，
+    損益用 `signedMoney`/`signOf` 帶 +/- 號 + `NEON` 紅綠雙重編碼，不寫死 hex）。
+  - 測試：`tests/test_positions.py`（2 測，monkeypatch 假持倉，不連網）；
+    `PositionsCard.test.jsx`（3 測：有持倉/無持倉/API 失敗降級）。
+- **Backlog A：macro 層真資料驗證 runbook（記錄待辦、不改程式）**——Item A 唯一阻塞是缺免費
+  FRED API key（須 stlouisfed.org 帳號）；無 key 時 macro 欄全 NaN、驗證印 `worth=False`，但
+  **那不算數**（須真資料下仍 `worth=False` 才誠實砍）。新增
+  [`docs/guides/macro-layer-validation-runbook.md`](docs/guides/macro-layer-validation-runbook.md)：
+  申請 key → `POST /macro/refresh` → `scripts/validate_layers.py` → 判 verdict 後留/砍的機械式步驟單
+  （程式已全就位，本次只記錄；真資料驗證 + 留/砍決策待 key 與標的籃子敲定後執行）。`docs/README.md` 索引同步加列。
+- **Phase 11 step-04：回測引擎吃環境 `features` + 接線 bar_cache**——把 step-02/03 的快取與環境
+  特徵真正接進回測管線（前三步只交付模組，本步「接線」）：
+  - `services/backtest_engine.py`：`_run_on_df` / `run_backtest` 各加**選用** `features` 參數。
+    `features` 與價格 df 等長、位置對齊，**只併進「訊號層」**（`generate_signal` 讀得到 macro/買賣壓
+    欄）；`features=None`（預設）→ 行為**逐位元組不變**（舊策略/舊呼叫端零改動）。
+  - **成交鐵則不動**：`_simulate_from_signals` 仍只收 price-only df，環境特徵**不得碰成交價**
+    （成交永遠次根開盤含成本，守「回測=實盤」核心）。
+  - **多年回測走快取**：`run_backtest` / `optimizer` / `screener` 的 `market_data.get_bars`
+    改呼 `bar_cache.get_bars_cached`（簽章相容、純效能替換、嚴格 ⊆ 請求區間不洩漏未來），
+    討回 step-02 遞延的接線。`requirements.txt` 的 `pyarrow` 補裝（parquet 引擎，快取落盤需要）。
+  - `tests/test_backtest.py`：+3 測（features 到得了策略、features 不碰成交價、舊策略帶/不帶
+    features 結果完全相同）；`tests/test_oos.py` 改 patch 新資料 seam（`bar_cache.get_bars_cached`）。
+- **Phase 11 step-05：macro 層 OOS 加分驗證（沒加分就誠實砍）**——用 walk-forward 樣本外比
+  「純價量 baseline」vs「+環境覆蓋 candidate」，證明 macro 層有沒有真加分：
+  - `services/layer_validation.py`：新增 `MacroOverlayStrategy`（**環境風險煞車**：risk-off 時 BUY→HOLD，
+    只煞車不猜方向）、`_macro_risk_off`（**a-priori 固定可解釋門檻**，不在任何資料上 fit：VIX>30／
+    殖利率倒掛／失業上升／賣壓>買壓；NaN 一律不煞車）、`_build_features`（macro+orderflow 組欄）、
+    `validate_macro_layer(df, db)`；接進 `validate_symbol`/`validate_layers`（開 DB session 取 FRED）。
+  - `scripts/validate_layers.py`：印表加 `macro` 一列（`worth | folds | improvement`）。
+  - `tests/test_macro_layer.py`（6 測，純合成、不碰外部 API）：OOS 殺手（in-sample 漂亮、OOS 崩 →
+    判不值得）、覆蓋煞車邏輯、NaN 不煞車（優雅降級）、四門檻、端到端 verdict 結構、`_build_features` 對齊。
+  - **誠實結論（首跑 SPY，無 FRED 資料）**：macro-overlay 層 **`worth=False`（36 folds，Δ=−132.6）**——
+    沒填 `FRED_API_KEY` 時 macro 欄全 NaN、煞車只靠 orderflow `pressure_ratio<0.5`，在每根下跌後
+    過度抑制進場 → 拖垮 EV。**目前判該砍/待真資料驗證**：要真評估 macro 價值，須先填 `FRED_API_KEY`
+    + `POST /macro/refresh` 灌入序列再跑。這正是 step-05 的本職——殺掉沒在 OOS 加分的層，不美化績效。
+- **Phase 11 step-02：多年 OHLCV 本機快取（少打外部 API）**——讓「整個歷史」回測（如 `days=3650`）
+  跑得起來、又不每次都向 Alpaca/yfinance 重抓。新增 `services/bar_cache.py`，**包在
+  `market_data.get_bars` 外層**（不改其簽章、不繞過它，維持單一抓取路徑）：
+  - 缺的區間才補抓、抓回來寫進本機 **parquet** 快取（`{BAR_CACHE_DIR}/{source}/{symbol}.parquet`，
+    按 source 分開存不混存）；已涵蓋的命中快取、**0 次 API**。
+  - **關鍵設計取捨**：freshness 看 sidecar `meta.json` 記的「已涵蓋的請求區間」，**不看最後一根 bar
+    日期**——否則週末/假日/停牌時最後一根恆早於 today，會被誤判成缺口而無限重抓。
+  - **不可成偷看後門**：回傳區間嚴格 ⊆ 請求區間（不洩漏請求結束日之後的列）。`today` 可注入 → 缺口
+    邏輯有確定性（仿 step-01 的 `as_of` 縫）。
+  - `config.py`：`BAR_CACHE_DIR`（預設 `data/cache/bars/`）；`.gitignore`：加 `data/cache/`（不進版控）；
+    `requirements.txt`：加 `pyarrow`（parquet 引擎）。
+  - `tests/test_bar_cache.py`：5 個純單元測試（合成 K 線 + monkeypatch `get_bars`，不連網），驗
+    首抓 1 次/二抓 0 次/頭尾缺口只補對應段/回傳嚴格在請求區間內。
+  - ⚠️ 接線回測/optimizer/screener 改吃快取 = step-04 的事，本步只交付可用模組 + 測試。
+- **Phase 11 step-03：環境特徵 + 買賣壓代理（給回測當輸入特徵）**——把總經序列與「買賣壓」對齊成
+  「每根 K 棒一列」的特徵欄。新增兩個**純函式**模組：
+  - `services/macro_features.py`：`attach_macro_features(price_df, db)` 對每根 bar 的日期，各序列取
+    **`released_at <= bar_date` 的最後一筆** forward-fill，加 6 欄（`fed_funds_level`/`fed_funds_3m_chg`/
+    `unemployment_trend`/`cpi_yoy`/`yield_curve`/`vix_level`）。**as-of 一律用 `released_at`**（嚴禁
+    `period_date` 偷看未公布未來，守門延續 step-01）；沒總經資料 → 各欄 NaN，不崩。重用
+    `macro_data.get_macro_series`。
+  - `services/orderflow_proxy.py`：`compute_orderflow(price_df)` 用 **tick 規則**（漲跌方向 × 總量）
+    近似買/賣量，加 4 欄（`buy_vol_proxy`/`sell_vol_proxy`/`net_pressure`/`pressure_ratio`）。守恆等式
+    `buy+sell==volume`（平盤/首根對半、零量 ratio 給中性 0.5）。**誠實標註：tick 代理、非真實逐筆
+    order flow**（真值需付費源 Polygon/Databento，列範圍外，不包裝成真 order flow 行銷）。
+  - 兩者皆**無未來函數**（第 i 根只看 `df.iloc[:i+1]`）。`tests/test_orderflow.py`（6 測）+
+    `tests/test_macro_features.py`（6 測）：純函式 + 記憶體 SQLite，驗對齊不洩漏/恆等式/方向/無未來函數。
+- **Phase 11 step-01：總經/環境資料地基（FRED 接入 + 本機快取 + point-in-time）**——補上專案最大缺口
+  「環境資料的大腦」（先前 `grep` 整個 `backend/` 找不到 FRED/非農/利率/CPI）。新增：
+  - `services/fred_client.py`：薄 FRED client（聖路易聯準會，免費 API）。仿 `llm.py` 優雅降級——
+    沒設 `FRED_API_KEY` 或連不上 → 回 `None`、靜默跳過，不崩、不阻斷其他功能（不另設 `MACRO_ENABLED` 旗標）。
+  - `services/macro_data.py`：統一介面（仿 `market_data`）。本機快取 + **point-in-time 守門**——
+    每筆存 `period_date`（資料期間）與 `released_at = period + 發布落差`；回測讀取給 `as_of`
+    時只回 `released_at <= as_of` 的值，**杜絕偷看尚未公布的數據**（「回測=實盤」鐵則延伸）。
+  - `models/macro_series.py`（`macro_observations` 表，唯一鍵 series+period）+ Alembic 遷移。
+  - `routers/macro.py`：`GET /macro/series`（point-in-time 唯讀）、`GET /macro/series-list`、`POST /macro/refresh`。
+  - `tests/test_macro.py`：6 個純單元測試（記憶體 SQLite + monkeypatch，不連網），含**防洩漏**
+    （公布前看不到）與**無 key 優雅降級**。
+  - `config.py` / `.env.example`：`FRED_API_KEY` / `MACRO_SERIES` / `MACRO_DEFAULT_LAG_DAYS`。
+  - 藍圖 `docs/phase-11-macro-data/README.md`（含 step-01~05 契約）。
+
+### 變更
+
+- **docs/ 資料夾依用途重整（零刪除、純搬移 + 改連結）**——`docs/` 根目錄原積到 21 項
+  （8 個完成過的 phase/redesign 夾 + 13 個散落 .md），打開找不到當下要的檔。重整成語意四夾、
+  根目錄降到 ~7 項；所有檔用 `git mv` 保留歷史血緣，**一個都沒刪**（供日後歷史歷程報告查閱）：
+  - `docs/history/`：phase-6~11 + redesign 的開發藍圖（完成過的契約文件，歸檔備查）。
+  - `docs/guides/`：操作教學（`setup.md`〔原 root `SETUP.md` 移入〕/`使用說明.md`/`how-to-add-strategy.md`/
+    `setup-postgres-sync.md`/`phase4-paper-checklist.md`/`skill-guidelines.md`）。
+  - `docs/reference/`：概念規格（`workflow-diagrams.md`/`roadmap-strategy-workbench.md`/
+    `human-vs-ai-operation.md`/`financial-services-reference.md`/`strategies/`）。
+  - `docs/ux/`：`ux-workflow.md`/`ux-audit-2026-06.md`。根目錄只留 `ai-implementation-guardrails.md`
+    與 `remaining-work-backlog.md` 兩份最常讀。
+  - 新增 **`docs/README.md` 文件地圖**（四大分組 + 各檔用途，打開 docs 先看這頁）。
+  - 同步修好受影響連結：docs 內 121 條相對連結、`CLAUDE.md`/`AGENTS.md`/`README.md` 的結構樹與路徑、
+    `.claude/skills/`（ui-ux-pro-max、strategy-builder）的 doc 路徑、`CHANGELOG` 內 2 條已搬檔的 markdown 連結。
+    全 docs 相對連結經程式驗證 **0 殘斷**。CHANGELOG 歷史條目的純文字路徑維持原樣（歷史紀錄不竄改）。
+  - **新增 `CLAUDE.md`「檔案放置規範」章節**：把「新增檔案放哪」寫成 Claude 與人都遵守的對照表
+    （文件分 history/guides/reference/ux 四夾 + root 只留兩份；程式分 backend 各層／tests 扁平／scripts），
+    並要求新增文件後補 `docs/README.md` 索引、搬檔用 `git mv`。防止日後又把檔亂塞回 docs/ 根。
+
+### 修正
+
+- **Backlog C：修 `tests/test_automation.py::test_run_dry_run` 的 pre-existing 失敗**（清掉「353 過/1 失敗」
+  那 1 個，全測達 0 失敗）。**根因不是 automation bug，是測試對 dev DB 有隱性依賴**：`run_auto_deploy`
+  會 `db.query(Bot).all()` 取 `existing_symbols` 去重，而 dev DB 剛好有同名 `AAPL` Bot → 候選被去重剔除 →
+  `planned=[]`。修法（沿用 `test_promotion._isolated_client` 模式）：注入臨時空 SQLite（`dependency_overrides[get_db]`，
+  Bot 表空）+ stub `get_account` 丟例外（跳過資金閘，不依賴真帳戶餘額），讓結果只取決於 stub 的海選/門檻、完全確定性。
+
+- **修正 PostgreSQL 全新資料庫遷移失敗**：將 `bots.adaptive` migration 的布林預設值從 SQLite 風格
+  `0` 改為跨資料庫相容的 `sa.false()`，避免 PostgreSQL 出現 `BOOLEAN DEFAULT 0` 型別錯誤。
+
+- **修復後端啟動報錯 `no such column: bots.promotion_status`（DB schema 漂移）**——本機 SQLite 的
+  `alembic_version` 停在 `f6a7b8c9d0e1`，但實際 DB 已被 `create_all` 建出後續所有「表」
+  （automation_config / opportunities / factor_snapshots / raw_strategy_finds / political_events），
+  唯獨後續遷移對「既有表」的 `ALTER add_column` 從沒跑過，導致 `bots` 缺 `promotion_status` /
+  `promotion_proposed_at` / `promotion_reason` 三欄、查詢即炸。因 `upgrade head` 會撞「表已存在」無法直跑，
+  改為**對帳補欄**：冪等補上缺的 3 欄（比照遷移 `c9d0e1f2a3b4`，`promotion_status` 以 `DEFAULT 'paper'` 回填）
+  後 `alembic stamp head` 讓版本與實況一致。已驗 `db.query(Bot).all()` 可正常讀 `promotion_status`。
+  （`scan_interval_min` 經查已存在，未重複加。）
+- **修復 `.bat` 一鍵腳本在 UTF-8 下「command 無法辨識」**——`setup.bat` / `start_backend.bat` /
+  `start_frontend.bat` / `background.bat` 含中文但存成 **UTF-8 無 BOM**；搭配 `chcp 65001` 時 cmd.exe 有
+  已知的檔案讀取位移 bug（多位元組字後偏移算錯，把後面行攪成亂碼指令 → not recognized）。改存成
+  **UTF-8 with BOM**（Windows 11 cmd 認 BOM 後位移正確），內容與 CRLF 不動。已用同模式煙霧測試確認中文正常顯示、無報錯。
+
+### 待辦（後續 / TODO）
+
+> **完整詳細 backlog（餵 AI 實作用）**：[`docs/remaining-work-backlog.md`](docs/remaining-work-backlog.md)——
+> A~G 七項各含現況/檔案路徑/函式簽章/step/DoD/測試指令，依價值排序（建議序 B→C→A→其餘）。下方為摘要。
+
+- **Phase 11 macro 層待真資料驗證**（step-05 收尾）：首跑 SPY 判 `worth=False`（無 FRED 資料、
+  煞車只靠 orderflow 過度抑制進場）。要真評估 macro 價值，須先填 `FRED_API_KEY` →
+  `POST /macro/refresh` 灌入序列 → 重跑 `venv\Scripts\python.exe scripts\validate_layers.py SPY`。
+  仍 `worth=False` 則如實砍掉 `MacroOverlayStrategy`（不硬留無加分的層，沿用 Phase 7 紀律）。
+
+> 前端 UX 兩批未做、留待後續的項目（依價值排序）：
+
+- **持倉 / 未實現損益視圖**（價值最高的缺口）：後端目前**無 `/positions` 端點**，
+  需先加端點再做前端持倉卡（現金/購買力之外，看得到手上部位與浮動損益）。
+- **亮色模式切換**：目前深色單一主題，要加 light/dark 雙主題需整體再過一遍對比。
+- **排行榜欄位排序**：`AutoBacktestPanel` 排行榜目前固定依 EV，可比照 `TradesTable` 加 `TableSortLabel`。
+- **骨架屏（Skeleton）全面化**：`AccountCard`/`BotList`/`TradesTable` 載入時可用 Skeleton 取代空白/純文字。
+- **元件測試持續補**：目前有 `ConfirmDialog`/`BotList`/`EditBotDialog` + 純函式工具，其餘元件待補。
+- **skill CLI**：`.claude/skills/ui-ux-pro-max` 未隨附 `search.py`/CSV（規則文字已夠用，CLI 查詢不可跑）。
+
 ### 移除
 
 - **清理：刪除被取代的舊藍圖 `docs/blueprint-ai-terminal.md`**——它是「AI 終端機改版」的舊單檔藍圖，
@@ -23,6 +517,31 @@
   `tests/_tmp_expl_*`，皆 git-ignored、不影響版控）。
 
 ### 變更
+
+- **README.md 同步 Phase 10 落地實情（文件，無程式變更）**——修正自打架：進度表已標
+  `Phase 10 ✅ 完成（step-01~07）`，但「後續 / 未竟」段第一條仍寫「**尚未動程式**」（前一次
+  README 對齊只補到 Phase 8/9，Phase 10 之後才落地、文件沒跟上）。本次：
+  - **移除過期句**，改寫成 **Phase 10 通電前置**（政治員需鏡像頻道且 `POLITICAL_ENABLED` 預設關／
+    蒐集員需設 `COLLECTOR_RSS_FEEDS`／上真錢仍卡董事會核准 + 實盤雙閘）——機制已落地、只待接真資料來源。
+  - **新增「Phase 10 已落地」描述塊**（補平 Phase 5~9 + redesign 格式）：戰情頁 + 常駐機會掃描 /
+    因子表 + CSV / 市場蒐集員（只收料）/ 政治專討員（只當煞車、不猜方向）/ 董事會核准（人在迴路上真錢）/
+    開機常駐化。
+  - **主要 API 清單**補 Phase 10 端點（`/factors`〔+`export.csv`〕、`/collector/finds`、
+    `/political/events`〔+`/risk`〕、`/promotions`〔+`propose`/`approve`/`reject`〕，已對程式核實路徑）。
+  - **專案結構**補 Phase 10 的 routers / models / pages 與 `political_watcher` 獨立常駐 runner。
+  - CLAUDE.md 進度表已是 ✅完成、無矛盾，本次未動。
+- **前端 UX 強化（套用 UI/UX Pro Max skill，無障礙 / 回饋 / 表單 / 表格）**——對齊 skill 規則：
+  - **無障礙**：圖示鈕補 `aria-label`（`BotList`）；損益/EV 改帶 `+/-` 號（`utils/number.js` 新增
+    `signOf`/`signedMoney`/`money`，套到 `BotList`/`BacktestPanel`/`AutoBacktestPanel`/`RecommendationsPanel`）；
+    `index.css` 加 `prefers-reduced-motion` 全域弱化動畫。
+  - **回饋**：成功訊息改 `Snackbar`（4s 自動消失、`role="status"` 不偷焦點，`SidebarLayout`），錯誤維持常駐。
+  - **危險動作**：停 Bot 加二次確認（`App.jsx` + `ConfirmDialog`）；實盤模式 AI 一鍵部署加二次確認（`RecommendationsPanel`）。
+  - **表單**：`EditBotDialog`/`BacktestPanel` 加 `required` + 即時驗證 + `helperText`，無效時停用送出。
+  - **表格**：`TradesTable` 欄位可排序（`TableSortLabel`+`aria-sort`）、`stickyHeader`、數字右對齊 + `tabular-nums`。
+  - **一致性**：`constants.js` 新增 `strategyLabel()` 單一來源（`RecommendationsPanel`/`AutoBacktestPanel` 改用）；
+    AI 推薦 EV 上色 + 防 `NaN`。
+  - 裝 skill 進 `.claude/skills/ui-ux-pro-max`；新增 `docs/ux-audit-2026-06.md` + `docs/ux-workflow.md`；
+    新增 `BotList`/`EditBotDialog` 元件測試。
 
 - **README.md / CLAUDE.md 對齊實情（文件同步，無程式變更）**——比對發現 `README.md` 嚴重過期：
   - 進度表把已完成的 **Phase 8（step-01~06）/ Phase 9（step-01~08）仍標「📋 構想藍圖」**，改為 ✅ 完成；
@@ -391,7 +910,7 @@
     - 註：本次只產生證據與結論，**未自動刪任何層**；adaptive 的降級/移除另開獨立提案。
   - 新增操作指南 `docs/how-to-add-strategy.md`（新增策略的 6 個落地點 + 怎麼用 + 怎麼驗 OOS）。
 
-- **Phase 7 step-04~06：分數凱利部位 + meta-labeling 二級過濾 + 事件驅動風險閘**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
+- **Phase 7 step-04~06：分數凱利部位 + meta-labeling 二級過濾 + 事件驅動風險閘**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)。
   - **step-04 分數凱利部位（區塊 3：可投多少量）**：新增純函式 `backend/services/sizing.py`：
     - `kelly_fraction(win_rate, avg_win, avg_loss)`：算 `f* = W − (1−W)/R`，乘分數凱利係數、再用硬上限夾住；
       負期望（f*≤0）或缺賠率原料 → 回 0（不下注）。三重保守：用 OOS 的 W/R + 分數凱利 + 上限。
@@ -413,7 +932,7 @@
   - 測試：新增 `tests/test_sizing.py`(6) / `tests/test_meta_label.py`(5) / `tests/test_event_risk.py`(6)。
     `pytest tests/ -q` → **218 passed**（乾淨 DB）。
 
-- **Phase 7 step-07：★防過擬合驗證框架（橫跨全部的鐵律）**——藍圖 [`docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md`](docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md)。
+- **Phase 7 step-07：★防過擬合驗證框架（橫跨全部的鐵律）**——藍圖 [`docs/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md`](docs/history/phase-7-adaptive-regime/step-07-anti-overfitting-validation.md)。
   - 新增純函式 `backend/services/validation.py`：
     - `walk_forward_splits` / `walk_forward`：滾動前進驗證。每個 fold 只在「測試段」子 df 上跑含成本
       `_run_on_df`（與正式回測同路徑、與 optimizer OOS 語意一致），回每個 fold 的 OOS 績效。
@@ -428,7 +947,7 @@
   - 測試：新增 `tests/test_validation.py`（滾動切分正確、purged 無洩漏、`is_layer_worth_it` 能判死
     「in-sample 漂亮、OOS 崩」的假層、fold 不足不採信）。`pytest tests/ -q` → 201 passed（乾淨 DB）。
 
-- **Phase 7 step-01~03：自適應市場狀態（區塊 2：狀態→選策略）**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/phase-7-adaptive-regime/README.md)。
+- **Phase 7 step-01~03：自適應市場狀態（區塊 2：狀態→選策略）**——藍圖 [`docs/phase-7-adaptive-regime/`](docs/history/phase-7-adaptive-regime/README.md)。
   - **step-01 市場狀態特徵工程**：新增純函式 `backend/services/regime_features.py`：`compute_features(df)`
     回 6 個可解釋特徵（`volume_ratio` 重用 `screener`、`return_5d/20d`、`volatility_20d` 年化、
     `trend_strength` 重用 `indicators.adx_components`、`atr_pct`、`range_position` 唐奇安%）。

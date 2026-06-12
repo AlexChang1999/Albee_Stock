@@ -21,7 +21,7 @@ AI 策略探勘 — 漏斗式篩選（改版 Phase 2）
 import json
 
 from backend.config import settings
-from backend.services import market_data, fundamentals, llm
+from backend.services import bar_cache, fundamentals, llm
 from backend.services.optimizer import run_auto_backtest
 
 
@@ -126,11 +126,15 @@ def is_vetoed_by_sentiment(sentiment, *, min_score: float) -> bool:
 def _layer1_volume(symbols: list[str], days: int, source: str) -> list[dict]:
     """第一層：量能粗篩。回傳入選清單（含量比），依量比由高到低排序、取前 N。"""
     picks = []
+    # 批次抓：整個 watchlist 一次 HTTP（快取缺口才補抓），取代逐檔 N 次往返
+    try:
+        dfs = bar_cache.get_bars_cached_multi(symbols, days=days, source=source)
+    except Exception:
+        dfs = {}
     for sym in symbols:
-        try:
-            df = market_data.get_bars(sym, days=days, source=source)
-        except Exception:
-            continue  # 單檔抓失敗不影響整體
+        df = dfs.get(sym)
+        if df is None or df.empty:
+            continue  # 單檔抓失敗不影響整體（批次層已隔離，缺檔是空 df）
         ratio = volume_ratio(df)
         if ratio is not None and ratio >= settings.SCREENER_VOLUME_RATIO:
             picks.append({"symbol": sym, "volume_ratio": round(ratio, 2)})
@@ -197,6 +201,16 @@ def screen_watchlist(
 
     # 第二層：情緒打分（best-effort）
     picks = _layer2_sentiment(picks)
+
+    # 第三層回測前先批次「暖快取」：survivors 的整段歷史一次補齊，
+    # 之後 run_auto_backtest 內的單檔 get_bars_cached 全命中、0 次外部 API。
+    if picks:
+        try:
+            bar_cache.get_bars_cached_multi(
+                [p["symbol"] for p in picks], days=days, source=source
+            )
+        except Exception:
+            pass  # 暖快取失敗無妨，第三層會自己走單檔路徑
 
     # 第三層：對每檔 survivor 跑 EV 海選，挑最佳策略
     recommendations = []

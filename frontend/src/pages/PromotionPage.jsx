@@ -156,7 +156,7 @@ export default function PromotionPage() {
                       OOS EV：{fmt(it.oos_expected_value)}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Paper 勝率：{fmt(stats.win_rate_pct, "%")}　完整買賣：{fmt(stats.num_round_trips)} 次
+                      Paper 勝率：{fmt(stats.win_rate_pct, "%")}{"　"}完整買賣：{fmt(stats.num_round_trips)} 次
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       Paper 報酬：{fmt(stats.return_pct, "%")}

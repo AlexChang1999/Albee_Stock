@@ -55,7 +55,7 @@ def _rec(symbol, strategy, ev, win=60.0):
         "sentiment": {"label": "bullish", "score": 40, "reason": ""},
         "strategy_key": strategy,
         "params": {"x": 1},
-        "metrics": {"oos_expected_value": ev, "oos_win_rate_pct": win},
+        "metrics": {"oos_expected_value": ev, "oos_win_rate_pct": win, "oos_expectancy_pct": 1.5},
         "suggested_cash": 10000.0,
     }
 
@@ -74,7 +74,10 @@ def test_results_to_rows_maps_and_sorts():
     assert top["strategy_key"] == "rsi"
     assert top["oos_expected_value"] == 300.0
     assert top["oos_win_rate_pct"] == 60.0
+    # 維運安全軌 H3：tracking error 對帳的回測側基準也要帶上（缺值 None）
+    assert top["oos_expectancy_pct"] == 1.5
     assert rows[-1]["oos_expected_value"] is None
+    assert rows[-1]["oos_expectancy_pct"] is None
 
 
 def test_results_to_rows_empty():
@@ -100,12 +103,14 @@ def test_upsert_idempotent_and_preserves_status(tmp_path):
 
     # 更新後 EV 變動但 status 不被打回 new
     rows[0]["oos_expected_value"] = 150.0
+    rows[0]["oos_expectancy_pct"] = 2.5  # 舊列回填 expectancy（H3：掃描自然更新）
     r2 = upsert_opportunities(db, rows)
     assert r2 == {"inserted": 0, "updated": 2}
     assert db.query(Opportunity).count() == 2  # 沒重複堆積
     aapl = db.query(Opportunity).filter_by(symbol="AAPL").first()
     assert aapl.status == "seen"           # 保留
     assert aapl.oos_expected_value == 150.0  # 指標有更新
+    assert aapl.oos_expectancy_pct == 2.5    # expectancy 也跟著更新
 
 
 def test_upsert_skips_incomplete_rows(tmp_path):

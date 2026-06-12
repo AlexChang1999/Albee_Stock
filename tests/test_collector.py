@@ -129,6 +129,46 @@ def test_parse_html_listing_picks_article_links():
     assert all(u.startswith("http") for u in urls)
 
 
+def test_parse_rss_cdata_html_summary():
+    # 真實 feed 的 description 常是 CDATA 包 HTML：要解析得出來、不崩，且摘要有截斷上限
+    xml = """<rss version="2.0"><channel><item>
+      <title>Donchian breakout notes</title>
+      <link>https://blog.example.com/donchian</link>
+      <description><![CDATA[<p>Buy on a <b>20-day high</b> breakout.</p>]]></description>
+    </item></channel></rss>"""
+    rows = parse_rss(xml)
+    assert len(rows) == 1
+    assert "20-day high" in rows[0]["summary"]
+    assert len(rows[0]["summary"]) <= 500  # _clip 截斷生效
+
+
+# ---------- 2.5 collect_from_feeds：單一 feed 失敗不影響其他 ----------
+def test_collect_from_feeds_skips_dead_feed(monkeypatch):
+    # 第一個 feed 抓不到（回 None）、第二個正常：只收正常那個、不丟例外
+    def fake_fetch(url):
+        return None if "dead" in url else _RSS
+
+    monkeypatch.setattr(collector, "fetch_url", fake_fetch)
+    rows = collector.collect_from_feeds([
+        "https://dead.example.com/feed",
+        "https://blog.example.com/feed",
+    ])
+    assert len(rows) == 2  # 只有活 feed 的兩篇
+    assert all("blog.example.com" in r["source_url"] for r in rows)
+
+
+# ---------- 2.6 _parse_feeds：設定字串清洗 ----------
+def test_parse_feeds_mixed_separators_and_junk():
+    raw = """https://a.com/feed, https://b.com/feed
+    not-a-url
+    https://a.com/feed"""
+    out = collector._parse_feeds(raw)
+    # 逗號/換行混用都解析；非 http(s) 行丟掉；重複去重
+    assert out == ["https://a.com/feed", "https://b.com/feed"]
+    assert collector._parse_feeds("") == []
+    assert collector._parse_feeds(None) == []
+
+
 # ---------- 3. dedup_rows ----------
 def test_dedup_rows_by_url():
     rows = [
@@ -146,7 +186,7 @@ def test_upsert_idempotent_and_preserves_status(tmp_path):
     db = _session(tmp_path)
     rows = parse_rss(_RSS, source="algo")
     r1 = upsert_finds(db, rows)
-    assert r1 == {"inserted": 2, "skipped": 0}
+    assert r1 == {"inserted": 2, "skipped": 0, "watch_hits": 0}
     assert db.query(RawStrategyFind).count() == 2
 
     # 把第一筆標成 triaged，再 upsert 同一批：全部已存在 → skip，status 保留
@@ -155,7 +195,7 @@ def test_upsert_idempotent_and_preserves_status(tmp_path):
     db.commit()
 
     r2 = upsert_finds(db, rows)
-    assert r2 == {"inserted": 0, "skipped": 2}
+    assert r2 == {"inserted": 0, "skipped": 2, "watch_hits": 0}
     assert db.query(RawStrategyFind).count() == 2  # 沒重複堆積
     first = db.query(RawStrategyFind).filter_by(source_url="https://blog.example.com/mean-reversion").first()
     assert first.status == "triaged"  # 保留人工策展結果
@@ -260,3 +300,54 @@ def test_finds_api_list_and_status_transition(tmp_path):
         # 不存在的 id → 404
         missing = client.patch("/collector/finds/99999", json={"status": "built"})
         assert missing.status_code == 404
+
+
+# ---------- 7. 未上市公司關鍵字監控（watch tags）----------
+def test_parse_keywords():
+    from backend.services.collector import parse_keywords
+
+    assert parse_keywords("SpaceX, OpenAI ,spacex,") == ["SpaceX", "OpenAI"]  # 去重不分大小寫
+    assert parse_keywords("") == []
+    assert parse_keywords(None) == []
+
+
+def test_tag_watch_rows_matches_title_and_summary():
+    from backend.services.collector import tag_watch_rows
+
+    rows = [
+        {"title": "SpaceX raises new round", "summary": ""},
+        {"title": "Some ETF article", "summary": "mentions spacex starship plans"},
+        {"title": "Unrelated", "summary": "nothing here"},
+    ]
+    hits = tag_watch_rows(rows, ["SpaceX"])
+    assert hits == 2  # 標題命中 + 摘要命中（不分大小寫）
+    assert rows[0]["tags"] == "watch:SpaceX"
+    assert rows[1]["tags"] == "watch:SpaceX"
+    assert "tags" not in rows[2]
+    # 沒關鍵字 → 不動
+    assert tag_watch_rows(rows, []) == 0
+
+
+def test_upsert_writes_tags_and_api_filters_by_tag(tmp_path):
+    from backend.services.collector import tag_watch_rows
+
+    with _isolated_client(tmp_path) as (client, TestingSession):
+        db = TestingSession()
+        try:
+            rows = [
+                {"source": "x", "source_url": "https://x.com/sx", "title": "SpaceX news", "summary": ""},
+                {"source": "x", "source_url": "https://x.com/other", "title": "Plain post", "summary": ""},
+            ]
+            tag_watch_rows(rows, ["SpaceX"])
+            result = upsert_finds(db, rows)
+            assert result["inserted"] == 2
+            assert result["watch_hits"] == 1
+        finally:
+            db.close()
+
+        # tag 篩選只回命中監控的素材
+        watched = client.get("/collector/finds?tag=watch:SpaceX").json()
+        assert [r["title"] for r in watched] == ["SpaceX news"]
+        assert watched[0]["tags"] == "watch:SpaceX"
+        # 不給 tag → 全部
+        assert len(client.get("/collector/finds").json()) == 2

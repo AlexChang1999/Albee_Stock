@@ -36,6 +36,11 @@ const OVERVIEW = {
   opportunities: [
     { id: 1, symbol: "NVDA", strategy_key: "macd", oos_expected_value: 320, oos_win_rate_pct: 62, status: "new" },
   ],
+  discovery_funnel: {
+    raw: { new: 3, triaged: 1, built: 2, discarded: 4 },
+    knowledge: { candidate: 5, validated: 2, rejected: 6, curated: 1 },
+    rejection_rate_pct: 75.0,
+  },
 };
 
 function renderPage() {
@@ -76,5 +81,26 @@ describe("CompanyPage", () => {
     await screen.findByText("Bot 艦隊");
     const evLink = screen.getByRole("link", { name: /EV 榜/ });
     expect(evLink).toHaveAttribute("href", "/backtest-runs");
+  });
+
+  it("探勘漏斗卡：計數、待審徽章、淘汰率、連到知識庫策展", async () => {
+    renderPage();
+    expect(await screen.findByText("探勘漏斗")).toBeInTheDocument();
+    // raw 收料合計 = 3+1+2+4 = 10
+    expect(screen.getByText("raw 收料").parentElement).toHaveTextContent("10");
+    expect(screen.getByText("candidate").parentElement).toHaveTextContent("5");
+    expect(screen.getByText("validated").parentElement).toHaveTextContent("2");
+    expect(screen.getByText("curated").parentElement).toHaveTextContent("1");
+    expect(screen.getByText("待審 2")).toBeInTheDocument(); // validated 待人審徽章
+    expect(screen.getByText(/淘汰率 75/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /知識庫策展/ });
+    expect(link).toHaveAttribute("href", "/library");
+  });
+
+  it("舊版回應沒有 discovery_funnel 時不畫漏斗卡也不崩", async () => {
+    api.getCompanyOverview.mockResolvedValue({ ...OVERVIEW, discovery_funnel: undefined });
+    renderPage();
+    await screen.findByText("Bot 艦隊");
+    expect(screen.queryByText("探勘漏斗")).not.toBeInTheDocument();
   });
 });

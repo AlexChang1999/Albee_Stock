@@ -9,6 +9,8 @@
 - Calmar   ：年化報酬 / 最大回撤（看「賺得多但回撤小」）
 - 年化波動 ：報酬的標準差年化（越低越穩）
 - CAGR     ：年化複合報酬率
+- VaR 95%  ：歷史模擬法——最差 5% 交易日的「門檻」單日虧損（正值 = 虧損 %）
+- CVaR 95% ：跌破 VaR 防線後，尾部那些日子的「平均」虧損（永遠 >= VaR）
 
 設計重點：
 - **純函式、可離線測**：輸入是回測引擎產的 equity_curve（每日淨值 list），不連線。
@@ -57,16 +59,45 @@ def returns_from_equity(equity_curve) -> pd.Series:
     return rets
 
 
+def var_cvar(returns: pd.Series, confidence: float = 0.95) -> tuple:
+    """
+    歷史模擬法算 VaR 與 CVaR（Expected Shortfall）。
+
+    - VaR  ：日報酬分布的左尾 (1-confidence) 分位數取負號——「最差 5% 的日子，
+             至少虧這麼多」的門檻。
+    - CVaR ：跌破 VaR 門檻後，尾部那些日子的平均虧損——「一旦破線，平均虧多慘」。
+
+    不依賴 quantstats（純 pandas 分位數），quantstats 沒裝也算得出來。
+    單位：每日虧損 %（正值）；全正報酬的曲線可能算出負值（= 最差日仍在賺），照實回報。
+
+    :param returns: 每日報酬率序列（returns_from_equity 的輸出）
+    :param confidence: 信心水準，預設 0.95
+    :return: (var_pct, cvar_pct)；樣本 < 20 筆時尾部沒統計意義，回 (None, None)
+    """
+    if returns is None or len(returns) < 20:
+        return (None, None)
+    q = returns.quantile(1 - confidence)
+    var = _safe(lambda: -q * 100)
+    tail = returns[returns <= q]
+    # 尾部切片理論上至少含分位數那筆；防呆：空了就退回 VaR
+    cvar = _safe(lambda: -tail.mean() * 100) if len(tail) else var
+    rnd = lambda v: round(v, 2) if v is not None else None
+    return (rnd(var), rnd(cvar))
+
+
 def extended_metrics(equity_curve) -> dict:
     """
     從 equity_curve 算一組風險調整後指標。任何單項失敗回 None，不影響其他項。
     回傳 key 都是 JSON-friendly 的純量，可直接塞進回測結果一起回前端。
     """
     rets = returns_from_equity(equity_curve)
+    # VaR/CVaR 自算、不靠 quantstats，所以放在 _QS_OK 閘之前（沒裝 qs 也要有值）
+    var95, cvar95 = var_cvar(rets)
     if rets.empty or not _QS_OK:
         return {
             "sharpe": None, "sortino": None, "calmar": None,
             "volatility_ann_pct": None, "cagr_pct": None,
+            "var_95_pct": var95, "cvar_95_pct": cvar95,
         }
 
     def _round(v, n=2):
@@ -78,6 +109,8 @@ def extended_metrics(equity_curve) -> dict:
         "calmar": _round(_safe(lambda: qs.stats.calmar(rets))),
         "volatility_ann_pct": _round(_safe(lambda: qs.stats.volatility(rets) * 100)),
         "cagr_pct": _round(_safe(lambda: qs.stats.cagr(rets) * 100)),
+        "var_95_pct": var95,
+        "cvar_95_pct": cvar95,
     }
 
 

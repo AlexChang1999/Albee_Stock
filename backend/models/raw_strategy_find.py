@@ -13,10 +13,11 @@
 - Opportunity（step-02）：已通過回測、有 OOS EV 的「候選清單」。
 - RawStrategyFind（本表）：還沒驗證、純文字的「靈感收件匣」，等人去消化。
 
-status 流轉（人工驅動，爬蟲只負責產生 new）：
+status 流轉（人工驅動；Phase 12 step-02 起探勘橋也會自動推進 new→built/discarded）：
 - new       ：剛爬回來、還沒看過。
 - triaged   ：人看過、覺得值得試（待寫成策略）。
-- built     ：已被寫成 strategies/<name>.py（接著要去過 OOS 閘）。
+- built     ：已被寫成 strategies/<name>.py，或探勘橋已據此產出 StrategyKnowledge candidate
+              （knowledge_id 記是哪筆；接著要去過 OOS 閘）。
 - discarded ：看過覺得沒用、丟棄（保留紀錄避免下次又重收同一篇）。
 """
 
@@ -49,6 +50,17 @@ class RawStrategyFind(Base):
 
     # 狀態流轉（見檔頭說明）
     status = Column(String, nullable=False, default="new", index=True)
+
+    # 標籤（逗號分隔，可空）。目前用途：未上市公司關鍵字監控——收料時命中
+    # PRIVATE_WATCH_KEYWORDS 的素材打上 "watch:<關鍵字>"（如 watch:SpaceX），
+    # 讓「不能回測、只能監控記錄」的公司新聞可以被篩出來追蹤。
+    tags = Column(String, nullable=True, index=True)
+
+    # ---- Phase 12 step-02：探勘橋的審計欄（自動 triage 決策可回查）----
+    # 探勘橋據此素材產出的 StrategyKnowledge id（built 時回填；人工流程可為空）
+    knowledge_id = Column(Integer, nullable=True)
+    # triage 決策原因：為什麼 built（提了哪個策略/信心）或 discarded（不相關/解析失敗…）
+    triage_note = Column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<RawStrategyFind {self.source} {self.title!r} {self.status}>"

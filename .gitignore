@@ -1,5 +1,7 @@
 # 環境變數（含 API Key，絕對不可提交）
 .env
+.env.bak
+*.bak
 
 # Python
 __pycache__/
@@ -29,6 +31,9 @@ desktop.ini
 *.db
 *.sqlite3
 
+# 本機 OHLCV 快取（Phase 11 step-02：parquet + meta，少打外部 API，不進版控）
+data/cache/
+
 # 測試 / 覆蓋率
 .coverage
 htmlcov/
@@ -52,3 +57,8 @@ skills-lock.json
 
 # 測試暫時產生的 explorations 資料夾（test_knowledge.py 用，跑完的殘留，不進 repo）
 tests/_tmp_expl_*/
+
+# graphify 知識圖譜：產物進 git，機器專屬路徑/快取不進
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/cache/

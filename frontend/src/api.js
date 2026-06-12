@@ -36,6 +36,9 @@ export const api = {
   // 取得帳戶資訊
   getAccount: () => request("/account"),
 
+  // 取得目前所有持倉（含浮動損益）。無金鑰/失敗時後端回空陣列。
+  getPositions: () => request("/positions"),
+
   // 取得所有 Bot
   getBots: () => request("/bots"),
 
@@ -142,6 +145,13 @@ export const api = {
   favoriteBacktestRun: (id, isGood = true) =>
     request(`/backtest-runs/${id}/favorite?is_good=${isGood}`, { method: "PUT" }),
 
+  // 蒙地卡羅壓力測試：bootstrap 重抽該筆回測的日報酬，回風險分布（按需計算、不存 DB）
+  stressBacktestRun: (id, options = {}) =>
+    request(`/backtest/stress/${id}`, {
+      method: "POST",
+      body: JSON.stringify(options),
+    }),
+
   // ===== Claude 思考助手（步驟 4 為 stub）=====
   // 聊天（無狀態，送完整 messages）
   sendChat: (messages) =>
@@ -157,6 +167,12 @@ export const api = {
   // 某 Bot 最近的決策紀錄（含沒成交的觀望/跳過），依時間倒序
   getBotDecisions: (botId, limit = 50) =>
     request(`/bots/${botId}/decisions?limit=${limit}`),
+  // 跨所有 Bot 的最近決策（Dashboard 決策即時流開頁播種用）
+  getRecentDecisions: (limit = 30) =>
+    request(`/bots/decisions/recent?limit=${limit}`),
+  // 策略視角圖表資料（K 線 + 指標疊圖 + 買賣/觀望標記，同一份 df 保證對齊）
+  getBotChartData: (botId, days = 120) =>
+    request(`/bots/${botId}/chart-data?days=${days}`),
 
   // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
   // 路標清單（每筆 run_id / file / strategy / symbol / summary）

@@ -50,6 +50,7 @@ def screener_results_to_rows(recommendations: list[dict]) -> list[dict]:
             "params": rec.get("params") or {},
             "oos_expected_value": metrics.get("oos_expected_value"),
             "oos_win_rate_pct": metrics.get("oos_win_rate_pct"),
+            "oos_expectancy_pct": metrics.get("oos_expectancy_pct"),
             "sentiment": rec.get("sentiment"),
         })
     # 依 OOS EV 由高到低（None 視為最低，排最後）
@@ -86,6 +87,7 @@ def upsert_opportunities(db, rows: list[dict]) -> dict:
                 params=row.get("params") or {},
                 oos_expected_value=row.get("oos_expected_value"),
                 oos_win_rate_pct=row.get("oos_win_rate_pct"),
+                oos_expectancy_pct=row.get("oos_expectancy_pct"),
                 sentiment=row.get("sentiment"),
                 scanned_at=datetime.now(),
                 status="new",
@@ -95,6 +97,7 @@ def upsert_opportunities(db, rows: list[dict]) -> dict:
             existing.params = row.get("params") or {}
             existing.oos_expected_value = row.get("oos_expected_value")
             existing.oos_win_rate_pct = row.get("oos_win_rate_pct")
+            existing.oos_expectancy_pct = row.get("oos_expectancy_pct")
             existing.sentiment = row.get("sentiment")
             existing.scanned_at = datetime.now()
             # status 不動（保留 seen/deployed/expired 的流轉結果）
@@ -129,12 +132,16 @@ def collect_factor_snapshots(db, *, as_of: datetime | None = None) -> int:
     """
     as_of = as_of or datetime.now()
     symbols = screener.parse_watchlist(settings.SCREENER_WATCHLIST)
+    # 批次抓整個 watchlist（1 次 HTTP），仍走同一條正規資料路徑（market_data + DATA_SOURCE）
+    try:
+        dfs = market_data.get_bars_multi(symbols, days=60, source=settings.DATA_SOURCE)
+    except Exception:
+        dfs = {}
     written = 0
     for sym in symbols:
-        try:
-            df = market_data.get_bars(sym, days=60, source=settings.DATA_SOURCE)
-        except Exception:
-            continue  # 單檔抓失敗略過
+        df = dfs.get(sym)
+        if df is None or df.empty:
+            continue  # 單檔抓失敗略過（批次層已隔離，缺檔是空 df）
         features = regime_features.compute_features(df)
         regime_label = regime.classify_regime(features)
         row = features_to_snapshot_row(sym, features, regime_label, as_of)

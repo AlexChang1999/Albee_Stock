@@ -35,6 +35,7 @@ def _serialize(f: RawStrategyFind) -> dict:
         "title": f.title,
         "summary": f.summary,
         "status": f.status,
+        "tags": f.tags,
         "fetched_at": f.fetched_at.isoformat() if f.fetched_at else None,
     }
 
@@ -43,6 +44,7 @@ def _serialize(f: RawStrategyFind) -> dict:
 def list_finds(
     limit: int = 50,
     status: Optional[str] = None,
+    tag: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -50,10 +52,13 @@ def list_finds(
 
     :param limit: 最多回幾筆（夾在 1~200）。
     :param status: 可選狀態篩選（new/triaged/built/discarded）。
+    :param tag: 可選標籤子字串篩選（如 watch:SpaceX——未上市公司監控素材）。
     """
     q = db.query(RawStrategyFind)
     if status:
         q = q.filter(RawStrategyFind.status == status)
+    if tag:
+        q = q.filter(RawStrategyFind.tags.contains(tag))
     rows = (
         q.order_by(RawStrategyFind.fetched_at.desc(), RawStrategyFind.id.desc())
         .limit(max(1, min(limit, 200)))

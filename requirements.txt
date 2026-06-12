@@ -16,6 +16,9 @@ python-dotenv==1.2.2
 pandas==3.0.3
 numpy==2.4.6
 
+# --- parquet 引擎（Phase 11 step-02 本機 OHLCV 快取：pandas to_parquet/read_parquet 後端） ---
+pyarrow==24.0.0
+
 # --- 第二資料源（免費、無金鑰；OpenBB 底層也是用它） ---
 yfinance==1.4.1
 
@@ -34,6 +37,9 @@ sqlalchemy==2.0.45
 
 # --- 資料庫遷移（schema 變更版本化，取代手動 ALTER；未來換 Postgres 也通用） ---
 alembic==1.18.4
+
+# --- PostgreSQL 驅動（雲端共用 DB 兩台同步用；SQLite 不需要、留著無害。見 docs/setup-postgres-sync.md） ---
+psycopg2-binary==2.9.12
 
 # --- 任務排程（讓 Bot 定時跑策略） ---
 apscheduler==3.11.0
