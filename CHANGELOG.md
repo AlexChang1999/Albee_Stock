@@ -17,6 +17,12 @@
 
 ### 新增
 
+- **政治員啟動回補**——watcher 啟動時（`on_ready`）自動抓 Discord 頻道最近
+  `POLITICAL_BACKFILL_LIMIT`（預設 5，0=關）筆「有文字內容」的歷史貼文，走既有
+  判讀＋落表路徑補進 `political_events`：電腦非 24h 開機也不漏啟動前的政治情緒。
+  防重用 `(author, posted_at)` 天然鍵（`political.event_exists`，免加欄位免遷移）；
+  回補由舊到新處理保時序、失敗只印警告不影響即時監聽。測試 +2（防重/該不該收）。
+
 - **文件：前端頁面地圖**（`docs/reference/frontend-pages-map.md`）——sidebar 17 頁
   拆四條工作流（探勘入庫/研究回測/上線執行/情報檢討），Mermaid 小圖×6（拆小張
   橫排避免瀏覽器縮太小）+ 開第一隻 Bot step-by-step + 模擬交易 When/What/Why

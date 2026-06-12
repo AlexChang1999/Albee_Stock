@@ -30,6 +30,14 @@ def _passes_author_filter(author_name: str) -> bool:
     return (not flt) or flt in (author_name or "").lower()
 
 
+def _should_backfill_message(content: str, author_name: str) -> bool:
+    """
+    回補時這則歷史訊息要不要收：要有文字內容（純圖片 / embed 空文字不收）+ 過作者過濾。
+    抽成純函式方便離線測試；筆數上限由呼叫端（on_ready 回補迴圈）控制。
+    """
+    return bool((content or "").strip()) and _passes_author_filter(author_name)
+
+
 def _handle_message(*, content: str, author_name: str, channel_name: str,
                     posted_at: datetime, history: dict, db) -> dict | None:
     """
@@ -97,6 +105,59 @@ def main() -> None:
     @client.event
     async def on_ready():
         print(f"🏛️ 政治專討員已上線：{client.user}（監看頻道 {channel_id or '全部'}）")
+
+        # ===== 啟動回補：抓頻道最近 N 筆「有文字」的歷史貼文 =====
+        # 電腦非 24h 開機，啟動前漏掉的貼文靠這段補；POLITICAL_BACKFILL_LIMIT=0 關閉。
+        limit = settings.POLITICAL_BACKFILL_LIMIT
+        if limit <= 0 or not channel_id:
+            return
+        try:
+            channel = client.get_channel(int(channel_id))
+            if channel is None:
+                channel = await client.fetch_channel(int(channel_id))
+        except Exception as e:  # noqa: BLE001  頻道 ID 錯 / bot 沒進伺服器 → 不回補，照常監聽
+            print(f"⚠️ 回補略過：拿不到頻道 {channel_id}（{e}）")
+            return
+
+        try:
+            # history 由新到舊吐；多撈一些再過濾（純圖片 / embed 空文字訊息不算數）
+            picked = []
+            async for message in channel.history(limit=max(50, limit * 10)):
+                if message.author == client.user:
+                    continue
+                if not _should_backfill_message(
+                    message.content or "",
+                    str(getattr(message.author, "name", message.author)),
+                ):
+                    continue
+                picked.append(message)
+                if len(picked) >= limit:
+                    break
+
+            # 反轉成「由舊到新」處理：頻率特徵與『最新事件』的時序才正確
+            added = skipped = 0
+            for message in reversed(picked):
+                author_name = str(getattr(message.author, "name", message.author))
+                posted_at = message.created_at or datetime.now()
+                db = political.get_session()
+                try:
+                    if political.event_exists(db, author=author_name, posted_at=posted_at):
+                        skipped += 1  # 上次回補 / 即時監聽已收過 → 防重跳過
+                        continue
+                    _handle_message(
+                        content=message.content or "",
+                        author_name=author_name,
+                        channel_name=str(getattr(message.channel, "name", message.channel.id)),
+                        posted_at=posted_at,
+                        history=history,
+                        db=db,
+                    )
+                    added += 1
+                finally:
+                    db.close()
+            print(f"🔁 回補完成：新增 {added} 筆、跳過 {skipped} 筆（已存在）")
+        except Exception as e:  # noqa: BLE001  回補失敗不影響後續即時監聽
+            print(f"⚠️ 回補失敗（不影響即時監聽）：{e}")
 
     @client.event
     async def on_message(message):

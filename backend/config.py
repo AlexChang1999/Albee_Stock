@@ -251,11 +251,14 @@ class Settings:
     #   - POLITICAL_DISCORD_TOKEN / POLITICAL_CHANNEL_ID：Discord runner 用（留空＝不啟動 runner）。
     #   - POLITICAL_AUTHOR_FILTER：只處理這個作者名的貼文（留空＝該頻道所有貼文）。
     #   - POLITICAL_EVENT_MAX_AGE_HOURS：政治情緒超過幾小時就退場、不再煞車（預設 24h）。
+    #   - POLITICAL_BACKFILL_LIMIT：runner 啟動時回補頻道最近幾筆「有文字」的貼文
+    #     （電腦非 24h 開機，啟動前漏掉的貼文靠這個補；0＝關閉回補，預設 5）。
     POLITICAL_ENABLED: bool = os.getenv("POLITICAL_ENABLED", "false").lower() in ("1", "true", "yes")
     POLITICAL_DISCORD_TOKEN: str = os.getenv("POLITICAL_DISCORD_TOKEN", "")
     POLITICAL_CHANNEL_ID: str = os.getenv("POLITICAL_CHANNEL_ID", "")
     POLITICAL_AUTHOR_FILTER: str = os.getenv("POLITICAL_AUTHOR_FILTER", "")
     POLITICAL_EVENT_MAX_AGE_HOURS: float = float(os.getenv("POLITICAL_EVENT_MAX_AGE_HOURS", "24"))
+    POLITICAL_BACKFILL_LIMIT: int = int(os.getenv("POLITICAL_BACKFILL_LIMIT", "5"))
 
     # ========================================================
     # 回測成本模型（Phase 6 step-02）

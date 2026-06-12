@@ -188,6 +188,9 @@ venv\Scripts\python.exe -m backend.bots.political_watcher
 定位是**煞車不是油門**：偵測高風險政治事件 → 新倉 size 打折，不開新倉、不擋出場。
 事件超過 `POLITICAL_EVENT_MAX_AGE_HOURS`（預設 24h）自動退場。
 
+啟動回補：runner 一開就抓頻道最近 `POLITICAL_BACKFILL_LIMIT`（預設 5）筆**有文字**的
+歷史貼文判讀落表——電腦沒 24h 開機也不漏最新政治情緒；重啟不重複寫（同作者同時間防重）。
+
 ## ⑥ 各頁面資料來源（誰寫進去的）
 
 | 頁面 | 讀的資料 | 資料由誰產生 |

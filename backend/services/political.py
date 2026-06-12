@@ -173,6 +173,24 @@ def record_event(db, *, source: str, author: str, text: str, posted_at: datetime
     return row
 
 
+def event_exists(db, *, author: str, posted_at: datetime) -> bool:
+    """
+    回補防重：同作者 + 同發文時間已落表 → 跳過，不重寫。
+
+    表沒存 Discord message_id，但 Discord 訊息時間戳精確到微秒，
+    同作者同時刻幾乎不可能撞，拿 (author, posted_at) 當天然唯一鍵即可，免遷移加欄位。
+    """
+    return (
+        db.query(PoliticalEvent)
+        .filter(
+            PoliticalEvent.author == (author or ""),
+            PoliticalEvent.posted_at == posted_at,
+        )
+        .first()
+        is not None
+    )
+
+
 def get_session():
     """給 runner 取一個 DB session（包一層方便測試 monkeypatch）。"""
     return SessionLocal()
