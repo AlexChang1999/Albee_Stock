@@ -57,3 +57,8 @@ skills-lock.json
 
 # 測試暫時產生的 explorations 資料夾（test_knowledge.py 用，跑完的殘留，不進 repo）
 tests/_tmp_expl_*/
+
+# graphify 知識圖譜：產物進 git，機器專屬路徑/快取不進
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/cache/
