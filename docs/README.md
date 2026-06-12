@@ -37,7 +37,7 @@
 | [`guides/macro-layer-validation-runbook.md`](guides/macro-layer-validation-runbook.md) | Backlog A：拿到 FRED key 後跑 macro 層真資料 OOS 驗證 + 留/砍決策的步驟單。 |
 | [`guides/deadman-switch-runbook.md`](guides/deadman-switch-runbook.md) | 維運安全軌 H2：healthchecks.io dead-man switch 設定、警報排查、每月演練。 |
 | [`guides/collector-feeds-guide.md`](guides/collector-feeds-guide.md) | 市場蒐集員 feed 設定（推薦來源、robots 檢查、`.env` 範例、驗收 runbook，Phase 12 step-01）。 |
-| [`guides/setup-postgres-sync.md`](guides/setup-postgres-sync.md) | 換 PostgreSQL／同步設定。 |
+| [`guides/setup-postgres-sync.md`](guides/setup-postgres-sync.md) | **Neon 雲端 PostgreSQL** 設定／搬遷／**新電腦完整設置** runbook（2026-06-12 已正式切換）。 |
 | [`guides/phase4-paper-checklist.md`](guides/phase4-paper-checklist.md) | Paper Trading 上線前檢查表。 |
 | [`guides/skill-guidelines.md`](guides/skill-guidelines.md) | 撰寫 Skill 的守則。 |
 

@@ -9,7 +9,9 @@
 
 - **後端**: Python 3.13 + FastAPI
 - **前端**: React (Vite)
-- **資料庫**: SQLite (開發) → 未來可換 PostgreSQL
+- **資料庫**: Neon 雲端 PostgreSQL（2026-06 起正式使用，多台電腦共用同一份資料；
+  `.env` 沒填 `DATABASE_URL` 自動退回本機 SQLite。**新電腦完整設置流程**見
+  [`docs/guides/setup-postgres-sync.md`](docs/guides/setup-postgres-sync.md)）
 - **交易 API**: Alpaca Markets API (免費版)
 - **即時報價**: Alpaca WebSocket
 - **回測引擎**: 自寫引擎（`backend/services/backtest_engine.py`，隔日成交 + 含成本；原規劃 backtrader 未採用）
@@ -259,6 +261,10 @@ Albee_Stock/
 ## 環境變數（.env 需要的欄位）
 
 ```
+# 資料庫（雲端 Neon PG；留空/註解掉＝退回本機 SQLite）
+# 連線字串從 Neon Dashboard → Connect 複製；新電腦設置見 docs/guides/setup-postgres-sync.md
+DATABASE_URL=postgresql://neondb_owner:<密碼>@ep-xxxx.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+
 ALPACA_API_KEY=你的_API_Key
 ALPACA_SECRET_KEY=你的_Secret_Key
 ALPACA_BASE_URL=https://paper-api.alpaca.markets  # Paper Trading
@@ -335,8 +341,9 @@ cd frontend && npm run dev
   - 新電腦/全新 DB：`venv\Scripts\alembic.exe upgrade head` 一行建好（`setup.bat` 已含）。
   - **SQLite 必備坑**：`alembic/env.py` 已設 `render_as_batch=True`。SQLite 的 `ALTER`
     很弱（不能改/刪欄位），沒開 batch 模式，未來改欄位的遷移會失敗。
-  - DB 連線讀 `config.py` 的 `DATABASE_URL`（可由 `.env` 覆寫）。未來換 PostgreSQL
-    只要在 `.env` 設 `DATABASE_URL=postgresql://...`，程式不用改。
+  - DB 連線讀 `config.py` 的 `DATABASE_URL`（可由 `.env` 覆寫）。**現已指向 Neon 雲端
+    PostgreSQL**（`.env` 設 `DATABASE_URL=postgresql://...`，程式零改；沒填則退回本機
+    SQLite）。設定/換機 runbook：`docs/guides/setup-postgres-sync.md`。
 
 ## 可用的 MCP Server
 

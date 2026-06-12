@@ -15,6 +15,15 @@
 
 ## [未發布]
 
+### 變更
+
+- **資料庫切換 Neon 雲端 PostgreSQL（2026-06-12）**——`DATABASE_URL` 指向 Neon 免費
+  PG 17（新加坡 `ap-southeast-1`），兩台電腦共用同一份資料、換機零搬遷；沒填
+  `DATABASE_URL` 仍自動退回本機 SQLite，程式零改。一次性搬遷已完成（Alembic 建表
+  20 遷移／15 表 + SQLite 資料搬入；踩坑：遷移種子列會撞 PK，搬遷腳本需先清表再插入，
+  已記錄）。**新電腦完整設置流程見 [`docs/guides/setup-postgres-sync.md`](docs/guides/setup-postgres-sync.md)
+  的「換電腦 / 新電腦」一節**（git pull 後照做即可）。
+
 ### 新增
 
 - **政治員啟動回補**——watcher 啟動時（`on_ready`）自動抓 Discord 頻道最近

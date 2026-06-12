@@ -6,17 +6,15 @@
 
 ---
 
-## ⚠️ 開始前最大缺口：資料庫還不是真雲端
+## ✅ 資料庫已是真雲端（2026-06-12 切換 Neon 完成）
 
-外面那台的 `DATABASE_URL` 指向 `localhost:5432`（本機 PostgreSQL，名字叫
-Cloud-Postgres 但**不在雲端**）。家裡那台連不到它。二選一：
+原本的缺口（`DATABASE_URL` 指向 `localhost` 假雲端）已解決：現在用 **Neon 免費
+PostgreSQL**（新加坡區），搬遷已完成。家裡那台只要 `.env` 填**同一個** Neon
+`DATABASE_URL` 即兩台共享同一份資料——完整步驟見
+[`setup-postgres-sync.md`](setup-postgres-sync.md) 的「換電腦 / 新電腦」一節。
 
-| 方案 | 做法 | 結果 |
-|------|------|------|
-| **A. 真雲端 PG（建議，原規劃）** | 到 [Neon](https://neon.tech) 或 [Supabase](https://supabase.com) 免費註冊 → 建專案拿連線字串 → 照 [`setup-postgres-sync.md`](setup-postgres-sync.md) 在**外面那台**搬一次資料（Step 2~5，來源改成從本機 PG 搬） → 兩台 `.env` 填**同一個**雲端 `DATABASE_URL` | 兩台共享同一份資料 |
-| **B. 家裡先各自獨立（最快開測）** | 家裡 `.env` 的 `DATABASE_URL` 整行**註解掉**（或不填）→ 自動退回本機 SQLite | 馬上能測，但資料兩台不同步，之後做方案 A 再搬 |
-
-> 方案 B 不影響 step-01 驗收（收料觀察只看家裡那台自己的收件匣）。
+> 仍想先各自獨立測：`.env` 的 `DATABASE_URL` 整行註解掉 → 自動退回本機 SQLite
+> （但資料不同步，之後記得改回 Neon）。
 
 ---
 
