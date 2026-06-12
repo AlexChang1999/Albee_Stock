@@ -17,6 +17,7 @@
 discord 套件採延遲 import，沒裝 / 不跑 runner 時，不影響其餘後端與測試。
 """
 
+import re
 from collections import defaultdict
 from datetime import datetime
 
@@ -28,6 +29,23 @@ def _passes_author_filter(author_name: str) -> bool:
     """只處理設定的作者（POLITICAL_AUTHOR_FILTER）；留空＝不過濾、收該頻道所有貼文。"""
     flt = (settings.POLITICAL_AUTHOR_FILTER or "").strip().lower()
     return (not flt) or flt in (author_name or "").lower()
+
+
+def _notifier_webhook_id(url: str | None = None) -> str:
+    """
+    從系統通知的 DISCORD_WEBHOOK_URL 解析出 webhook id（URL 形如 .../webhooks/<id>/<token>）。
+
+    ★ 自我回饋防護：我們的通知（心跳 / 政治風險警報）若發進 watcher 監看的同一頻道，
+    會被自己讀回去 → 判讀 → 再發警報 → 無限迴圈（真實發生過）。靠 webhook id 認出
+    「這則是我們自己發的」直接跳過。解析不到（沒設 / 格式不對）回空字串＝不過濾。
+    """
+    m = re.search(r"/webhooks/(\d+)", url if url is not None else (notifier.DISCORD_WEBHOOK_URL or ""))
+    return m.group(1) if m else ""
+
+
+def _is_own_notification(message_webhook_id, own_webhook_id: str) -> bool:
+    """這則訊息是不是我們自己的通知 webhook 發的（是 → 不能吃，會自我回饋）。純函式。"""
+    return bool(own_webhook_id) and str(message_webhook_id or "") == own_webhook_id
 
 
 def _should_backfill_message(content: str, author_name: str) -> bool:
@@ -102,9 +120,29 @@ def main() -> None:
     # 記憶體裡的作者→近期發文時間（算頻率特徵；runner 重啟即清空，不影響落表）
     history: dict = defaultdict(list)
 
+    # 自我回饋防護：我們系統通知的 webhook id（這個 webhook 發的訊息一律不吃）
+    own_webhook_id = _notifier_webhook_id()
+
     @client.event
     async def on_ready():
         print(f"🏛️ 政治專討員已上線：{client.user}（監看頻道 {channel_id or '全部'}）")
+
+        # ===== 自我回饋偵測：通知 webhook 不可以跟監看頻道同一個頻道 =====
+        # 同頻道 = 自己的警報被自己讀回去 → 判讀 → 再發警報 → 無限迴圈（真實踩過）。
+        if own_webhook_id and channel_id:
+            try:
+                wh = await discord.Webhook.from_url(
+                    notifier.DISCORD_WEBHOOK_URL, client=client
+                ).fetch()  # URL 自帶 token，免 Manage Webhooks 權限
+                if str(getattr(wh, "channel_id", "")) == channel_id:
+                    print(
+                        "🚨 設定錯誤：DISCORD_WEBHOOK_URL（系統通知）跟 POLITICAL_CHANNEL_ID"
+                        "（鏡像監看頻道）是同一個頻道！會自我回饋洗版。\n"
+                        "   請到另一個『通知專用』頻道建新 webhook，換掉 .env 的 DISCORD_WEBHOOK_URL。\n"
+                        "   （已啟用 webhook 防護：自己發的訊息不會吃，但鏡像若共用同一 webhook 也會被擋。）"
+                    )
+            except Exception:  # noqa: BLE001  撈不到 webhook 資訊（權限不夠等）→ 不擋啟動
+                pass
 
         # ===== 啟動回補：抓頻道最近 N 筆「有文字」的歷史貼文 =====
         # 電腦非 24h 開機，啟動前漏掉的貼文靠這段補；POLITICAL_BACKFILL_LIMIT=0 關閉。
@@ -124,6 +162,9 @@ def main() -> None:
             picked = []
             async for message in channel.history(limit=max(50, limit * 10)):
                 if message.author == client.user:
+                    continue
+                # 自我回饋防護：自己系統通知 webhook 發的訊息不吃
+                if _is_own_notification(getattr(message, "webhook_id", None), own_webhook_id):
                     continue
                 if not _should_backfill_message(
                     message.content or "",
@@ -163,6 +204,9 @@ def main() -> None:
     async def on_message(message):
         # 忽略自己 / 機器人自身發言
         if message.author == client.user:
+            return
+        # 自我回饋防護：自己系統通知 webhook 發的訊息不吃（吃了會判讀→再警報→無限迴圈）
+        if _is_own_notification(getattr(message, "webhook_id", None), own_webhook_id):
             return
         # 只看設定的頻道（留空＝不限制）
         if channel_id and str(message.channel.id) != channel_id:

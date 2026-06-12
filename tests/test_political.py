@@ -224,6 +224,23 @@ def test_should_backfill_message(monkeypatch):
     assert political_watcher._should_backfill_message("hello", "anyone") is True
 
 
+def test_own_notification_guard():
+    """自我回饋防護：自己通知 webhook 發的訊息要認得出來、不能吃。"""
+    wid = political_watcher._notifier_webhook_id(
+        "https://discord.com/api/webhooks/123456789/secret-token"
+    )
+    assert wid == "123456789"
+    # 同 webhook id（不論 int / str）→ 是自己的通知 → 擋
+    assert political_watcher._is_own_notification(123456789, wid) is True
+    assert political_watcher._is_own_notification("123456789", wid) is True
+    # 不同 webhook（鏡像 bot）/ 非 webhook 訊息 → 放行
+    assert political_watcher._is_own_notification(999, wid) is False
+    assert political_watcher._is_own_notification(None, wid) is False
+    # 沒設通知 webhook → 不過濾
+    assert political_watcher._notifier_webhook_id("") == ""
+    assert political_watcher._is_own_notification(123, "") is False
+
+
 # ---------- 6. GET /political/events + /political/risk ----------
 @contextmanager
 def _isolated_client(tmp_path):

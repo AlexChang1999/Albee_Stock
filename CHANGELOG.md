@@ -23,6 +23,14 @@
   防重用 `(author, posted_at)` 天然鍵（`political.event_exists`，免加欄位免遷移）；
   回補由舊到新處理保時序、失敗只印警告不影響即時監聽。測試 +2（防重/該不該收）。
 
+### 修正
+
+- **政治員自我回饋迴圈防護**——系統通知 webhook（`DISCORD_WEBHOOK_URL`）若指向
+  watcher 監看的同一頻道，自己的風險警報會被自己讀回去判讀 → 再發警報 → 無限迴圈
+  （實測踩到，15 秒一筆洗版）。修法：①即時監聽與回補都依 webhook id 跳過自己通知
+  webhook 發的訊息（`_is_own_notification`）；②啟動時偵測「通知 webhook 與監看頻道
+  同頻道」印 🚨 設定錯誤警告。正解仍是通知用獨立頻道的專屬 webhook。測試 +1。
+
 - **文件：前端頁面地圖**（`docs/reference/frontend-pages-map.md`）——sidebar 17 頁
   拆四條工作流（探勘入庫/研究回測/上線執行/情報檢討），Mermaid 小圖×6（拆小張
   橫排避免瀏覽器縮太小）+ 開第一隻 Bot step-by-step + 模擬交易 When/What/Why
