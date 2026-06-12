@@ -222,6 +222,9 @@ def test_should_backfill_message(monkeypatch):
     # 過濾留空 = 收全頻道
     monkeypatch.setattr(political_watcher.settings, "POLITICAL_AUTHOR_FILTER", "")
     assert political_watcher._should_backfill_message("hello", "anyone") is True
+    # 內容指紋防回音：自己警報 / 心跳的固定開頭不收（舊 webhook 留在頻道的歷史警報）
+    assert political_watcher._should_backfill_message("🏛️ 政治風險訊號：xxx 偏空", "anyone") is False
+    assert political_watcher._should_backfill_message("💓 [心跳] 2026-06-12 系統存活", "anyone") is False
 
 
 def test_own_notification_guard():

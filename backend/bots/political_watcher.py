@@ -48,12 +48,21 @@ def _is_own_notification(message_webhook_id, own_webhook_id: str) -> bool:
     return bool(own_webhook_id) and str(message_webhook_id or "") == own_webhook_id
 
 
+# 自我回饋第二層防護（內容指紋）：我們系統通知的固定開頭。webhook id 防護擋不到
+# 「換 webhook 之前」已留在頻道歷史裡的舊警報，回補時會被撿回來，靠這層擋。
+_ECHO_PREFIXES = ("🏛️ 政治風險訊號", "💓")
+
+
 def _should_backfill_message(content: str, author_name: str) -> bool:
     """
-    回補時這則歷史訊息要不要收：要有文字內容（純圖片 / embed 空文字不收）+ 過作者過濾。
+    這則訊息要不要收（回補與即時監聽共用）：
+    有文字內容（純圖片 / embed 空文字不收）+ 過作者過濾 + 不是我們自己的通知回音。
     抽成純函式方便離線測試；筆數上限由呼叫端（on_ready 回補迴圈）控制。
     """
-    return bool((content or "").strip()) and _passes_author_filter(author_name)
+    text = (content or "").strip()
+    if not text or not _passes_author_filter(author_name):
+        return False
+    return not text.startswith(_ECHO_PREFIXES)
 
 
 def _handle_message(*, content: str, author_name: str, channel_name: str,
@@ -210,6 +219,12 @@ def main() -> None:
             return
         # 只看設定的頻道（留空＝不限制）
         if channel_id and str(message.channel.id) != channel_id:
+            return
+        # 與回補同一套收件判斷：有文字 + 過作者過濾 + 不是自己通知的回音
+        if not _should_backfill_message(
+            message.content or "",
+            str(getattr(message.author, "name", message.author)),
+        ):
             return
 
         db = political.get_session()
