@@ -181,6 +181,7 @@ def test_handle_message_records_and_filters(monkeypatch, tmp_path):
         posted_at=now,
         history=history,
         db=db,
+        notify_on_alert=True,
     )
     assert verdict["label"] == "bearish"
     rows = db.query(PoliticalEvent).all()
@@ -192,7 +193,7 @@ def test_handle_message_records_and_filters(monkeypatch, tmp_path):
     monkeypatch.setattr(political_watcher.settings, "POLITICAL_AUTHOR_FILTER", "trump")
     out = political_watcher._handle_message(
         content="hi", author_name="someone_else", channel_name="c",
-        posted_at=now, history=history, db=db,
+        posted_at=now, history=history, db=db, notify_on_alert=True,
     )
     assert out is None
     assert db.query(PoliticalEvent).count() == 1  # 沒新增

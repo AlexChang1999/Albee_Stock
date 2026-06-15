@@ -15,6 +15,21 @@
 
 ## [未發布]
 
+### 修復
+
+- **政治專討員雲端狂洗版 + 漏抓貼文根治（2026-06-15）**——雲端部署後政治員短時間狂發
+  通知、且川普發文當下沒抓到。根因是「批次重判 + 通知層零節流」（非自我回饋迴圈，通知
+  頻道與監看頻道不同）：搬 Neon 後雲端 `political_events` 空表 → 回補/即時把一批舊貼文
+  重判 → 每筆偏空都打一次 `notify`；回補路徑還會對歷史舊貼文補發警報。修法四層收斂：
+  ①**回補不發通知**（`_handle_message` 加 `notify_on_alert`，回補傳 False、即時傳 True）；
+  ②**同作者警報節流**（`POLITICAL_ALERT_COOLDOWN_MIN` 預設 10 分鐘，冷卻期內只發一則）；
+  ③**DB 加 `(author, posted_at)` 唯一鍵**（Alembic 遷移 `a8f1c2d3e4b5`，先 dedup 既有
+  重複列再加約束；`record_event` 撞鍵回 `None`，呼叫端據此不重發）；④**回補改「時間型
+  補齊」**（只補比 DB 既有最新貼文更新的，空表才退回筆數型；`POLITICAL_BACKFILL_LIMIT`
+  預設 5→30）修漏抓。新增 `tests/test_political_watcher.py`（回補不發/即時發一則/重判不發/
+  節流/唯一鍵/`latest_event_time`）。另修本機 `.env` 一行 cp950 註解壞位元組（`load_dotenv`
+  UTF-8 解碼崩潰、後端與 alembic 起不來）→ 重新編碼為 UTF-8（備份 `.env.bak`）。
+
 ### 新增
 
 - **開發踩坑紀錄文件**——新增 [`docs/reference/dev-pitfalls-log.md`](docs/reference/dev-pitfalls-log.md)：

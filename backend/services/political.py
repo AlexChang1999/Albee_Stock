@@ -19,6 +19,8 @@
 
 from datetime import datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
+
 from backend.config import settings
 from backend.database import SessionLocal
 from backend.models import PoliticalEvent
@@ -147,12 +149,15 @@ def political_size_factor(db, *, enabled: bool | None = None, now: datetime | No
 
 
 def record_event(db, *, source: str, author: str, text: str, posted_at: datetime,
-                 verdict: dict, freq: dict | None = None) -> PoliticalEvent:
+                 verdict: dict, freq: dict | None = None) -> PoliticalEvent | None:
     """
     把一筆判讀完的政治貼文落表（給 Discord runner 用）。
 
     :param verdict: judge_post(_best_effort) 的結果 {label, score, reason}。
     :param freq: frequency_features 的結果（可選）。
+    :return: 落表後的列；若撞 (author, posted_at) 唯一鍵（同則已存在）→ rollback 回 None。
+
+    ★ 撞唯一鍵回 None 是「已存在」的訊號，呼叫端據此**不重發通知**（防重判洗版）。
     """
     freq = freq or {}
     row = PoliticalEvent(
@@ -168,9 +173,23 @@ def record_event(db, *, source: str, author: str, text: str, posted_at: datetime
         posts_last_1h=freq.get("posts_last_1h"),
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()  # 同 (author, posted_at) 已落表 → 視為已存在，不重寫
+        return None
     db.refresh(row)
     return row
+
+
+def latest_event_time(db) -> datetime | None:
+    """
+    回 DB 既有政治事件的最新發文時間（沒有任何事件 → None）。
+
+    給 runner 的「時間型回補」用：只補比這個時間更新的貼文，避免重啟重判舊貨。
+    """
+    row = db.query(PoliticalEvent).order_by(PoliticalEvent.posted_at.desc()).first()
+    return row.posted_at if row is not None else None
 
 
 def event_exists(db, *, author: str, posted_at: datetime) -> bool:

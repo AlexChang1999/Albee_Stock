@@ -251,14 +251,18 @@ class Settings:
     #   - POLITICAL_DISCORD_TOKEN / POLITICAL_CHANNEL_ID：Discord runner 用（留空＝不啟動 runner）。
     #   - POLITICAL_AUTHOR_FILTER：只處理這個作者名的貼文（留空＝該頻道所有貼文）。
     #   - POLITICAL_EVENT_MAX_AGE_HOURS：政治情緒超過幾小時就退場、不再煞車（預設 24h）。
-    #   - POLITICAL_BACKFILL_LIMIT：runner 啟動時回補頻道最近幾筆「有文字」的貼文
-    #     （電腦非 24h 開機，啟動前漏掉的貼文靠這個補；0＝關閉回補，預設 5）。
+    #   - POLITICAL_BACKFILL_LIMIT：runner 啟動時「DB 空表」才用的保底回補筆數。
+    #     正常情況回補走「時間型補齊」（只補比 DB 既有最新貼文更新的），空表時退回
+    #     只補最近 N 筆且不發通知，避免剛搬 DB 瞬間補爆（0＝關閉回補，預設 30）。
+    #   - POLITICAL_ALERT_COOLDOWN_MIN：同一作者的政治風險警報節流分鐘數（防來源倒貨 /
+    #     重判洗版；冷卻期內同作者只發一則，其餘只印 console，預設 10）。
     POLITICAL_ENABLED: bool = os.getenv("POLITICAL_ENABLED", "false").lower() in ("1", "true", "yes")
     POLITICAL_DISCORD_TOKEN: str = os.getenv("POLITICAL_DISCORD_TOKEN", "")
     POLITICAL_CHANNEL_ID: str = os.getenv("POLITICAL_CHANNEL_ID", "")
     POLITICAL_AUTHOR_FILTER: str = os.getenv("POLITICAL_AUTHOR_FILTER", "")
     POLITICAL_EVENT_MAX_AGE_HOURS: float = float(os.getenv("POLITICAL_EVENT_MAX_AGE_HOURS", "24"))
-    POLITICAL_BACKFILL_LIMIT: int = int(os.getenv("POLITICAL_BACKFILL_LIMIT", "5"))
+    POLITICAL_BACKFILL_LIMIT: int = int(os.getenv("POLITICAL_BACKFILL_LIMIT", "30"))
+    POLITICAL_ALERT_COOLDOWN_MIN: int = int(os.getenv("POLITICAL_ALERT_COOLDOWN_MIN", "10"))
 
     # ========================================================
     # 回測成本模型（Phase 6 step-02）
