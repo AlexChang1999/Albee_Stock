@@ -15,6 +15,15 @@
 
 ## [未發布]
 
+### 新增
+
+- **開發踩坑紀錄文件**——新增 [`docs/reference/dev-pitfalls-log.md`](docs/reference/dev-pitfalls-log.md)：
+  查閱全專案 172 個 commit，把歷來實際炸過、用 commit 修掉的坑收斂成一頁
+  （症狀／根因／修法／出處 commit + 快速索引），分 10 主題（Windows 編碼／DB·Alembic／
+  依賴啟動／測試確定性／回測=實盤誠實性／前端／即時系統迴圈／Git 衛生／前瞻偏誤／Linux 部署）。
+  定位為 `CLAUDE.md`「已知注意事項」鐵則的完整史料版；同步在 `docs/README.md` 索引與
+  `CLAUDE.md` 加指標連結。
+
 ### 變更
 
 - **資料庫切換 Neon 雲端 PostgreSQL（2026-06-12）**——`DATABASE_URL` 指向 Neon 免費

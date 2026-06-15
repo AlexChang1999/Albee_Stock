@@ -310,6 +310,9 @@ cd frontend && npm run dev
 
 ## 已知注意事項（踩過的坑）
 
+> 下面是開工必記的精簡鐵則。**完整踩坑史料 + commit 溯源**（每個坑當初怎麼炸、怎麼修）見
+> [`docs/reference/dev-pitfalls-log.md`](docs/reference/dev-pitfalls-log.md)。
+
 - **「回測 = 實盤」鐵則（Phase 6 地基，最容易被破壞）**：回測看到的 EV 必須是實盤拿得到的
   EV 的誠實估計。三件事必須一致、不可分岔：
   - **同資料源 + 同回看長度**：實盤與回測都走 `market_data.get_bars(..., source=settings.DATA_SOURCE)`

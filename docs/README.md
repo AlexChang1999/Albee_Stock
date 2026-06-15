@@ -54,6 +54,7 @@
 | [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) | 一人公司缺口盤點（願景 vs 現況 + 前置進料未通電 + 上線後維運缺口 + 優先序）。 |
 | [`reference/financial-services-reference.md`](reference/financial-services-reference.md) | 金融服務參考。 |
 | [`reference/rl-feasibility-assessment.md`](reference/rl-feasibility-assessment.md) | 強化學習（DQN/PPO）交易員可行性評估：現階段 No-Go + 重啟條件。 |
+| [`reference/dev-pitfalls-log.md`](reference/dev-pitfalls-log.md) | 開發踩坑紀錄：歷來實際炸過、用 commit 修掉的坑（症狀/根因/修法/出處），CLAUDE.md 鐵則的完整史料版。 |
 | [`reference/strategies/`](reference/strategies/) | 個別策略筆記（如 `williams_r.md`）。 |
 
 ## ux/ — 前端 UX
