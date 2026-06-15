@@ -26,6 +26,17 @@
 
 ### 新增
 
+- **後端正式上雲 24/7（2026-06-15）**——把 FastAPI 後端部署到 Oracle Cloud 免費
+  E2.1.Micro VM（Ubuntu，`158.101.127.219`），systemd 服務 `albee-backend`
+  （`Restart=always` + 開機自啟）跑 uvicorn 0.0.0.0:8000，連同一份 Neon 雲端 PG、
+  Paper 模式（`ALLOW_LIVE_TRADING=false`），本機關機照跑。踩坑：①兩層防火牆（Oracle
+  VCN Security List + VM iptables，ACCEPT 8000 須插在 REJECT 規則之前）少一層就 timeout；
+  ②1GB RAM 加 2GB swap，Ollama 跑不動故 `LLM_BASE_URL` 清空停用助手。**並開第二台
+  Micro（`albee-grab`, `150.136.45.198`）掛 OCI CLI `grab-a1.sh` 重試搶 A1.Flex**
+  （Ashburn 3 AD、30s 輪詢、cron `@reboot` 開機自動續搶），搶到再把 bot 搬上 A1。
+  詳見 [`docs/guides/cloud-local-division.md`](docs/guides/cloud-local-division.md)、
+  [`docs/guides/oci-grab-a1.md`](docs/guides/oci-grab-a1.md)。
+
 - **雲端／地端工作劃分文件 + 搶 A1 runbook**——後端 24/7 上 Oracle E2.1.Micro 後，
   補三份產物釐清分工：①[`docs/guides/cloud-local-division.md`](docs/guides/cloud-local-division.md)
   講「誰在哪跑」，標出最重要紅線——**本機與雲端不可同時讓 Bot active**（兩個 APScheduler
