@@ -26,6 +26,15 @@
 
 ### 新增
 
+- **雲端／地端工作劃分文件 + 搶 A1 runbook**——後端 24/7 上 Oracle E2.1.Micro 後，
+  補三份產物釐清分工：①[`docs/guides/cloud-local-division.md`](docs/guides/cloud-local-division.md)
+  講「誰在哪跑」，標出最重要紅線——**本機與雲端不可同時讓 Bot active**（兩個 APScheduler
+  看同一份 Neon DB + 同一 Alpaca 帳戶 = 重複下單／互蓋止損，`backend/main.py` lifespan
+  一啟動就恢復所有 active Bot），附功能對照表、本機前端連雲端 IP、Micro RAM/swap 健康監控
+  指令；②[`docs/guides/oci-grab-a1.md`](docs/guides/oci-grab-a1.md) + ③`scripts/grab-a1.sh`
+  ——用第二台 Micro 掛 OCI CLI 重試腳本搶 A1.Flex（輪 AD、75s 間隔、容量釋出即建機），
+  腳本不含任何真實金鑰/OCID（自填、勿 commit）。純文件 + 獨立 shell，不動後端邏輯。
+
 - **政治員啟動回補**——watcher 啟動時（`on_ready`）自動抓 Discord 頻道最近
   `POLITICAL_BACKFILL_LIMIT`（預設 5，0=關）筆「有文字內容」的歷史貼文，走既有
   判讀＋落表路徑補進 `political_events`：電腦非 24h 開機也不漏啟動前的政治情緒。

@@ -32,6 +32,8 @@
 | [`guides/setup.md`](guides/setup.md) | 環境設置（換新電腦一鍵建好開發環境）。 |
 | [`guides/home-boot-checklist.md`](guides/home-boot-checklist.md) | 回家開機測試 checklist（`.env` 最小必填、雲端 PG 方案 A/B、step-01 驗收、缺口盤點）。 |
 | [`guides/free-vm-deployment.md`](guides/free-vm-deployment.md) | 免費 VM 常駐部署（Oracle A1 開通、Linux 裝機、時區/systemd 坑、雲端 LLM 備援；Phase 12 觀察期用）。 |
+| [`guides/cloud-local-division.md`](guides/cloud-local-division.md) | **雲端／地端工作劃分**：誰在哪跑、不可雙開排程的紅線、功能對照表、本機前端連雲端、Micro 健康監控。 |
+| [`guides/oci-grab-a1.md`](guides/oci-grab-a1.md) | 搶 A1.Flex runbook：第二台 Micro 掛 OCI CLI 重試腳本（`scripts/grab-a1.sh`）等容量釋出。 |
 | [`guides/使用說明.md`](guides/使用說明.md) | 日常操作流程（啟動、前端各分頁、檔案位置、安全雙閘、FAQ）。 |
 | [`guides/how-to-add-strategy.md`](guides/how-to-add-strategy.md) | 新增策略 runbook。 |
 | [`guides/macro-layer-validation-runbook.md`](guides/macro-layer-validation-runbook.md) | Backlog A：拿到 FRED key 後跑 macro 層真資料 OOS 驗證 + 留/砍決策的步驟單。 |
