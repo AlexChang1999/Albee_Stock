@@ -26,6 +26,13 @@
     directory (status 127)`。`ci.yml` deploy step 改為先 `git fetch origin main` +
     `git checkout origin/main -- scripts/deploy.sh` 撈出腳本本身再執行；只 checkout
     腳本、不動 HEAD，保留 deploy.sh 內部 PREV/rollback 語意。
+  - **健康檢查改重試**：`deploy.sh` 原本 `sleep 5` 後單發一次 curl，新後端開機（連 Neon /
+    import）來不及 → 誤判健檢失敗觸發回滾。改成重試最多 ~60s（20 次 × 3s）。
+  - **回滾修正 code/schema 一致性**：原回滾 `git reset` 舊碼後又跑 `alembic upgrade head`，
+    但舊碼缺新增的 migration 檔 → `Can't locate revision` 直接炸（exit 255），DB 卡在新
+    schema、與舊碼不一致。改為**部署前先記 DB revision**，回滾時先用「新碼」
+    `alembic downgrade` 回該 revision（新碼才帶得齊 migration 檔），再 `git reset` 舊碼 +
+    重啟，不再 `upgrade head`。
 
 ### 新增
 
