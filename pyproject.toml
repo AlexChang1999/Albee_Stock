@@ -1,0 +1,8 @@
+# pytest 設定
+[tool.pytest.ini_options]
+# 只在 tests/ 收集測試。否則無路徑跑（如 pytest -m smoke）會誤收 backend/test_connection.py
+# 這支「連線測試腳本」，它在 import 階段就 raise SystemExit 害整個 pytest 崩潰。
+testpaths = ["tests"]
+markers = [
+    "smoke: 煙霧測試——驗系統起得來且核心端點回得了話（pytest -m smoke）",
+]
