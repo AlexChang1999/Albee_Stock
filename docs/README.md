@@ -43,6 +43,7 @@
 | [`guides/enable-auto-pipelines.md`](guides/enable-auto-pipelines.md) | **開啟自動管線** runbook：自動選標的（screener/opportunity）vs 策略點子探勘（collector→discovery→驗證）兩條線各開哪些開關、怎麼驗證；預設全關。 |
 | [`guides/setup-postgres-sync.md`](guides/setup-postgres-sync.md) | **Neon 雲端 PostgreSQL** 設定／搬遷／**新電腦完整設置** runbook（2026-06-12 已正式切換）。 |
 | [`guides/phase4-paper-checklist.md`](guides/phase4-paper-checklist.md) | Paper Trading 上線前檢查表。 |
+| [`guides/smoke-test-plan.md`](guides/smoke-test-plan.md) | **煙霧測試計畫書**：上線前/部署後/換機後一鍵驗系統健康（L1 後端啟動+API／L2 前端 build／L3 部署健檢／L4 外部整合降級）；對應 `tests/test_smoke.py` + `scripts/smoke_test.sh` + CI frontend job。 |
 | [`guides/skill-guidelines.md`](guides/skill-guidelines.md) | 撰寫 Skill 的守則。 |
 
 ## reference/ — 概念／規格／路線

@@ -43,6 +43,11 @@ jobs:
         # E9=語法錯, F63=無效比較, F7=語意錯, F82=未定義名稱
         run: ruff check --select=E9,F63,F7,F82 backend/
 
+      - name: 煙霧測試（先驗系統起得來 + 核心端點回得了話）
+        # 把「啟動級故障」最快擋下：lifespan 起得來、核心 GET 端點回 200、無金鑰優雅降級。
+        # 也含在下面的全套裡，這裡單列只為先跑、失敗早退。
+        run: pytest -m smoke -q
+
       - name: 單元測試（全套）
         # 全套測試在無金鑰 / 無網路環境皆優雅降級通過（已驗 490 passed）。
         # 含去重相關：test_political_watcher / test_notifier / test_collector / test_scheduler_lock。
@@ -61,9 +66,35 @@ jobs:
         continue-on-error: true
         run: alembic check
 
+  # ---------- 前端驗證關卡（Vitest + build）----------
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安裝依賴（lockfile 一致安裝）
+        run: npm ci
+        working-directory: frontend
+
+      - name: 前端單元測試（Vitest）
+        run: npm run test
+        working-directory: frontend
+
+      - name: production build（驗 bundle 建得起來，抓 import/語法錯）
+        run: npm run build
+        working-directory: frontend
+
   # ---------- 自動部署到 VM ----------
   deploy:
-    needs: test # test 全綠才部署
+    needs: [test, frontend] # 後端 + 前端關卡都全綠才部署
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

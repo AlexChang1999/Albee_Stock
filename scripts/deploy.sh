@@ -57,9 +57,11 @@ health_check() {
 
 deploy_current
 
-# --- 健康檢查：失敗就回滾 ---
-if health_check; then
-  echo "✅ 部署成功，健康檢查通過 @ ${NEW:0:8}"
+# --- 健康檢查 + 線上煙霧測試：失敗就回滾 ---
+# health_check 只確認服務活著（curl /）；smoke_test 再多驗幾個功能端點真的回得了資料
+# （DB 查得到、router 沒掛）。兩者皆過才算部署成功，任一失敗都走下面的回滾。
+if health_check && bash scripts/smoke_test.sh "$HEALTH_URL"; then
+  echo "✅ 部署成功，健康檢查 + 煙霧測試通過 @ ${NEW:0:8}"
 else
   echo "❌ 健康檢查失敗 → 回滾到 ${PREV:0:8}"
   # 先用「新碼」把 DB downgrade 回部署前 revision——只有新碼帶得齊所有 migration 檔，

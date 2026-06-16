@@ -17,6 +17,21 @@
 
 ### 新增
 
+- **煙霧測試（Smoke Test）**——補上「整台機器開得起來、核心端點回得了話」的整合關卡：
+  - `tests/test_smoke.py`：`pytest -m smoke` 起 `TestClient(app)`（驗 lifespan：init_db +
+    scheduler leader 選舉不爆）→ 打 `/`、`/status` 與 18 個無金鑰讀端點都回 200 →
+    驗 `/positions` 無金鑰優雅降級回 `[]`；整合層（`/account`、`/quotes`）用
+    `RUN_INTEGRATION_SMOKE=1` 才跑。已驗 **21 passed, 2 skipped**。
+  - `scripts/smoke_test.sh`：線上端點煙霧（curl 打 6 個功能端點），掛進 `deploy.sh`——
+    健檢通過後再跑一次，任一端點掛掉一樣觸發回滾（已驗正常全過、故意打錯 `exit 1`）。
+  - `pyproject.toml`：註冊 `smoke` marker + `testpaths=["tests"]`（避免無路徑跑時誤收
+    `backend/test_connection.py` 害 pytest 崩潰）。
+  - `ci.yml`：`test` job 加 `pytest -m smoke` 先跑早退；新增 `frontend` job
+    （`npm ci` → `npm run test`（Vitest）→ `npm run build`），補上 CI 從不驗前端的缺口；
+    `deploy` 改 `needs: [test, frontend]` 兩關全綠才部署。
+  - 計畫書 [`docs/guides/smoke-test-plan.md`](docs/guides/smoke-test-plan.md)（L1~L4 涵蓋範圍、
+    三種跑法、混合雲對照、故障排除），docs 索引同步補列。
+
 - **上雲 runbook [`docs/guides/cicd-vm-setup.md`](docs/guides/cicd-vm-setup.md)**——把 2026-06-16
   「CICD 已建好但代碼從沒上雲」的排查與上線步驟寫成單一操作指南：手動部署、補 GitHub
   Secrets（`VM_HOST`/`VM_USER`/`VM_SSH_KEY`）、VM 免密碼 sudo、**關掃描要改 DB 非 `.env`**
