@@ -15,6 +15,14 @@
 
 ## [未發布]
 
+### 新增
+
+- **上雲 runbook [`docs/guides/cicd-vm-setup.md`](docs/guides/cicd-vm-setup.md)**——把 2026-06-16
+  「CICD 已建好但代碼從沒上雲」的排查與上線步驟寫成單一操作指南：手動部署、補 GitHub
+  Secrets（`VM_HOST`/`VM_USER`/`VM_SSH_KEY`）、VM 免密碼 sudo、**關掃描要改 DB 非 `.env`**
+  （`scan_interval_min` 存 Neon、`.env` 種子只在首次生效）、Windows 用 Git Bash 連 VM 避開
+  PowerShell OpenSSH 權限坑、驗單實例。docs 索引同步補列。
+
 ### 修正
 
 - **CD 首次自動部署修復（缺 secret + VM 缺 deploy.sh 的雞生蛋）**——兩件事：
