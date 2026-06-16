@@ -15,6 +15,26 @@
 
 ## [未發布]
 
+### 新增
+
+- **全自動 CICD：push → 驗證關卡 → 自動部署 VM（含失敗回滾）**——把舊的 `test.yml`
+  升級為兩段式 `.github/workflows/ci.yml`：
+  - **CI（部署前驗證關卡，「先預測會炸的問題」）**：每次 push / PR 跑①全套 `pytest tests/`
+    （無金鑰/無網路皆優雅降級，490 passed）②錯誤級 `ruff`（E9/F63/F7/F82，只抓語法錯/
+    未定義名稱，不管風格）③`alembic upgrade head` 可套用（抓壞掉的 migration）
+    ④`import backend.main` 煙霧測試（抓啟動階段就爆的）⑤`alembic check` 遷移漂移提醒。
+    **觸發分支補上 `develop`**（主力開發分支，舊 CI 只在 main/master 跑、從沒涵蓋過）。
+  - **CD（自動部署）**：push 到 `main` 且 CI 全綠 → `appleboy/ssh-action` SSH 進 VM 跑
+    `scripts/deploy.sh`：記住舊版 → 拉新碼 → 裝依賴 → `alembic upgrade head` → 重啟
+    服務 → 打 `GET /` 健康檢查；**失敗自動回滾到上一版**並重啟。需在 repo 設 Secrets
+    `VM_HOST` / `VM_USER` / `VM_SSH_KEY` 與 VM 上的免密碼 sudo 重啟權限（腳本內有說明）。
+- **排程器選主鎖（防多實例重複推播/下單）**——新增
+  [`backend/services/scheduler_lock.py`](backend/services/scheduler_lock.py)：地端 + 雲端
+  VM 同連 Neon 時，開機用 PostgreSQL advisory lock 選主，只有 leader 掛 APScheduler 排程
+  （Bot 下單、collector/心跳通知…），其餘實例只當唯讀 API，避免重複下單/重複推播/互蓋止損。
+  `main.py` lifespan 整段排程改為「搶到鎖才掛」；SQLite 單機永遠是 leader（無競爭）。
+  連線一斷鎖自動釋放，另一實例下次開機接手。新增 `tests/test_scheduler_lock.py`。
+
 ### 修復
 
 - **政治專討員雲端狂洗版 + 漏抓貼文根治（2026-06-15）**——雲端部署後政治員短時間狂發

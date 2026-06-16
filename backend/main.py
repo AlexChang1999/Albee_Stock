@@ -29,6 +29,7 @@ from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
 from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity
 from backend.services.bot_activity import hub as activity_hub
+from backend.services.scheduler_lock import acquire_scheduler_lock, release_scheduler_lock
 
 
 def _resume_active_bots() -> None:
@@ -59,6 +60,17 @@ async def lifespan(app: FastAPI):
     init_db()  # 把資料庫的表建好（如果還沒建）
     # Bot 活動事件中樞接上事件迴圈（必須在恢復排程之前——排程一接回來就會發事件）
     activity_hub.attach_loop()
+
+    # 排程器選主：多實例（地端 + 雲端 VM 同連 Neon）時，只有搶到鎖的 leader 掛排程，
+    # 避免重複下單 / 重複推播 / 互蓋止損。沒搶到的實例只當唯讀 API。
+    # SQLite 單機永遠是 leader（無競爭）。下方所有 schedule_* 與 _resume_active_bots
+    # 都會「對外動作或寫狀態」，故整段只在 leader 執行。
+    is_leader = acquire_scheduler_lock()
+    if not is_leader:
+        print("🟡 已有其他實例擔任排程 leader：本實例只提供 API，不掛排程、不對外推播/下單")
+        yield
+        return
+
     _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
     # 模式 B：掛上盤前自動部署的每日定時工作（時刻讀 DB 規則；是否真的部署仍由 enabled 總開關控制）
     _db = SessionLocal()
@@ -88,9 +100,10 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_catchup_on_boot()
     finally:
         _db.close()
-    print(f"🚀 Albee Stock 啟動完成（模擬交易模式：{settings.IS_PAPER}）")
+    print(f"🚀 Albee Stock 啟動完成（排程 leader；模擬交易模式：{settings.IS_PAPER}）")
     yield
-    # --- 關閉時 ---（目前沒事要做，先留空）
+    # --- 關閉時 ---：釋放排程鎖，讓其他實例能接手當 leader
+    release_scheduler_lock()
 
 
 app = FastAPI(title="Albee Stock 交易機器人", lifespan=lifespan)
