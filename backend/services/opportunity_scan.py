@@ -178,6 +178,25 @@ def _market_open_best_effort() -> bool:
         return True
 
 
+def scan_once(db) -> int:
+    """
+    跑一輪海選並把候選 upsert 進機會清單（**不檢查盤中、不發提醒**）。
+
+    抽出來給「立刻掃一輪」手動端點用：使用者按按鈕就強制跑，不必等盤中或等排程。
+    回傳這次海選產生的候選筆數（recommendations 長度）。
+    """
+    result = screener.screen_watchlist()
+    recs = result.get("recommendations", [])
+    rows = screener_results_to_rows(recs)
+    upsert_opportunities(db, rows)
+    # 順手把 watchlist 各檔的市場狀態因子落表（best-effort，失敗不影響機會收集）。
+    try:
+        collect_factor_snapshots(db)
+    except Exception:
+        pass
+    return len(recs)
+
+
 def run_opportunity_scan() -> None:
     """
     排程週期入口：盤中跑一輪海選、把候選 upsert 進機會清單，新候選超門檻則提醒一次。
@@ -191,16 +210,7 @@ def run_opportunity_scan() -> None:
 
     db = SessionLocal()
     try:
-        result = screener.screen_watchlist()
-        rows = screener_results_to_rows(result.get("recommendations", []))
-        upsert_opportunities(db, rows)
-
-        # 順手把 watchlist 各檔的市場狀態因子落表（蒐集員主管的報表，step-03）。
-        # best-effort：因子落表失敗不影響機會清單收集與提醒。
-        try:
-            collect_factor_snapshots(db)
-        except Exception:
-            pass
+        scan_once(db)  # 海選 + upsert + 因子落表（共用核心）
 
         # 新發現且超過提醒門檻（OOS EV）的候選 → 提醒一次後翻 seen（去抖，不重複洗頻）
         threshold = get_config(db).ev_threshold

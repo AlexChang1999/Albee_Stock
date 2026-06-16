@@ -284,6 +284,8 @@ def get_backtest_run_report(run_id: int, db: Session = Depends(get_db)):
     equity_curve = (run.metrics or {}).get("equity_curve")
     if not equity_curve or len(equity_curve) < 2:
         raise HTTPException(status_code=400, detail="這筆回測沒有足夠的資金曲線資料可產報表")
+    # 真實日期（報表真年月）；舊紀錄沒有這欄＝None → tearsheet 自動退回假 2000，不爆
+    equity_dates = (run.metrics or {}).get("equity_dates")
 
     # quantstats 只能寫到檔案，故先寫到暫存檔再讀回來回傳，讀完即刪。
     tmp_path = os.path.join(tempfile.gettempdir(), f"albee_report_{run_id}.html")
@@ -292,6 +294,7 @@ def get_backtest_run_report(run_id: int, db: Session = Depends(get_db)):
             equity_curve,
             tmp_path,
             title=f"{run.symbol} / {run.strategy_key} 績效報表",
+            dates=equity_dates,
         )
         with open(tmp_path, "r", encoding="utf-8") as f:
             html = f.read()

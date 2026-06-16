@@ -17,6 +17,25 @@
 
 ### 新增
 
+- **回測支援 2000–2026 長區間 + 報表顯示真實年月**——三件事：
+  - **報表真實日期**：回測引擎 `_simulate_from_signals` 現在收集 `equity_dates`
+    （與 `equity_curve` 等長）並寫進結果 / `backtest_runs.metrics`。
+    `analytics.returns_from_equity` / `tearsheet_html` 加選用 `dates` 參數，績效報表
+    月報酬表改顯示**真實年月**，不再一律從假的 2000-01 起算。沒帶日期 / 舊紀錄 /
+    日期解析失敗 → 自動退回假 2000（向後相容、可重現，不讓報表爆）。
+    ⚠️ 舊的 `backtest_runs` 沒有 `equity_dates`，要**重跑一次回測**才有真日期。
+  - **長區間自動選資料源**：`backtest_engine._resolve_source` ——用 `alpaca`（免費版
+    抓不到 2000 年）但 `days` 超過 `ALPACA_MAX_DAYS`（1825≈5 年）時自動改 `yfinance`
+    （可回溯 20–50 年），顯式指定 yfinance 不受影響。`days` 無上限，2000→2026 ≈ 9500 天，
+    多年資料走本機 `bar_cache` parquet 快取、第二次秒回。
+  - **前端快捷區間**：`BacktestPanel` 新增「快捷區間」下拉（近 1/5/10 年、最長 2000 起，
+    常數 `BACKTEST_RANGES`），選了填進回測天數。
+- **開啟自動管線 runbook**——新增
+  [`docs/guides/enable-auto-pipelines.md`](docs/guides/enable-auto-pipelines.md)：釐清
+  「自動選標的」（screener/opportunity_scan，盤中自動回測挑策略+標的）與「策略點子探勘」
+  （collector→discovery→auto_validate）是**兩條獨立的線**，各列要開哪些開關、怎麼驗證；
+  開關預設全關（晉升 curated / 自動部署 / 真錢雙閘一律維持人工）。
+
 - **全自動 CICD：push → 驗證關卡 → 自動部署 VM（含失敗回滾）**——把舊的 `test.yml`
   升級為兩段式 `.github/workflows/ci.yml`：
   - **CI（部署前驗證關卡，「先預測會炸的問題」）**：每次 push / PR 跑①全套 `pytest tests/`

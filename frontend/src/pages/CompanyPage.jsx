@@ -64,6 +64,8 @@ function DeptCard({ title, role, chip, to, linkLabel, children }) {
 export default function CompanyPage() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +74,21 @@ export default function CompanyPage() {
       setErr(e.message);
     }
   }, []);
+
+  // 立刻掃一輪：強制跑一輪海選選標的（不必等盤中排程），掃完重抓戰情頁看新機會。
+  const handleScan = useCallback(async () => {
+    setScanning(true);
+    setScanMsg("");
+    try {
+      const r = await api.scanOpportunities();
+      setScanMsg(r.message || "掃描完成");
+      await load(); // 重抓 overview，機會清單更新
+    } catch (e) {
+      setScanMsg(`掃描失敗：${e.message}`);
+    } finally {
+      setScanning(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -259,6 +276,23 @@ export default function CompanyPage() {
                   </Typography>
                 ))}
               </Stack>
+            )}
+
+            {/* 立刻掃一輪：不必等盤中排程，按了強制對 watchlist 跑一輪海選選標的。
+                watchlist 多檔 + 回測較重，可能要跑數十秒。 */}
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleScan}
+              disabled={scanning}
+              sx={{ mt: 2 }}
+            >
+              {scanning ? "掃描中…（可能數十秒）" : "🔎 立刻掃一輪"}
+            </Button>
+            {scanMsg && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                {scanMsg}
+              </Typography>
             )}
           </DeptCard>
         </Grid>
