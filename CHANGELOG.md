@@ -15,6 +15,72 @@
 
 ## [未發布]
 
+### 新增
+
+- **回測支援 2000–2026 長區間 + 報表顯示真實年月**——三件事：
+  - **報表真實日期**：回測引擎 `_simulate_from_signals` 現在收集 `equity_dates`
+    （與 `equity_curve` 等長）並寫進結果 / `backtest_runs.metrics`。
+    `analytics.returns_from_equity` / `tearsheet_html` 加選用 `dates` 參數，績效報表
+    月報酬表改顯示**真實年月**，不再一律從假的 2000-01 起算。沒帶日期 / 舊紀錄 /
+    日期解析失敗 → 自動退回假 2000（向後相容、可重現，不讓報表爆）。
+    ⚠️ 舊的 `backtest_runs` 沒有 `equity_dates`，要**重跑一次回測**才有真日期。
+  - **長區間自動選資料源**：`backtest_engine._resolve_source` ——用 `alpaca`（免費版
+    抓不到 2000 年）但 `days` 超過 `ALPACA_MAX_DAYS`（1825≈5 年）時自動改 `yfinance`
+    （可回溯 20–50 年），顯式指定 yfinance 不受影響。`days` 無上限，2000→2026 ≈ 9500 天，
+    多年資料走本機 `bar_cache` parquet 快取、第二次秒回。
+  - **前端快捷區間**：`BacktestPanel` 新增「快捷區間」下拉（近 1/5/10 年、最長 2000 起，
+    常數 `BACKTEST_RANGES`），選了填進回測天數。
+- **開啟自動管線 runbook**——新增
+  [`docs/guides/enable-auto-pipelines.md`](docs/guides/enable-auto-pipelines.md)：釐清
+  「自動選標的」（screener/opportunity_scan，盤中自動回測挑策略+標的）與「策略點子探勘」
+  （collector→discovery→auto_validate）是**兩條獨立的線**，各列要開哪些開關、怎麼驗證；
+  開關預設全關（晉升 curated / 自動部署 / 真錢雙閘一律維持人工）。
+
+- **全自動 CICD：push → 驗證關卡 → 自動部署 VM（含失敗回滾）**——把舊的 `test.yml`
+  升級為兩段式 `.github/workflows/ci.yml`：
+  - **CI（部署前驗證關卡，「先預測會炸的問題」）**：每次 push / PR 跑①全套 `pytest tests/`
+    （無金鑰/無網路皆優雅降級，490 passed）②錯誤級 `ruff`（E9/F63/F7/F82，只抓語法錯/
+    未定義名稱，不管風格）③`alembic upgrade head` 可套用（抓壞掉的 migration）
+    ④`import backend.main` 煙霧測試（抓啟動階段就爆的）⑤`alembic check` 遷移漂移提醒。
+    **觸發分支補上 `develop`**（主力開發分支，舊 CI 只在 main/master 跑、從沒涵蓋過）。
+  - **CD（自動部署）**：push 到 `main` 且 CI 全綠 → `appleboy/ssh-action` SSH 進 VM 跑
+    `scripts/deploy.sh`：記住舊版 → 拉新碼 → 裝依賴 → `alembic upgrade head` → 重啟
+    服務 → 打 `GET /` 健康檢查；**失敗自動回滾到上一版**並重啟。需在 repo 設 Secrets
+    `VM_HOST` / `VM_USER` / `VM_SSH_KEY` 與 VM 上的免密碼 sudo 重啟權限（腳本內有說明）。
+- **排程器選主鎖（防多實例重複推播/下單）**——新增
+  [`backend/services/scheduler_lock.py`](backend/services/scheduler_lock.py)：地端 + 雲端
+  VM 同連 Neon 時，開機用 PostgreSQL advisory lock 選主，只有 leader 掛 APScheduler 排程
+  （Bot 下單、collector/心跳通知…），其餘實例只當唯讀 API，避免重複下單/重複推播/互蓋止損。
+  `main.py` lifespan 整段排程改為「搶到鎖才掛」；SQLite 單機永遠是 leader（無競爭）。
+  連線一斷鎖自動釋放，另一實例下次開機接手。新增 `tests/test_scheduler_lock.py`。
+- **政治專討員一鍵啟動 `start_political_watcher.bat`**——本機雙擊即啟 `backend.bots.political_watcher`
+  （讀鏡像頻道 → Ollama 判讀 → 偏空推 #Albee-通知）。同 `start_backend.bat` 的看門狗迴圈：
+  崩潰 10 秒自動重拉、`%~dp0` 錨定根目錄。前提：Ollama 先開 + `.env` 設好 `POLITICAL_*`。
+
+### 修復
+
+- **政治專討員雲端狂洗版 + 漏抓貼文根治（2026-06-15）**——雲端部署後政治員短時間狂發
+  通知、且川普發文當下沒抓到。根因是「批次重判 + 通知層零節流」（非自我回饋迴圈，通知
+  頻道與監看頻道不同）：搬 Neon 後雲端 `political_events` 空表 → 回補/即時把一批舊貼文
+  重判 → 每筆偏空都打一次 `notify`；回補路徑還會對歷史舊貼文補發警報。修法四層收斂：
+  ①**回補不發通知**（`_handle_message` 加 `notify_on_alert`，回補傳 False、即時傳 True）；
+  ②**同作者警報節流**（`POLITICAL_ALERT_COOLDOWN_MIN` 預設 10 分鐘，冷卻期內只發一則）；
+  ③**DB 加 `(author, posted_at)` 唯一鍵**（Alembic 遷移 `a8f1c2d3e4b5`，先 dedup 既有
+  重複列再加約束；`record_event` 撞鍵回 `None`，呼叫端據此不重發）；④**回補改「時間型
+  補齊」**（只補比 DB 既有最新貼文更新的，空表才退回筆數型；`POLITICAL_BACKFILL_LIMIT`
+  預設 5→30）修漏抓。新增 `tests/test_political_watcher.py`（回補不發/即時發一則/重判不發/
+  節流/唯一鍵/`latest_event_time`）。另修本機 `.env` 一行 cp950 註解壞位元組（`load_dotenv`
+  UTF-8 解碼崩潰、後端與 alembic 起不來）→ 重新編碼為 UTF-8（備份 `.env.bak`）。
+
+### 新增
+
+- **開發踩坑紀錄文件**——新增 [`docs/reference/dev-pitfalls-log.md`](docs/reference/dev-pitfalls-log.md)：
+  查閱全專案 172 個 commit，把歷來實際炸過、用 commit 修掉的坑收斂成一頁
+  （症狀／根因／修法／出處 commit + 快速索引），分 10 主題（Windows 編碼／DB·Alembic／
+  依賴啟動／測試確定性／回測=實盤誠實性／前端／即時系統迴圈／Git 衛生／前瞻偏誤／Linux 部署）。
+  定位為 `CLAUDE.md`「已知注意事項」鐵則的完整史料版；同步在 `docs/README.md` 索引與
+  `CLAUDE.md` 加指標連結。
+
 ### 變更
 
 - **資料庫切換 Neon 雲端 PostgreSQL（2026-06-12）**——`DATABASE_URL` 指向 Neon 免費
@@ -25,6 +91,26 @@
   的「換電腦 / 新電腦」一節**（git pull 後照做即可）。
 
 ### 新增
+
+- **後端正式上雲 24/7（2026-06-15）**——把 FastAPI 後端部署到 Oracle Cloud 免費
+  E2.1.Micro VM（Ubuntu，`158.101.127.219`），systemd 服務 `albee-backend`
+  （`Restart=always` + 開機自啟）跑 uvicorn 0.0.0.0:8000，連同一份 Neon 雲端 PG、
+  Paper 模式（`ALLOW_LIVE_TRADING=false`），本機關機照跑。踩坑：①兩層防火牆（Oracle
+  VCN Security List + VM iptables，ACCEPT 8000 須插在 REJECT 規則之前）少一層就 timeout；
+  ②1GB RAM 加 2GB swap，Ollama 跑不動故 `LLM_BASE_URL` 清空停用助手。**並開第二台
+  Micro（`albee-grab`, `150.136.45.198`）掛 OCI CLI `grab-a1.sh` 重試搶 A1.Flex**
+  （Ashburn 3 AD、30s 輪詢、cron `@reboot` 開機自動續搶），搶到再把 bot 搬上 A1。
+  詳見 [`docs/guides/cloud-local-division.md`](docs/guides/cloud-local-division.md)、
+  [`docs/guides/oci-grab-a1.md`](docs/guides/oci-grab-a1.md)。
+
+- **雲端／地端工作劃分文件 + 搶 A1 runbook**——後端 24/7 上 Oracle E2.1.Micro 後，
+  補三份產物釐清分工：①[`docs/guides/cloud-local-division.md`](docs/guides/cloud-local-division.md)
+  講「誰在哪跑」，標出最重要紅線——**本機與雲端不可同時讓 Bot active**（兩個 APScheduler
+  看同一份 Neon DB + 同一 Alpaca 帳戶 = 重複下單／互蓋止損，`backend/main.py` lifespan
+  一啟動就恢復所有 active Bot），附功能對照表、本機前端連雲端 IP、Micro RAM/swap 健康監控
+  指令；②[`docs/guides/oci-grab-a1.md`](docs/guides/oci-grab-a1.md) + ③`scripts/grab-a1.sh`
+  ——用第二台 Micro 掛 OCI CLI 重試腳本搶 A1.Flex（輪 AD、75s 間隔、容量釋出即建機），
+  腳本不含任何真實金鑰/OCID（自填、勿 commit）。純文件 + 獨立 shell，不動後端邏輯。
 
 - **政治員啟動回補**——watcher 啟動時（`on_ready`）自動抓 Discord 頻道最近
   `POLITICAL_BACKFILL_LIMIT`（預設 5，0=關）筆「有文字內容」的歷史貼文，走既有

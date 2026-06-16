@@ -24,3 +24,12 @@ export const STRATEGIES = [
 export function strategyLabel(key) {
   return STRATEGIES.find((s) => s.value === key)?.label || key;
 }
+
+// 回測區間快捷選項（天數）。選「最長」送 ~26 年（2000→2026），後端會自動改用
+// yfinance 抓長歷史（Alpaca 免費版抓不到那麼久）。選了會填進「回測天數」欄。
+export const BACKTEST_RANGES = [
+  { value: 365, label: "近 1 年" },
+  { value: 1825, label: "近 5 年" },
+  { value: 3650, label: "近 10 年" },
+  { value: 9500, label: "最長（2000 起）" },
+];

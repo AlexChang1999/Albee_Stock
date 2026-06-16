@@ -210,6 +210,9 @@ export const api = {
   getOpportunities: ({ limit = 50, status } = {}) =>
     request(`/opportunities?limit=${limit}${status ? `&status=${status}` : ""}`),
 
+  // 立刻掃一輪：強制跑一輪海選選標的（不必等盤中排程），回 { scanned, message }
+  scanOpportunities: () => request("/opportunities/scan", { method: "POST" }),
+
   // ===== Phase 10 step-06：董事會核准（Bot 進真錢，人在迴路）=====
   // 晉升清單：預設「待核（proposed_live）」；可帶 status 看其他狀態
   getPromotions: (status) =>

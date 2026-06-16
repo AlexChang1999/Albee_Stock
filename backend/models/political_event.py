@@ -18,13 +18,19 @@ label / score 沿用既有情緒格式（screener.parse_sentiment）：
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, UniqueConstraint
 
 from backend.database import Base
 
 
 class PoliticalEvent(Base):
     __tablename__ = "political_events"
+
+    # (author, posted_at) 天然唯一鍵：同作者同一發文時間只能落一列。
+    # 防「重啟回補 / 搬 DB 後重判」把同一則舊貼文重複落表（→ 重複煞車、重複洗版）。
+    __table_args__ = (
+        UniqueConstraint("author", "posted_at", name="uq_political_author_posted"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
 

@@ -25,7 +25,7 @@ import {
   TableContainer,
   Paper,
 } from "@mui/material";
-import { STRATEGIES } from "../constants";
+import { STRATEGIES, BACKTEST_RANGES } from "../constants";
 import { signedMoney } from "../utils/number";
 import Stat from "./Stat";
 
@@ -58,7 +58,7 @@ export default function BacktestPanel({
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" },
+            gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(5, 1fr)" },
             gap: 2,
             mb: 2,
           }}
@@ -83,6 +83,26 @@ export default function BacktestPanel({
             helperText={symbolErr ? "請填股票代號" : " "}
             onChange={(e) => setBtForm({ ...btForm, symbol: e.target.value })}
           />
+          {/* 快捷區間：選一個就把對應天數填進「回測天數」。選「最長」≈26 年，
+              後端自動改用 yfinance 抓長歷史。空字串＝自訂（不覆寫手填的天數）。 */}
+          <TextField
+            select
+            label="快捷區間"
+            value={
+              BACKTEST_RANGES.some((r) => r.value === Number(btForm.days))
+                ? Number(btForm.days)
+                : ""
+            }
+            onChange={(e) => setBtForm({ ...btForm, days: e.target.value })}
+            helperText=" "
+          >
+            <MenuItem value="">自訂…</MenuItem>
+            {BACKTEST_RANGES.map((r) => (
+              <MenuItem key={r.value} value={r.value}>
+                {r.label}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField
             label="回測天數"
             type="number"

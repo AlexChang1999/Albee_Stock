@@ -32,11 +32,14 @@
 | [`guides/setup.md`](guides/setup.md) | 環境設置（換新電腦一鍵建好開發環境）。 |
 | [`guides/home-boot-checklist.md`](guides/home-boot-checklist.md) | 回家開機測試 checklist（`.env` 最小必填、雲端 PG 方案 A/B、step-01 驗收、缺口盤點）。 |
 | [`guides/free-vm-deployment.md`](guides/free-vm-deployment.md) | 免費 VM 常駐部署（Oracle A1 開通、Linux 裝機、時區/systemd 坑、雲端 LLM 備援；Phase 12 觀察期用）。 |
+| [`guides/cloud-local-division.md`](guides/cloud-local-division.md) | **雲端／地端工作劃分**：誰在哪跑、不可雙開排程的紅線、功能對照表、本機前端連雲端、Micro 健康監控。 |
+| [`guides/oci-grab-a1.md`](guides/oci-grab-a1.md) | 搶 A1.Flex runbook：第二台 Micro 掛 OCI CLI 重試腳本（`scripts/grab-a1.sh`）等容量釋出。 |
 | [`guides/使用說明.md`](guides/使用說明.md) | 日常操作流程（啟動、前端各分頁、檔案位置、安全雙閘、FAQ）。 |
 | [`guides/how-to-add-strategy.md`](guides/how-to-add-strategy.md) | 新增策略 runbook。 |
 | [`guides/macro-layer-validation-runbook.md`](guides/macro-layer-validation-runbook.md) | Backlog A：拿到 FRED key 後跑 macro 層真資料 OOS 驗證 + 留/砍決策的步驟單。 |
 | [`guides/deadman-switch-runbook.md`](guides/deadman-switch-runbook.md) | 維運安全軌 H2：healthchecks.io dead-man switch 設定、警報排查、每月演練。 |
 | [`guides/collector-feeds-guide.md`](guides/collector-feeds-guide.md) | 市場蒐集員 feed 設定（推薦來源、robots 檢查、`.env` 範例、驗收 runbook，Phase 12 step-01）。 |
+| [`guides/enable-auto-pipelines.md`](guides/enable-auto-pipelines.md) | **開啟自動管線** runbook：自動選標的（screener/opportunity）vs 策略點子探勘（collector→discovery→驗證）兩條線各開哪些開關、怎麼驗證；預設全關。 |
 | [`guides/setup-postgres-sync.md`](guides/setup-postgres-sync.md) | **Neon 雲端 PostgreSQL** 設定／搬遷／**新電腦完整設置** runbook（2026-06-12 已正式切換）。 |
 | [`guides/phase4-paper-checklist.md`](guides/phase4-paper-checklist.md) | Paper Trading 上線前檢查表。 |
 | [`guides/skill-guidelines.md`](guides/skill-guidelines.md) | 撰寫 Skill 的守則。 |
@@ -52,6 +55,7 @@
 | [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) | 一人公司缺口盤點（願景 vs 現況 + 前置進料未通電 + 上線後維運缺口 + 優先序）。 |
 | [`reference/financial-services-reference.md`](reference/financial-services-reference.md) | 金融服務參考。 |
 | [`reference/rl-feasibility-assessment.md`](reference/rl-feasibility-assessment.md) | 強化學習（DQN/PPO）交易員可行性評估：現階段 No-Go + 重啟條件。 |
+| [`reference/dev-pitfalls-log.md`](reference/dev-pitfalls-log.md) | 開發踩坑紀錄：歷來實際炸過、用 commit 修掉的坑（症狀/根因/修法/出處），CLAUDE.md 鐵則的完整史料版。 |
 | [`reference/strategies/`](reference/strategies/) | 個別策略筆記（如 `williams_r.md`）。 |
 
 ## ux/ — 前端 UX

@@ -25,12 +25,34 @@
 - profit_factor         ：獲利因子＝總賺 / 總賠（>1 才賺錢；無任何虧損時回 None）
 """
 
+import logging
+
 import pandas as pd
 
 from backend.config import settings
 from backend.services import bar_cache
 from backend.services.analytics import extended_metrics
 from backend.strategies import get_strategy, Signal
+
+logger = logging.getLogger(__name__)
+
+# Alpaca 免費版歷史資料可靠範圍上限（天）。超過這個長度（≈5 年）想回測，
+# Alpaca 免費版抓不到，自動改走 yfinance（可回溯 20–50 年）。2000→2026 ≈ 9500 天。
+ALPACA_MAX_DAYS = 1825
+
+
+def _resolve_source(source: str, days: int) -> str:
+    """
+    長區間自動選資料源：用 alpaca 但 days 超過免費版可靠範圍時，自動改 yfinance。
+    顯式想用 yfinance 的呼叫端不受影響；顯式 alpaca 但超長則覆寫並落 log（誠實告知）。
+    """
+    if source == "alpaca" and days > ALPACA_MAX_DAYS:
+        logger.info(
+            "回測區間 %d 天超過 Alpaca 免費版可靠範圍(%d)，自動改用 yfinance 抓長歷史",
+            days, ALPACA_MAX_DAYS,
+        )
+        return "yfinance"
+    return source
 
 
 def _simulate_from_signals(
@@ -71,6 +93,7 @@ def _simulate_from_signals(
     entry_price = 0.0    # 買進「有效成交價」（已含滑價，算單筆盈虧用）
     trades = []          # 交易紀錄
     equity_curve = []    # 每日資產淨值（畫資金曲線用）
+    equity_dates = []    # 與 equity_curve 等長的「真實日期」字串（報表用真年月，非假 2000）
     total_cost = 0.0     # 本次回測累計摩擦成本（手續費 + 滑價）
     pending = None       # 前一根 close 算出、待這一根「以成交價」換手的單：(side, reason)
 
@@ -112,8 +135,9 @@ def _simulate_from_signals(
                 entry_price = 0.0
             pending = None
 
-        # --- 2. 記錄當根收盤後的總資產 ---
+        # --- 2. 記錄當根收盤後的總資產（連同真實日期，供報表用真年月）---
         equity_curve.append(cash + position * price)
+        equity_dates.append(date)
 
         # --- 3. 依當根 close 的訊號，決定「下一根」要不要換手（隔日成交）---
         signal = signals[i]
@@ -198,6 +222,7 @@ def _simulate_from_signals(
         "total_cost": round(total_cost, 2),  # 本次回測累計摩擦成本（手續費 + 滑價）
         "trades": trades,
         "equity_curve": [round(e, 2) for e in equity_curve],
+        "equity_dates": equity_dates,  # 與 equity_curve 等長；報表用真實日期取代假 2000
     }
 
 
@@ -271,6 +296,9 @@ def run_backtest(
         commission_bps = settings.BACKTEST_COMMISSION_BPS
     if slippage_bps is None:
         slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
+
+    # 長區間自動選資料源：Alpaca 免費版抓不到 2000 年那麼久，超過門檻自動改 yfinance。
+    source = _resolve_source(source, days)
 
     # 走本機快取（Phase 11 step-04）：缺區間才補抓、其餘命中快取，多年回測不每次重打 API。
     # get_bars_cached 包在 market_data.get_bars 外層、簽章相容、嚴格 ⊆ 請求區間（不洩漏未來）。
