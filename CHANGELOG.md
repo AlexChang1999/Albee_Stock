@@ -37,6 +37,15 @@
 
 ### 修復
 
+- **`scripts/deploy.sh` 健康檢查太短誤判 + 回滾不安全（2026-06-16）**——自動/手動部署只
+  `sleep 5` 就 `curl` 健檢，但本後端啟動約需 ~10 秒（選主鎖 + 接回排程 + 開機補跑），
+  穩定誤判成「啟動失敗」而觸發假回滾；回滾路徑又對舊 code 跑 `alembic upgrade head`，
+  撞上「DB 已被新版遷到頂、舊 code 找不到該 revision」→ `set -e` 中斷，留下「磁碟舊 code
+  + DB 新 schema」的半套狀態（下次重啟即壞）。修法：①健檢改 `wait_healthy()` 輪詢重試
+  （最多 12×5 秒 ≈ 60 秒），②回滾改 `rollback_current()` 只重裝依賴 + 重啟、**不碰 DB**
+  （DB 比 code 新通常對舊 code 無害，避免找不到 revision 崩潰與資料遺失）。新增上雲
+  runbook [`docs/guides/cicd-vm-setup.md`](docs/guides/cicd-vm-setup.md)（手動部署/設
+  Secrets/關掃描走 DB 非 .env/驗單實例）。
 - **政治專討員雲端狂洗版 + 漏抓貼文根治（2026-06-15）**——雲端部署後政治員短時間狂發
   通知、且川普發文當下沒抓到。根因是「批次重判 + 通知層零節流」（非自我回饋迴圈，通知
   頻道與監看頻道不同）：搬 Neon 後雲端 `political_events` 空表 → 回補/即時把一批舊貼文

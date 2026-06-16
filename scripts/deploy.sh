@@ -31,23 +31,45 @@ git reset --hard "origin/$BRANCH"
 NEW="$(git rev-parse HEAD)"
 echo "▶ 已更新到 ${NEW:0:8}"
 
+# 正常部署：裝依賴 → 套 DB 遷移到頂 → 重啟
 deploy_current() {
   venv/bin/pip install -q -r requirements.txt
   venv/bin/alembic upgrade head # DB 遷移到頂（含唯一鍵等）
   sudo systemctl restart "$SERVICE"
-  sleep 5
+}
+
+# 回滾部署：只裝舊依賴 + 重啟，**不碰 DB**。
+#   理由：DB 已被新版遷到頂，回滾舊 code 後若再 `alembic upgrade head` 會「找不到新版
+#   才有的 revision」而崩潰；硬 downgrade 又有資料遺失風險。DB 比 code 新（多了欄位/約束）
+#   通常對舊 code 無害，故回滾保留 DB、只還原 code。
+rollback_current() {
+  venv/bin/pip install -q -r requirements.txt
+  sudo systemctl restart "$SERVICE"
+}
+
+# 健康檢查：輪詢重試。本 app 啟動慢（選主鎖 + 接回排程 + 開機補跑，實測 ~10 秒），
+# 不能只 sleep 一次就 curl，否則「還沒起來」會被誤判成失敗而觸發假回滾。
+# 最多等 12 次 × 5 秒 ≈ 60 秒；任一次通過就算健康。
+wait_healthy() {
+  for _ in $(seq 1 12); do
+    if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 5
+  done
+  return 1
 }
 
 deploy_current
 
 # --- 健康檢查：失敗就回滾 ---
-if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+if wait_healthy; then
   echo "✅ 部署成功，健康檢查通過 @ ${NEW:0:8}"
 else
-  echo "❌ 健康檢查失敗 → 回滾到 ${PREV:0:8}"
+  echo "❌ 健康檢查失敗 → 回滾到 ${PREV:0:8}（DB 保留不動）"
   git reset --hard "$PREV"
-  deploy_current
-  if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+  rollback_current
+  if wait_healthy; then
     echo "↩️  已回滾到上一版且健康檢查通過 @ ${PREV:0:8}（本次部署失敗）"
   else
     echo "🔥 回滾後仍不健康，請人工介入：journalctl -u $SERVICE -n 50"
