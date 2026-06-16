@@ -11,6 +11,7 @@
 set -uo pipefail   # 不用 -e：要讓每個 check 都跑完再彙總，而非第一個失敗就中斷
 
 BASE="${1:-http://127.0.0.1:8000}"
+BASE="${BASE%/}"   # 去掉結尾斜線，否則 deploy 傳進來的 .../ 會與 path 的 / 疊成 // 害 curl 404
 fail=0
 
 # check <path> <期望出現在回應中的關鍵字>
