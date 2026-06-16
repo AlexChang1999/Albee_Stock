@@ -17,6 +17,48 @@
 
 ### 新增
 
+- **煙霧測試（Smoke Test）**——補上「整台機器開得起來、核心端點回得了話」的整合關卡：
+  - `tests/test_smoke.py`：`pytest -m smoke` 起 `TestClient(app)`（驗 lifespan：init_db +
+    scheduler leader 選舉不爆）→ 打 `/`、`/status` 與 18 個無金鑰讀端點都回 200 →
+    驗 `/positions` 無金鑰優雅降級回 `[]`；整合層（`/account`、`/quotes`）用
+    `RUN_INTEGRATION_SMOKE=1` 才跑。已驗 **21 passed, 2 skipped**。
+  - `scripts/smoke_test.sh`：線上端點煙霧（curl 打 6 個功能端點），掛進 `deploy.sh`——
+    健檢通過後再跑一次，任一端點掛掉一樣觸發回滾（已驗正常全過、故意打錯 `exit 1`）。
+  - `pyproject.toml`：註冊 `smoke` marker + `testpaths=["tests"]`（避免無路徑跑時誤收
+    `backend/test_connection.py` 害 pytest 崩潰）。
+  - `ci.yml`：`test` job 加 `pytest -m smoke` 先跑早退；新增 `frontend` job
+    （`npm ci` → `npm run test`（Vitest）→ `npm run build`），補上 CI 從不驗前端的缺口；
+    `deploy` 改 `needs: [test, frontend]` 兩關全綠才部署。
+  - 計畫書 [`docs/guides/smoke-test-plan.md`](docs/guides/smoke-test-plan.md)（L1~L4 涵蓋範圍、
+    三種跑法、混合雲對照、故障排除），docs 索引同步補列。
+
+- **上雲 runbook [`docs/guides/cicd-vm-setup.md`](docs/guides/cicd-vm-setup.md)**——把 2026-06-16
+  「CICD 已建好但代碼從沒上雲」的排查與上線步驟寫成單一操作指南：手動部署、補 GitHub
+  Secrets（`VM_HOST`/`VM_USER`/`VM_SSH_KEY`）、VM 免密碼 sudo、**關掃描要改 DB 非 `.env`**
+  （`scan_interval_min` 存 Neon、`.env` 種子只在首次生效）、Windows 用 Git Bash 連 VM 避開
+  PowerShell OpenSSH 權限坑、驗單實例。docs 索引同步補列。
+
+### 修正
+
+- **CD 首次自動部署修復（缺 secret + VM 缺 deploy.sh 的雞生蛋）**——兩件事：
+  - **補齊部署 secret**：repo 原本零 secret，CD 的 SSH step 讀到空 `VM_HOST` →
+    `error: missing server host` 4 秒就掛。設好 `VM_HOST` / `VM_USER` / `VM_SSH_KEY`
+    （Oracle Micro VM `158.101.127.219`、`ubuntu`、對應私鑰）。
+  - **CD 自我 bootstrap**：VM 跑的是舊 checkout、還沒有 `scripts/deploy.sh`（部署腳本
+    本身是後來才加的 commit），SSH 進去跑 `bash scripts/deploy.sh` → `No such file or
+    directory (status 127)`。`ci.yml` deploy step 改為先 `git fetch origin main` +
+    `git checkout origin/main -- scripts/deploy.sh` 撈出腳本本身再執行；只 checkout
+    腳本、不動 HEAD，保留 deploy.sh 內部 PREV/rollback 語意。
+  - **健康檢查改重試**：`deploy.sh` 原本 `sleep 5` 後單發一次 curl，新後端開機（連 Neon /
+    import）來不及 → 誤判健檢失敗觸發回滾。改成重試最多 ~60s（20 次 × 3s）。
+  - **回滾修正 code/schema 一致性**：原回滾 `git reset` 舊碼後又跑 `alembic upgrade head`，
+    但舊碼缺新增的 migration 檔 → `Can't locate revision` 直接炸（exit 255），DB 卡在新
+    schema、與舊碼不一致。改為**部署前先記 DB revision**，回滾時先用「新碼」
+    `alembic downgrade` 回該 revision（新碼才帶得齊 migration 檔），再 `git reset` 舊碼 +
+    重啟，不再 `upgrade head`。
+
+### 新增
+
 - **回測支援 2000–2026 長區間 + 報表顯示真實年月**——三件事：
   - **報表真實日期**：回測引擎 `_simulate_from_signals` 現在收集 `equity_dates`
     （與 `equity_curve` 等長）並寫進結果 / `backtest_runs.metrics`。

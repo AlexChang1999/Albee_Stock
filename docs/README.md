@@ -33,6 +33,7 @@
 | [`guides/home-boot-checklist.md`](guides/home-boot-checklist.md) | 回家開機測試 checklist（`.env` 最小必填、雲端 PG 方案 A/B、step-01 驗收、缺口盤點）。 |
 | [`guides/free-vm-deployment.md`](guides/free-vm-deployment.md) | 免費 VM 常駐部署（Oracle A1 開通、Linux 裝機、時區/systemd 坑、雲端 LLM 備援；Phase 12 觀察期用）。 |
 | [`guides/cloud-local-division.md`](guides/cloud-local-division.md) | **雲端／地端工作劃分**：誰在哪跑、不可雙開排程的紅線、功能對照表、本機前端連雲端、Micro 健康監控。 |
+| [`guides/cicd-vm-setup.md`](guides/cicd-vm-setup.md) | **CICD 上雲 runbook**：手動部署 / 補 GitHub Secrets（VM_HOST/USER/SSH_KEY）/ 免密碼 sudo / 關掃描走 DB 非 .env / Git Bash 連 VM / 驗單實例（2026-06 部署斷層修復）。 |
 | [`guides/oci-grab-a1.md`](guides/oci-grab-a1.md) | 搶 A1.Flex runbook：第二台 Micro 掛 OCI CLI 重試腳本（`scripts/grab-a1.sh`）等容量釋出。 |
 | [`guides/使用說明.md`](guides/使用說明.md) | 日常操作流程（啟動、前端各分頁、檔案位置、安全雙閘、FAQ）。 |
 | [`guides/how-to-add-strategy.md`](guides/how-to-add-strategy.md) | 新增策略 runbook。 |
@@ -42,6 +43,7 @@
 | [`guides/enable-auto-pipelines.md`](guides/enable-auto-pipelines.md) | **開啟自動管線** runbook：自動選標的（screener/opportunity）vs 策略點子探勘（collector→discovery→驗證）兩條線各開哪些開關、怎麼驗證；預設全關。 |
 | [`guides/setup-postgres-sync.md`](guides/setup-postgres-sync.md) | **Neon 雲端 PostgreSQL** 設定／搬遷／**新電腦完整設置** runbook（2026-06-12 已正式切換）。 |
 | [`guides/phase4-paper-checklist.md`](guides/phase4-paper-checklist.md) | Paper Trading 上線前檢查表。 |
+| [`guides/smoke-test-plan.md`](guides/smoke-test-plan.md) | **煙霧測試計畫書**：上線前/部署後/換機後一鍵驗系統健康（L1 後端啟動+API／L2 前端 build／L3 部署健檢／L4 外部整合降級）；對應 `tests/test_smoke.py` + `scripts/smoke_test.sh` + CI frontend job。 |
 | [`guides/skill-guidelines.md`](guides/skill-guidelines.md) | 撰寫 Skill 的守則。 |
 
 ## reference/ — 概念／規格／路線
