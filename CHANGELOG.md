@@ -34,6 +34,9 @@
   （Bot 下單、collector/心跳通知…），其餘實例只當唯讀 API，避免重複下單/重複推播/互蓋止損。
   `main.py` lifespan 整段排程改為「搶到鎖才掛」；SQLite 單機永遠是 leader（無競爭）。
   連線一斷鎖自動釋放，另一實例下次開機接手。新增 `tests/test_scheduler_lock.py`。
+- **政治專討員一鍵啟動 `start_political_watcher.bat`**——本機雙擊即啟 `backend.bots.political_watcher`
+  （讀鏡像頻道 → Ollama 判讀 → 偏空推 #Albee-通知）。同 `start_backend.bat` 的看門狗迴圈：
+  崩潰 10 秒自動重拉、`%~dp0` 錨定根目錄。前提：Ollama 先開 + `.env` 設好 `POLITICAL_*`。
 
 ### 修復
 
