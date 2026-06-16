@@ -15,6 +15,18 @@
 
 ## [未發布]
 
+### 修正
+
+- **CD 首次自動部署修復（缺 secret + VM 缺 deploy.sh 的雞生蛋）**——兩件事：
+  - **補齊部署 secret**：repo 原本零 secret，CD 的 SSH step 讀到空 `VM_HOST` →
+    `error: missing server host` 4 秒就掛。設好 `VM_HOST` / `VM_USER` / `VM_SSH_KEY`
+    （Oracle Micro VM `158.101.127.219`、`ubuntu`、對應私鑰）。
+  - **CD 自我 bootstrap**：VM 跑的是舊 checkout、還沒有 `scripts/deploy.sh`（部署腳本
+    本身是後來才加的 commit），SSH 進去跑 `bash scripts/deploy.sh` → `No such file or
+    directory (status 127)`。`ci.yml` deploy step 改為先 `git fetch origin main` +
+    `git checkout origin/main -- scripts/deploy.sh` 撈出腳本本身再執行；只 checkout
+    腳本、不動 HEAD，保留 deploy.sh 內部 PREV/rollback 語意。
+
 ### 新增
 
 - **回測支援 2000–2026 長區間 + 報表顯示真實年月**——三件事：
