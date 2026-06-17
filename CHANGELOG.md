@@ -42,8 +42,11 @@
     3. `scripts/pipeline_smoke.py` 真打本機 Ollama（llama3.1）→ 候選回
        `rsi {period:14, oversold:30, overbought:70}` 參數名全合法；OOS 段在無 `.env`
        的 worktree 因抓不到行情優雅記 failed（接線 OK，真環境有金鑰才跑完）。
-    4. 部署後對 Neon 跑 `requeue_and_drain.py --apply --drain`：51 筆 triaged→new、
-       連續探勘橋抽乾收件匣（見下方執行紀錄）。
+    4. 部署後對 Neon 跑 `requeue_and_drain.py --apply --drain`（2026-06-17）：
+       51 筆 triaged→new（收件匣 29→80 new）→ 修好的探勘橋 28 輪抽乾→
+       **processed=80, built=30, discarded=50, skipped=0**。知識庫多出 30 筆 candidate
+       （帶合法參數名），待 `run_auto_validate` 跑 OOS 閘；validated 再由人晉升 curated。
+       discarded 50（LLM 判定與既有策略無關）屬正常漏斗淘汰，非 bug。
 - **修雲端 Neon 連線閒置被斷導致背景排程崩潰**——VM 上 `run_collector_scan` 每小時
   在 `upsert_finds` 拋 `psycopg2.OperationalError: SSL connection has been closed
   unexpectedly`：Neon 會把閒置太久的連線從伺服器端掐掉，連線池裡那條死 socket 下次
