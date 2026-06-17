@@ -17,6 +17,20 @@
 
 ### 修正
 
+- **修自動驗證窗太短——OOS 閘從沒真的評過策略（Phase 12 接續品質地基）**：
+  跑 `run_auto_validate` 後 30 筆 candidate 全 rejected、0 validated。診斷 Neon 發現
+  **33 筆全死於同一理由「fold 數不足（1 < 3），樣本太少不採信」**——每筆只湊出 1 個
+  walk-forward fold。根因：`evolution.validate_candidate` 用預設 `days=365`（SPY ~250 根），
+  但 `walk_forward_splits` 要 `train(180)+test(60)` 才出第一 fold、每 `step(60)` 滾一個，
+  湊 `VALIDATION_MIN_FOLDS(3)` 需 ≥360 根 → 250 根永遠只 1 fold → **任何策略都不可能過閘**
+  （OOS 閘等於沒在評品質，只對「樣本不足」一律打回）。使用者一度誤把「3 筆高 EV」當好策略，
+  實為單一 60 根窗的僥倖數字 + 退化參數（`period=2`）。修法（**判準不放水，只加長資料窗**）：
+  - `config.py`：新增 `AUTO_VALIDATE_DAYS`（預設 1100 ~754 根＝9 folds；實測 540=3、750=5）。
+  - `auto_validate.run_auto_validate`：把 `days=settings.AUTO_VALIDATE_DAYS` 傳進
+    `validate_candidate`（該函式早就收 days 參數，只是沒人傳）。
+  - `tests/test_validation.py`：新增守門 case，鎖「production 窗 vs MIN_FOLDS 所需根數」、
+    並記錄 250 根（舊 365 天）產不到 MIN_FOLDS 的 bug 本體。**17 passed**。
+  - 修後對 Neon 重驗 33 筆（rejected→candidate 重跑，見下方執行紀錄）。
 - **修探勘橋「參數名漏洞」——LLM 提案被靜默吃預設值，OOS 假淘汰（Phase 12 品質地基）**：
   `discovery.build_triage_prompt` 只告訴 LLM「有哪些策略鍵」卻**沒給每個策略的合法參數名**，
   模型亂猜名（產出 `ma_crossover {short_ma:50, long_ma:200}`，正解是 `short_window`/

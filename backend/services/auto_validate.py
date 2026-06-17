@@ -89,7 +89,9 @@ def run_auto_validate(db=None) -> dict:
         for row in rows:
             stats["processed"] += 1
             try:
-                result = evolution.validate_candidate(row, settings.AUTO_VALIDATE_SYMBOL)
+                result = evolution.validate_candidate(
+                    row, settings.AUTO_VALIDATE_SYMBOL, days=settings.AUTO_VALIDATE_DAYS
+                )
             except Exception as e:
                 # 失敗隔離：這筆炸（資料抓不到 / 回測例外）不擋整批
                 stats["failed"] += 1
