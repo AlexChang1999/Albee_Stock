@@ -24,6 +24,20 @@ from backend.services.optimizer import split_train_test
 from backend.strategies import get_strategy
 
 
+def is_noop(folds: list[dict]) -> bool:
+    """
+    候選在所有 walk-forward fold 都零交易（num_round_trips 全 0）＝沒下場的 no-op。
+
+    no-op 的每個 fold OOS EV 都是 0，會跟「不交易」基準（baseline EV=0）剛好打平，
+    在 VALIDATION_MIN_IMPROVEMENT=0 下被 is_layer_worth_it 判 worth=True 而假性過閘。
+    這不是「贏過不出手」，是「根本沒出手所以不會輸」——必須跟真加分分開。
+
+    純函式（不碰 DB / 不回測），讓 validate_candidate 與重判腳本共用同一判準。
+    空 folds 視為 no-op（沒有任何交易證據）。
+    """
+    return sum(int(f.get("num_round_trips", 0)) for f in folds) == 0
+
+
 def validate_candidate(
     knowledge_row,
     symbol: str,
@@ -69,6 +83,33 @@ def validate_candidate(
             f"資料太短，湊不出 walk-forward fold（至少需 {need} 根，"
             f"{symbol.upper()} 實際只有 {len(df)} 根）。請拉長 days 或換資料較長的標的。"
         )
+    # single_split 摘要：no-op 與正常路徑都要寫，先抽出來共用
+    single_split_summary = {
+        "expected_value": single_split["expected_value"],
+        "win_rate_pct": single_split["win_rate_pct"],
+        "total_return_pct": single_split["total_return_pct"],
+        "num_round_trips": single_split["num_round_trips"],
+    }
+
+    # 2.5) 零交易守門：所有 fold 都沒下場 → no-op，直接 rejected（不進 verdict）。
+    # 與 verdict-reject（含 "verdict" 鍵）、auto_validate 操作性 reject（含 "auto_validate" 鍵）
+    # 三者可由 oos_metrics 的鍵稽核區分。
+    if is_noop(folds):
+        oos_metrics = {
+            "expected_value": 0.0,
+            "noop": {
+                "reason": "所有 fold 零交易（num_round_trips 全 0）＝沒下場的 no-op，非真加分",
+                "total_round_trips": 0,
+            },
+            "walk_forward": folds,
+            "single_split": single_split_summary,
+            "symbol": symbol.upper(),
+            "days": days,
+        }
+        knowledge_row.oos_metrics = oos_metrics
+        knowledge_row.status = "rejected"
+        return {"id": knowledge_row.id, "status": "rejected", "oos_metrics": oos_metrics}
+
     candidate_oos = [f["expected_value"] for f in folds]
     # 基準 = 不交易（每 fold EV = 0）；候選需在 OOS 上贏過「不出手」
     baseline_oos = [0.0] * len(folds)
@@ -82,12 +123,7 @@ def validate_candidate(
         "expected_value": verdict["candidate_mean"],
         "verdict": verdict,
         "walk_forward": folds,
-        "single_split": {
-            "expected_value": single_split["expected_value"],
-            "win_rate_pct": single_split["win_rate_pct"],
-            "total_return_pct": single_split["total_return_pct"],
-            "num_round_trips": single_split["num_round_trips"],
-        },
+        "single_split": single_split_summary,
         "symbol": symbol.upper(),
         "days": days,
     }
