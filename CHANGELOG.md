@@ -15,8 +15,46 @@
 
 ## [未發布]
 
+### 待辦／規劃中（已批准，下個 session 接手）
+
+- **多標的籃子驗證（跨產業 OOS 池化）+ 全庫重驗（Phase 12 延伸，尚未實作）**：
+  目前驗證只用單一標的（`AUTO_VALIDATE_SYMBOL` 預設 `"SPY"`），樣本窄＋過擬合單檔個性；
+  已晉升 7 筆 curated 全只在 SPY 上測過、且含退化參數（`period=2`）。要升級成「**跨產業一籃子**」：
+  每檔各跑 `walk_forward`，把所有檔所有 fold 的 OOS EV **池化**後餵**同一支**
+  `is_layer_worth_it`（judge 與 `is_noop` **零改**，只改餵料）。樣本從「1 檔 × 9 fold」變
+  「N 檔 × 9 fold」。然後**連 candidate 全庫重驗**，過不了的（含 7 筆 curated）降級。
+  - **籃子設定**：`.env` 的 `AUTO_VALIDATE_SYMBOLS`（逗號分隔，預設
+    `"SPY,AAPL,JPM,XOM,JNJ,CAT,WMT,NVDA"`＝大盤+科技/金融/能源/醫療/工業/零售/半導體）。
+    增刪標的＝改一行 .env + 重啟。**不建 DB 表、不做前端面板**（使用者拍板：先用最簡單方式）。
+  - **池化權重（使用者拍板）**：不是把所有 fold 無腦攤平（會被交易次數多的標的吃走結果）。
+    採「**每檔等權 + 最低交易次數門檻**」：某檔在所有 fold 的總 `num_round_trips` **未達門檻 X**
+    （避免靠運氣少數幾筆大賺污染）→ **整檔排除**不納入；達標的檔各自先算平均 EV，再 N 檔等權平均。
+    （或先算「每檔每日平均 EV」再跨檔平均，兼顧高周轉短線特性——下個 session 二擇一實作並記錄選法。）
+  - **完整實作提示詞（下個 session 必讀）**：見
+    [`docs/history/phase-12-strategy-discovery/handoff-multi-symbol-basket.md`](docs/history/phase-12-strategy-discovery/handoff-multi-symbol-basket.md)。
+  - **誰跑**：回測一律 Python 引擎跑（不偽造績效）；`scripts/revalidate_basket.py`（待建）由人手動觸發
+    （同 `rejudge_noop.py` 模式，預設 dry-run、`--apply` 才寫 Neon）；日後新候選由 `auto_validate`
+    排程（預設關）自動吃籃子。
+
 ### 修正
 
+- **修 no-op 漏洞——零交易候選不再混進 validated（Phase 12，收上一條待辦）**：
+  上一條重驗暴露的「5 筆 `oos_mean=0.0` 假性過閘」（零交易＝跟「不出手」基準打平＝
+  `worth=True`）正式堵掉。**判準其餘不動**（`VALIDATION_MIN_IMPROVEMENT=0` 保留），
+  只多一道零交易守門：
+  - `evolution.py`：新增純函式 `is_noop(folds)`（所有 fold `num_round_trips` 全 0 ＝ no-op）。
+    `validate_candidate` 在跑 `is_layer_worth_it` **之前**先判：是 no-op → 直接 `rejected`，
+    `oos_metrics` 掛 `"noop"` 標記（含 reason / total_round_trips），**不進 verdict**。
+    三種 reject 來源由鍵稽核區分：`noop`（零交易）／`verdict`（判子刷掉）／`auto_validate`（操作性放棄）。
+  - `scripts/rejudge_noop.py`（新，一次性維運）：對既有 `status=validated` 列**不重跑回測**，
+    直接套同一支 `is_noop` 重判（folds 才剛算過、存在 `oos_metrics["walk_forward"]`）；
+    no-op 退成 rejected、就地重建 `oos_metrics`（JSON 欄位重新賦值才持久化）。
+    預設 dry-run 印報告（含「保留的 validated 清單」供人工晉升），`--apply` 才寫 Neon。
+  - `tests/test_evolution.py`：新增 `is_noop` 全零/有交易/空/缺鍵 4 例 + `validate_candidate`
+    no-op→rejected（含 noop 鍵、無 verdict）/ 有交易正 EV→仍 validated（不誤殺）2 例。
+    **`pytest test_evolution test_auto_validate test_validation` → 27 passed**。
+  - 重判結果（人工 `--apply` 跑 Neon 後回填）：5 筆 no-op → rejected、validated 剩 7 筆正期望
+    （bollinger ~131、ma_crossover{30,10} ~32、stochastic ~3.5…）→ 由人在 LibraryPage 晉升 curated。
 - **修自動驗證窗太短——OOS 閘從沒真的評過策略（Phase 12 接續品質地基）**：
   跑 `run_auto_validate` 後 30 筆 candidate 全 rejected、0 validated。診斷 Neon 發現
   **33 筆全死於同一理由「fold 數不足（1 < 3），樣本太少不採信」**——每筆只湊出 1 個
@@ -38,7 +76,8 @@
     非好策略。真正 OOS 正期望僅約 7 筆（bollinger ~131、ma_crossover{30,10} ~32、
     stochastic ~3.5…），且含退化參數 `period=2`（過擬合嫌疑）。**待辦**：把「零交易」與
     「贏過不出手」分開（如要求 `num_round_trips>0` 或 `MIN_IMPROVEMENT>0`），否則 no-op
-    會混進可策展清單。本次不改判準（避免一次動太多），先記錄。
+    會混進可策展清單。本次不改判準（避免一次動太多），先記錄。**（已收：見本區塊最上方
+    「修 no-op 漏洞」一條——採 `num_round_trips>0` 守門。）**
 - **修探勘橋「參數名漏洞」——LLM 提案被靜默吃預設值，OOS 假淘汰（Phase 12 品質地基）**：
   `discovery.build_triage_prompt` 只告訴 LLM「有哪些策略鍵」卻**沒給每個策略的合法參數名**，
   模型亂猜名（產出 `ma_crossover {short_ma:50, long_ma:200}`，正解是 `short_window`/
