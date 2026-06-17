@@ -163,6 +163,30 @@ cd frontend && npm run dev                                # 4) 啟動前端（51
 - 後端 API 文件：<http://127.0.0.1:8000/docs>
 - 前端畫面：<http://localhost:5173>
 
+### 看雲端機器人的戰情頁（日常就用這個）
+
+正式跑交易的後端 24/7 在雲端 VM（`158.101.127.219`）。後端只綁 `127.0.0.1:8000`
+（無認證 API 不對公網開放，安全考量），所以**本機前端要透過 SSH 隧道接雲端後端**：
+
+```powershell
+# 1) 開一個視窗掛著 SSH 隧道：把雲端 VM 的 8000 映到本機 8000（這視窗關掉隧道就斷）
+ssh -i "C:\Users\User\Downloads\ssh-key-2026-06-15 (1).key" -L 8000:127.0.0.1:8000 ubuntu@158.101.127.219
+
+# 2) 前端設定改連本機 8000（= 隧道另一端的雲端後端）：
+#    在 frontend\.env.local 寫一行（git 會忽略，不進版控）：
+#       VITE_API_URL=http://127.0.0.1:8000
+
+# 3) 另開視窗啟動前端（或雙擊 start_frontend.bat）
+cd frontend && npm run dev
+```
+
+開 <http://localhost:5173> 就是**雲端**機器人的戰情頁。
+本機**不必開後端**——避免和雲端搶單（見 [`docs/guides/cloud-local-division.md`](docs/guides/cloud-local-division.md) 紅線）。
+
+> 三個 `.bat` 各司其職、都還有用：`start_frontend.bat`（看畫面，配上面隧道）、
+> `start_backend.bat`（**本機除錯**才開，平常別開）、`start_political_watcher.bat`
+> （本機政治專討員，目前政治貼文的擷取來源）。
+
 ### 主要 API
 
 - `GET /status`：查目前環境（模擬/實盤、安全閥狀態）

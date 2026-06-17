@@ -15,6 +15,20 @@
 
 ## [未發布]
 
+### 修正
+
+- **修雲端 Neon 連線閒置被斷導致背景排程崩潰**——VM 上 `run_collector_scan` 每小時
+  在 `upsert_finds` 拋 `psycopg2.OperationalError: SSL connection has been closed
+  unexpectedly`：Neon 會把閒置太久的連線從伺服器端掐掉，連線池裡那條死 socket 下次
+  借用就炸（掃描間隔長的背景工作最容易踩）。`database.py` 的 engine 對非 SQLite 的
+  雲端 DB 加 `pool_pre_ping=True`（借連線前先 ping，死了就重建）+ `pool_recycle=300`
+  （逾 300 秒主動回收）。SQLite 本機檔案不受影響。
+- **堵後端公網裸奔漏洞**——VM systemd `albee-backend.service` 的 `ExecStart` 實際綁
+  `--host 0.0.0.0`（與部署文件規定的 `127.0.0.1` 漂移），等於無認證 API 對整個網際網路
+  開放。已在 VM 改回 `--host 127.0.0.1`（只綁本機，看畫面走 SSH tunnel）。
+  ⚠️ 此為 VM 端 systemd 設定，非本 repo 檔案；新機部署照
+  [`free-vm-deployment.md`](docs/guides/free-vm-deployment.md) §4 的範本本就是 `127.0.0.1`。
+
 ### 新增
 
 - **煙霧測試（Smoke Test）**——補上「整台機器開得起來、核心端點回得了話」的整合關卡：
