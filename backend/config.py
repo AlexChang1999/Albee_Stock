@@ -203,10 +203,14 @@ class Settings:
     #   - AUTO_VALIDATE_BATCH_SIZE：一輪最多驗幾筆（回測吃 CPU，防排程時段跑不完）。
     #   - AUTO_VALIDATE_HOUR：每日幾點跑（24 小時制，預設 8 = discovery(7) 之後）。
     #   - AUTO_VALIDATE_SYMBOL：驗證用標的（candidate 無自帶 symbol，統一基準才可比）。
+    #   - AUTO_VALIDATE_DAYS：回看天數。要夠長湊出 ≥VALIDATION_MIN_FOLDS(3) 個 walk-forward
+    #     fold——365 天只 ~250 根＝1 fold，任何策略都被「樣本太少」打回（OOS 閘等於沒在評）。
+    #     1100 天 ~754 根＝9 folds，樣本外最穩、最難過擬合（實測 540=3 剛好、750=5）。
     AUTO_VALIDATE_ENABLED: bool = os.getenv("AUTO_VALIDATE_ENABLED", "false").lower() in ("1", "true", "yes")
     AUTO_VALIDATE_BATCH_SIZE: int = int(os.getenv("AUTO_VALIDATE_BATCH_SIZE", "3"))
     AUTO_VALIDATE_HOUR: int = int(os.getenv("AUTO_VALIDATE_HOUR", "8"))
     AUTO_VALIDATE_SYMBOL: str = os.getenv("AUTO_VALIDATE_SYMBOL", "SPY")
+    AUTO_VALIDATE_DAYS: int = int(os.getenv("AUTO_VALIDATE_DAYS", "1100"))
 
     # ========================================================
     # 開機補跑（catch-up on boot）— 維運安全軌

@@ -15,8 +15,99 @@
 
 ## [未發布]
 
+### 待辦／規劃中（已批准，下個 session 接手）
+
+- **多標的籃子驗證（跨產業 OOS 池化）+ 全庫重驗（Phase 12 延伸，尚未實作）**：
+  目前驗證只用單一標的（`AUTO_VALIDATE_SYMBOL` 預設 `"SPY"`），樣本窄＋過擬合單檔個性；
+  已晉升 7 筆 curated 全只在 SPY 上測過、且含退化參數（`period=2`）。要升級成「**跨產業一籃子**」：
+  每檔各跑 `walk_forward`，把所有檔所有 fold 的 OOS EV **池化**後餵**同一支**
+  `is_layer_worth_it`（judge 與 `is_noop` **零改**，只改餵料）。樣本從「1 檔 × 9 fold」變
+  「N 檔 × 9 fold」。然後**連 candidate 全庫重驗**，過不了的（含 7 筆 curated）降級。
+  - **籃子設定**：`.env` 的 `AUTO_VALIDATE_SYMBOLS`（逗號分隔，預設
+    `"SPY,AAPL,JPM,XOM,JNJ,CAT,WMT,NVDA"`＝大盤+科技/金融/能源/醫療/工業/零售/半導體）。
+    增刪標的＝改一行 .env + 重啟。**不建 DB 表、不做前端面板**（使用者拍板：先用最簡單方式）。
+  - **池化權重（使用者拍板）**：不是把所有 fold 無腦攤平（會被交易次數多的標的吃走結果）。
+    採「**每檔等權 + 最低交易次數門檻**」：某檔在所有 fold 的總 `num_round_trips` **未達門檻 X**
+    （避免靠運氣少數幾筆大賺污染）→ **整檔排除**不納入；達標的檔各自先算平均 EV，再 N 檔等權平均。
+    （或先算「每檔每日平均 EV」再跨檔平均，兼顧高周轉短線特性——下個 session 二擇一實作並記錄選法。）
+  - **完整實作提示詞（下個 session 必讀）**：見
+    [`docs/history/phase-12-strategy-discovery/handoff-multi-symbol-basket.md`](docs/history/phase-12-strategy-discovery/handoff-multi-symbol-basket.md)。
+  - **誰跑**：回測一律 Python 引擎跑（不偽造績效）；`scripts/revalidate_basket.py`（待建）由人手動觸發
+    （同 `rejudge_noop.py` 模式，預設 dry-run、`--apply` 才寫 Neon）；日後新候選由 `auto_validate`
+    排程（預設關）自動吃籃子。
+
 ### 修正
 
+- **修 no-op 漏洞——零交易候選不再混進 validated（Phase 12，收上一條待辦）**：
+  上一條重驗暴露的「5 筆 `oos_mean=0.0` 假性過閘」（零交易＝跟「不出手」基準打平＝
+  `worth=True`）正式堵掉。**判準其餘不動**（`VALIDATION_MIN_IMPROVEMENT=0` 保留），
+  只多一道零交易守門：
+  - `evolution.py`：新增純函式 `is_noop(folds)`（所有 fold `num_round_trips` 全 0 ＝ no-op）。
+    `validate_candidate` 在跑 `is_layer_worth_it` **之前**先判：是 no-op → 直接 `rejected`，
+    `oos_metrics` 掛 `"noop"` 標記（含 reason / total_round_trips），**不進 verdict**。
+    三種 reject 來源由鍵稽核區分：`noop`（零交易）／`verdict`（判子刷掉）／`auto_validate`（操作性放棄）。
+  - `scripts/rejudge_noop.py`（新，一次性維運）：對既有 `status=validated` 列**不重跑回測**，
+    直接套同一支 `is_noop` 重判（folds 才剛算過、存在 `oos_metrics["walk_forward"]`）；
+    no-op 退成 rejected、就地重建 `oos_metrics`（JSON 欄位重新賦值才持久化）。
+    預設 dry-run 印報告（含「保留的 validated 清單」供人工晉升），`--apply` 才寫 Neon。
+  - `tests/test_evolution.py`：新增 `is_noop` 全零/有交易/空/缺鍵 4 例 + `validate_candidate`
+    no-op→rejected（含 noop 鍵、無 verdict）/ 有交易正 EV→仍 validated（不誤殺）2 例。
+    **`pytest test_evolution test_auto_validate test_validation` → 27 passed**。
+  - 重判結果（人工 `--apply` 跑 Neon 後回填）：5 筆 no-op → rejected、validated 剩 7 筆正期望
+    （bollinger ~131、ma_crossover{30,10} ~32、stochastic ~3.5…）→ 由人在 LibraryPage 晉升 curated。
+- **修自動驗證窗太短——OOS 閘從沒真的評過策略（Phase 12 接續品質地基）**：
+  跑 `run_auto_validate` 後 30 筆 candidate 全 rejected、0 validated。診斷 Neon 發現
+  **33 筆全死於同一理由「fold 數不足（1 < 3），樣本太少不採信」**——每筆只湊出 1 個
+  walk-forward fold。根因：`evolution.validate_candidate` 用預設 `days=365`（SPY ~250 根），
+  但 `walk_forward_splits` 要 `train(180)+test(60)` 才出第一 fold、每 `step(60)` 滾一個，
+  湊 `VALIDATION_MIN_FOLDS(3)` 需 ≥360 根 → 250 根永遠只 1 fold → **任何策略都不可能過閘**
+  （OOS 閘等於沒在評品質，只對「樣本不足」一律打回）。使用者一度誤把「3 筆高 EV」當好策略，
+  實為單一 60 根窗的僥倖數字 + 退化參數（`period=2`）。修法（**判準不放水，只加長資料窗**）：
+  - `config.py`：新增 `AUTO_VALIDATE_DAYS`（預設 1100 ~754 根＝9 folds；實測 540=3、750=5）。
+  - `auto_validate.run_auto_validate`：把 `days=settings.AUTO_VALIDATE_DAYS` 傳進
+    `validate_candidate`（該函式早就收 days 參數，只是沒人傳）。
+  - `tests/test_validation.py`：新增守門 case，鎖「production 窗 vs MIN_FOLDS 所需根數」、
+    並記錄 250 根（舊 365 天）產不到 MIN_FOLDS 的 bug 本體。**17 passed**。
+  - 修後對 Neon 重驗 33 筆（rejected→candidate 重跑，2026-06-17）：每筆 **folds=9**
+    （窗確實修好，不再 1 fold）→ **validated 12 / rejected 21 / failed 0**。
+  - **重驗暴露下一個誠實問題**：12 筆 validated 有 5 筆 `oos_mean=0.0`（長均線等在 60 根
+    測試窗內沒觸發訊號＝整段沒交易），它們「過關」純因 `VALIDATION_MIN_IMPROVEMENT=0`
+    ——不交易＝EV 0＝跟「不出手」基準打平就算 worth=True。那是「不下場所以不輸」的 no-op、
+    非好策略。真正 OOS 正期望僅約 7 筆（bollinger ~131、ma_crossover{30,10} ~32、
+    stochastic ~3.5…），且含退化參數 `period=2`（過擬合嫌疑）。**待辦**：把「零交易」與
+    「贏過不出手」分開（如要求 `num_round_trips>0` 或 `MIN_IMPROVEMENT>0`），否則 no-op
+    會混進可策展清單。本次不改判準（避免一次動太多），先記錄。**（已收：見本區塊最上方
+    「修 no-op 漏洞」一條——採 `num_round_trips>0` 守門。）**
+- **修探勘橋「參數名漏洞」——LLM 提案被靜默吃預設值，OOS 假淘汰（Phase 12 品質地基）**：
+  `discovery.build_triage_prompt` 只告訴 LLM「有哪些策略鍵」卻**沒給每個策略的合法參數名**，
+  模型亂猜名（產出 `ma_crossover {short_ma:50, long_ma:200}`，正解是 `short_window`/
+  `long_window`）；策略 `generate_signal` 用 `params.get("名", 預設)` 讀參數，遇到不認識的
+  鍵**靜默回退預設值**不報錯 → 候選回測其實全用預設 5/20 跑，OOS 測到的根本不是提案策略 →
+  全 rejected（看起來像「LLM 品質差」，其實是接線 bug）。修法：
+  - `strategies/__init__.py` 新增 `STRATEGY_PARAM_SPECS`（9 策略的合法參數名 + 範圍，
+    集中宣告、鏡像既有 `STRATEGY_LABELS`）+ `param_spec()` helper，作為單一真相來源。
+  - `discovery.build_triage_prompt` / `strategy_generator.propose_params` 把該策略的
+    參數 menu 攤進 prompt（只准用這些名、值落範圍內）。
+  - `discovery.triage_find` 新增驗證：提案參數名須全 ∈ schema（擋亂猜的名），值夾回
+    `[min,max]`（存進 candidate 的＝實際回測的，誠實不分岔）；`propose_params` 同步濾掉錯名組。
+  - **勘誤**：原先誤判「候選全 rejected＝LLM 品質差」，把 `DISCOVERY_BATCH_SIZE` /
+    `AUTO_VALIDATE_BATCH_SIZE` 降到 3 想「審慎一點」。實際禍首是上述接線 bug——batch size
+    只決定「一輪處理幾筆」，**與單筆品質無關**；怕品質該調的是參數 schema 驗證 +
+    `_MIN_CONFIDENCE`。修好後 batch size 可放心放大。
+  - **測試流程**：
+    1. `pytest tests/test_discovery.py tests/test_strategy_generator.py` → **17 passed**
+       （含新增 case：錯名 `short_ma` 應被 `triage_find` 擋、正名放行、超界值夾回範圍、
+       `propose_params` 濾掉錯名組）。
+    2. `pytest tests/test_strategies.py test_strategies_registry.py test_knowledge.py
+       test_auto_validate.py` → **41 passed**（確認新增 `STRATEGY_PARAM_SPECS` 沒弄壞既有）。
+    3. `scripts/pipeline_smoke.py` 真打本機 Ollama（llama3.1）→ 候選回
+       `rsi {period:14, oversold:30, overbought:70}` 參數名全合法；OOS 段在無 `.env`
+       的 worktree 因抓不到行情優雅記 failed（接線 OK，真環境有金鑰才跑完）。
+    4. 部署後對 Neon 跑 `requeue_and_drain.py --apply --drain`（2026-06-17）：
+       51 筆 triaged→new（收件匣 29→80 new）→ 修好的探勘橋 28 輪抽乾→
+       **processed=80, built=30, discarded=50, skipped=0**。知識庫多出 30 筆 candidate
+       （帶合法參數名），待 `run_auto_validate` 跑 OOS 閘；validated 再由人晉升 curated。
+       discarded 50（LLM 判定與既有策略無關）屬正常漏斗淘汰，非 bug。
 - **修雲端 Neon 連線閒置被斷導致背景排程崩潰**——VM 上 `run_collector_scan` 每小時
   在 `upsert_finds` 拋 `psycopg2.OperationalError: SSL connection has been closed
   unexpectedly`：Neon 會把閒置太久的連線從伺服器端掐掉，連線池裡那條死 socket 下次
@@ -31,6 +122,12 @@
 
 ### 新增
 
+- **探勘管線端到端 smoke 腳本** `scripts/pipeline_smoke.py`：在臨時 SQLite（**不碰 Neon**）
+  塞 1 筆合成素材，跑「探勘橋 → 候選 → OOS 閘」整條水管，逐段印 verdict + 驗候選參數名合法。
+  開排程常駐前一鍵體檢（Ollama 連線 / 提案品質 / OOS 接線）。
+- **11 模組策略探勘工作流文件** `docs/reference/strategy-pipeline-workflow.md`（操作者視角）：
+  把側欄 11 頁照「素材→上線」順序串成主水管 + 政治員煞車 + 5 條旁路，標明人只在
+  「晉升 curated／跑真錢」兩點出手。已更新 `docs/README.md` 索引。
 - **煙霧測試（Smoke Test）**——補上「整台機器開得起來、核心端點回得了話」的整合關卡：
   - `tests/test_smoke.py`：`pytest -m smoke` 起 `TestClient(app)`（驗 lifespan：init_db +
     scheduler leader 選舉不爆）→ 打 `/`、`/status` 與 18 個無金鑰讀端點都回 200 →

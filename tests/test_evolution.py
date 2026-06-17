@@ -105,5 +105,60 @@ def test_validate_empty_data_raises(monkeypatch):
         pass
 
 
+# ---------- no-op 守門（Phase 12：零交易排除）----------
+def test_is_noop_all_zero_true():
+    folds = [{"num_round_trips": 0}, {"num_round_trips": 0}, {"num_round_trips": 0}]
+    assert evolution.is_noop(folds) is True
+
+
+def test_is_noop_any_trade_false():
+    folds = [{"num_round_trips": 0}, {"num_round_trips": 2}, {"num_round_trips": 0}]
+    assert evolution.is_noop(folds) is False
+
+
+def test_is_noop_empty_true():
+    # 空 folds = 沒有任何交易證據 → 視為 no-op
+    assert evolution.is_noop([]) is True
+
+
+def test_is_noop_missing_key_treated_zero():
+    # fold 沒帶 num_round_trips 鍵 → 當 0（防 KeyError）
+    assert evolution.is_noop([{}, {}]) is True
+
+
+def _noop_folds(n=9):
+    """所有 fold 零交易（EV 也是 0）── no-op 樣本。"""
+    return [
+        {"fold": i, "test_start": 0, "test_end": 1, "expected_value": 0.0,
+         "win_rate_pct": 0.0, "total_return_pct": 0.0, "num_round_trips": 0}
+        for i in range(n)
+    ]
+
+
+def test_validate_noop_rejected(monkeypatch):
+    """所有 fold 零交易 → rejected，oos_metrics 含 noop 鍵、無 verdict 鍵（不進判子）。"""
+    monkeypatch.setattr(market_data, "get_bars", lambda symbol, days, source: _osc_df())
+    monkeypatch.setattr(validation, "walk_forward", lambda *a, **k: _noop_folds(9))
+    row = _FakeKnowledge()
+    out = validate_candidate(row, "FAKE", days=1100)
+    assert out["status"] == "rejected"
+    assert row.status == "rejected"
+    assert "noop" in row.oos_metrics
+    assert "verdict" not in row.oos_metrics
+    assert row.oos_metrics["noop"]["total_round_trips"] == 0
+    assert len(row.oos_metrics["walk_forward"]) == 9  # 仍保留供稽核
+
+
+def test_validate_positive_with_trades_unaffected(monkeypatch):
+    """有交易（_folds 預設 num_round_trips=1）且 OOS 正 → 守門不誤殺，仍 validated。"""
+    monkeypatch.setattr(market_data, "get_bars", lambda symbol, days, source: _osc_df())
+    monkeypatch.setattr(validation, "walk_forward",
+                        lambda *a, **k: _folds([10.0, 12.0, 8.0]))
+    row = _FakeKnowledge()
+    out = validate_candidate(row, "FAKE", days=160)
+    assert out["status"] == "validated"
+    assert "noop" not in row.oos_metrics
+
+
 if __name__ == "__main__":
     print("（evolution 測試需 pytest 的 monkeypatch，請用 pytest 執行）")

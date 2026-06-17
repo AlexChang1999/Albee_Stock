@@ -56,6 +56,18 @@ def test_propose_params_illegal_key():
         pass
 
 
+def test_propose_params_filters_wrong_names(monkeypatch):
+    """LLM 猜錯參數名的整組被濾掉（ma_crossover 合法名是 short_window/long_window）。"""
+    monkeypatch.setattr(
+        llm, "complete",
+        lambda client, messages, max_tokens=512:
+            '[{"short_ma": 50}, {"short_window": 5, "long_window": 20}]',
+    )
+    out = propose_params(client=object(), strategy_key="ma_crossover", scenario="順勢", n=3)
+    # 錯名那組（short_ma）被丟，只留合法那組
+    assert out == [{"short_window": 5, "long_window": 20}]
+
+
 if __name__ == "__main__":
     test_parse_param_list()
     test_propose_params_illegal_key()
