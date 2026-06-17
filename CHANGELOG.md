@@ -30,7 +30,15 @@
     `validate_candidate`（該函式早就收 days 參數，只是沒人傳）。
   - `tests/test_validation.py`：新增守門 case，鎖「production 窗 vs MIN_FOLDS 所需根數」、
     並記錄 250 根（舊 365 天）產不到 MIN_FOLDS 的 bug 本體。**17 passed**。
-  - 修後對 Neon 重驗 33 筆（rejected→candidate 重跑，見下方執行紀錄）。
+  - 修後對 Neon 重驗 33 筆（rejected→candidate 重跑，2026-06-17）：每筆 **folds=9**
+    （窗確實修好，不再 1 fold）→ **validated 12 / rejected 21 / failed 0**。
+  - **重驗暴露下一個誠實問題**：12 筆 validated 有 5 筆 `oos_mean=0.0`（長均線等在 60 根
+    測試窗內沒觸發訊號＝整段沒交易），它們「過關」純因 `VALIDATION_MIN_IMPROVEMENT=0`
+    ——不交易＝EV 0＝跟「不出手」基準打平就算 worth=True。那是「不下場所以不輸」的 no-op、
+    非好策略。真正 OOS 正期望僅約 7 筆（bollinger ~131、ma_crossover{30,10} ~32、
+    stochastic ~3.5…），且含退化參數 `period=2`（過擬合嫌疑）。**待辦**：把「零交易」與
+    「贏過不出手」分開（如要求 `num_round_trips>0` 或 `MIN_IMPROVEMENT>0`），否則 no-op
+    會混進可策展清單。本次不改判準（避免一次動太多），先記錄。
 - **修探勘橋「參數名漏洞」——LLM 提案被靜默吃預設值，OOS 假淘汰（Phase 12 品質地基）**：
   `discovery.build_triage_prompt` 只告訴 LLM「有哪些策略鍵」卻**沒給每個策略的合法參數名**，
   模型亂猜名（產出 `ma_crossover {short_ma:50, long_ma:200}`，正解是 `short_window`/
