@@ -27,7 +27,7 @@ from backend.database import SessionLocal
 from backend.models import RawStrategyFind
 from backend.models.strategy_knowledge import StrategyKnowledge
 from backend.services import llm
-from backend.strategies import STRATEGY_REGISTRY
+from backend.strategies import STRATEGY_REGISTRY, param_spec
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,25 @@ def build_triage_prompt(find) -> list[dict]:
     """
     # 既有策略清單（同 GET /strategies 的單一來源），composite 沒參數 schema 不給挑
     keys = [k for k in STRATEGY_REGISTRY.keys() if k != "composite"]
+    # 把每個策略的「合法參數名 + 建議範圍」攤給 LLM——這是修品質漏洞的關鍵：
+    # 不給 schema，模型會亂猜參數名（short_ma vs short_window），猜錯的提案回測時被靜默
+    # 吃預設值，OOS 測到的根本不是提案策略。給了 menu，模型只能用對的名字、值落範圍內。
+    menu_lines = []
+    for k in keys:
+        spec = param_spec(k)
+        parts = [
+            f"{pname}（{p['min']}~{p['max']}，預設{p['default']}）"
+            for pname, p in spec.items()
+        ]
+        menu_lines.append(f"- {k}: {', '.join(parts)}")
+    menu = "\n".join(menu_lines)
     sys_text = (
         "你是量化策略素材分類器。判斷一篇文章摘要在描述哪種「既有策略」並建議參數。"
         "只回一個 JSON 物件，不要任何多餘文字："
         '{"strategy_key": "策略鍵", "params": {"參數名": 數值}, '
         '"confidence": 0~1 的數字, "reason": "一句話理由"}。'
-        f"strategy_key 只能從這個清單挑：{keys}。"
+        f"strategy_key 只能從這份清單挑，params 的鍵只能用對應策略列出的參數名、"
+        f"值要落在括號範圍內：\n{menu}\n"
         "若文章與清單中任何策略無關、或需要撰寫新程式碼才能實現，直接回 null。"
     )
     user_text = (
@@ -100,6 +113,20 @@ def triage_find(find, llm_reply: str) -> dict | None:
     # 參數值只收數字（LLM 想塞程式碼字串 / 巢狀結構 = 違反「只提參數」合約，直接拒絕）
     if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in params.values()):
         return None
+
+    # 參數名必須全部是該策略的合法參數（修品質漏洞核心）：擋掉 LLM 亂猜的名字
+    # （如 short_ma），否則錯名會被策略 generate_signal 的 params.get(..., 預設) 靜默
+    # 吃預設值，回測測到的不是提案策略。任何一個名字不在 schema → 整筆作廢。
+    spec = param_spec(key)
+    if not spec or any(pname not in spec for pname in params):
+        return None
+    # 值夾回建議範圍：LLM 偶爾給超界值（period=999），夾回 [min,max] 讓回測拿到合理參數，
+    # 且回傳的就是夾過的值——存進 candidate 的 params 與實際回測一致（誠實，不分岔）。
+    clamped = {}
+    for pname, v in params.items():
+        lo, hi = spec[pname]["min"], spec[pname]["max"]
+        clamped[pname] = min(hi, max(lo, v))
+    params = clamped
 
     try:
         confidence = float(data.get("confidence", 0))

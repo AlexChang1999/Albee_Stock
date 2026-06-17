@@ -17,6 +17,33 @@
 
 ### 修正
 
+- **修探勘橋「參數名漏洞」——LLM 提案被靜默吃預設值，OOS 假淘汰（Phase 12 品質地基）**：
+  `discovery.build_triage_prompt` 只告訴 LLM「有哪些策略鍵」卻**沒給每個策略的合法參數名**，
+  模型亂猜名（產出 `ma_crossover {short_ma:50, long_ma:200}`，正解是 `short_window`/
+  `long_window`）；策略 `generate_signal` 用 `params.get("名", 預設)` 讀參數，遇到不認識的
+  鍵**靜默回退預設值**不報錯 → 候選回測其實全用預設 5/20 跑，OOS 測到的根本不是提案策略 →
+  全 rejected（看起來像「LLM 品質差」，其實是接線 bug）。修法：
+  - `strategies/__init__.py` 新增 `STRATEGY_PARAM_SPECS`（9 策略的合法參數名 + 範圍，
+    集中宣告、鏡像既有 `STRATEGY_LABELS`）+ `param_spec()` helper，作為單一真相來源。
+  - `discovery.build_triage_prompt` / `strategy_generator.propose_params` 把該策略的
+    參數 menu 攤進 prompt（只准用這些名、值落範圍內）。
+  - `discovery.triage_find` 新增驗證：提案參數名須全 ∈ schema（擋亂猜的名），值夾回
+    `[min,max]`（存進 candidate 的＝實際回測的，誠實不分岔）；`propose_params` 同步濾掉錯名組。
+  - **勘誤**：原先誤判「候選全 rejected＝LLM 品質差」，把 `DISCOVERY_BATCH_SIZE` /
+    `AUTO_VALIDATE_BATCH_SIZE` 降到 3 想「審慎一點」。實際禍首是上述接線 bug——batch size
+    只決定「一輪處理幾筆」，**與單筆品質無關**；怕品質該調的是參數 schema 驗證 +
+    `_MIN_CONFIDENCE`。修好後 batch size 可放心放大。
+  - **測試流程**：
+    1. `pytest tests/test_discovery.py tests/test_strategy_generator.py` → **17 passed**
+       （含新增 case：錯名 `short_ma` 應被 `triage_find` 擋、正名放行、超界值夾回範圍、
+       `propose_params` 濾掉錯名組）。
+    2. `pytest tests/test_strategies.py test_strategies_registry.py test_knowledge.py
+       test_auto_validate.py` → **41 passed**（確認新增 `STRATEGY_PARAM_SPECS` 沒弄壞既有）。
+    3. `scripts/pipeline_smoke.py` 真打本機 Ollama（llama3.1）→ 候選回
+       `rsi {period:14, oversold:30, overbought:70}` 參數名全合法；OOS 段在無 `.env`
+       的 worktree 因抓不到行情優雅記 failed（接線 OK，真環境有金鑰才跑完）。
+    4. 部署後對 Neon 跑 `requeue_and_drain.py --apply --drain`：51 筆 triaged→new、
+       連續探勘橋抽乾收件匣（見下方執行紀錄）。
 - **修雲端 Neon 連線閒置被斷導致背景排程崩潰**——VM 上 `run_collector_scan` 每小時
   在 `upsert_finds` 拋 `psycopg2.OperationalError: SSL connection has been closed
   unexpectedly`：Neon 會把閒置太久的連線從伺服器端掐掉，連線池裡那條死 socket 下次
@@ -31,6 +58,12 @@
 
 ### 新增
 
+- **探勘管線端到端 smoke 腳本** `scripts/pipeline_smoke.py`：在臨時 SQLite（**不碰 Neon**）
+  塞 1 筆合成素材，跑「探勘橋 → 候選 → OOS 閘」整條水管，逐段印 verdict + 驗候選參數名合法。
+  開排程常駐前一鍵體檢（Ollama 連線 / 提案品質 / OOS 接線）。
+- **11 模組策略探勘工作流文件** `docs/reference/strategy-pipeline-workflow.md`（操作者視角）：
+  把側欄 11 頁照「素材→上線」順序串成主水管 + 政治員煞車 + 5 條旁路，標明人只在
+  「晉升 curated／跑真錢」兩點出手。已更新 `docs/README.md` 索引。
 - **煙霧測試（Smoke Test）**——補上「整台機器開得起來、核心端點回得了話」的整合關卡：
   - `tests/test_smoke.py`：`pytest -m smoke` 起 `TestClient(app)`（驗 lifespan：init_db +
     scheduler leader 選舉不爆）→ 打 `/`、`/status` 與 18 個無金鑰讀端點都回 200 →

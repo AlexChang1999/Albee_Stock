@@ -17,7 +17,7 @@
 import json
 
 from backend.services import llm
-from backend.strategies import STRATEGY_REGISTRY
+from backend.strategies import STRATEGY_REGISTRY, param_spec
 
 _MAX_TOKENS = 512
 
@@ -59,9 +59,17 @@ def propose_params(client, strategy_key: str, scenario: str, n: int = 3) -> list
             f"未知的策略鍵：{strategy_key}，只能用既有策略：{list(STRATEGY_REGISTRY.keys())}"
         )
 
+    # 把該策略的合法參數名 + 範圍攤給 LLM（同 discovery 修品質漏洞的精神）：
+    # 不給 schema，模型會猜錯參數名，提案回測時被靜默吃預設值 → 測到的不是提案。
+    spec = param_spec(strategy_key)
+    menu = "、".join(
+        f"{pname}（{p['min']}~{p['max']}，預設{p['default']}）"
+        for pname, p in spec.items()
+    )
     sys_text = (
         "你是量化策略參數建議器。只回 JSON 物件陣列，不要任何多餘文字或說明。"
         "每個物件是一組該策略的參數（鍵為參數名、值為數字）。"
+        f"參數名只能用：{menu}。值要落在括號範圍內。"
     )
     user_text = (
         f"策略代號：{strategy_key}\n"
@@ -75,4 +83,10 @@ def propose_params(client, strategy_key: str, scenario: str, n: int = 3) -> list
          {"role": "user", "content": user_text}],
         max_tokens=_MAX_TOKENS,
     )
-    return _parse_param_list(raw)[: max(0, n)]
+    # 只留「參數名全部合法且非空」的提案組——擋掉 LLM 猜錯名的整組（同 triage_find 防線）。
+    proposals = _parse_param_list(raw)
+    valid = [
+        pset for pset in proposals
+        if pset and all(pname in spec for pname in pset)
+    ]
+    return valid[: max(0, n)]

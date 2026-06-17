@@ -102,6 +102,27 @@ def test_triage_find_rejects_non_numeric_params_and_low_confidence():
     assert triage_find(_find(), '{"strategy_key": "rsi", "params": {"period": 14}, "confidence": 0.2}') is None
 
 
+def test_triage_find_rejects_wrong_param_name():
+    """修品質漏洞核心：LLM 猜錯參數名（ma_crossover 應是 short_window，卻給 short_ma）→ 整筆作廢。
+    否則錯名會被策略 params.get(..., 預設) 靜默吃預設值，回測測到的不是提案策略。"""
+    bad = '{"strategy_key": "ma_crossover", "params": {"short_ma": 50, "long_ma": 200}, "confidence": 0.9}'
+    assert triage_find(_find(), bad) is None
+    # 一對一錯（混一個合法一個非法）也整筆擋
+    half = '{"strategy_key": "ma_crossover", "params": {"short_window": 5, "long_ma": 200}, "confidence": 0.9}'
+    assert triage_find(_find(), half) is None
+
+
+def test_triage_find_accepts_correct_names_and_clamps_range():
+    """正確參數名（short_window / long_window）放行；超界值夾回 [min,max] 後回傳。"""
+    ok = '{"strategy_key": "ma_crossover", "params": {"short_window": 50, "long_window": 200}, "confidence": 0.8, "reason": "黃金交叉"}'
+    out = triage_find(_find(), ok)
+    assert out is not None and out["params"] == {"short_window": 50, "long_window": 200}
+    # period=999 超出 rsi period 上限（100）→ 夾回 100；存進 candidate 的值＝實際回測的值
+    clamp = '{"strategy_key": "rsi", "params": {"period": 999}, "confidence": 0.8}'
+    out2 = triage_find(_find(), clamp)
+    assert out2 is not None and out2["params"] == {"period": 100}
+
+
 # ---------- 2. run_discovery_batch ----------
 def test_batch_builds_candidate_and_marks_find(monkeypatch, tmp_path):
     db = _session(tmp_path)
