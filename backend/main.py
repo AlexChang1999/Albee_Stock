@@ -88,6 +88,9 @@ async def lifespan(app: FastAPI):
         # Phase 12 step-03：掛上候選自動驗證每日 job（candidate → 既有 OOS 閘 →
         # validated/rejected，判準零修改；AUTO_VALIDATE_ENABLED=false = 完全不掛）
         bot_manager.schedule_auto_validate(settings.AUTO_VALIDATE_HOUR)
+        # 知識庫策略 → 自動建 Paper Bot（排在驗證之後，吃到當天剛驗過的；★只建 paper、
+        # 不碰真錢雙閘；AUTO_DEPLOY_KNOWLEDGE_ENABLED=false = 完全不掛）
+        bot_manager.schedule_auto_deploy_knowledge(settings.AUTO_DEPLOY_KNOWLEDGE_HOUR)
         # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
         bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)

@@ -22,6 +22,7 @@ from backend.database import get_db
 from backend.models import StrategyKnowledge
 from backend.services import explorations, llm, strategy_generator
 from backend.services.evolution import validate_candidate
+from backend.services.knowledge_deploy import deploy_curated_to_bots
 from backend.services.strategy_selector import build_regime_strategy_map
 from backend.strategies.composite import validate_composite_params
 
@@ -59,8 +60,9 @@ class ProposeIn(BaseModel):
 
 
 class ValidateIn(BaseModel):
-    """對某筆候選跑驗證管線時要驗哪檔、回看幾天。"""
-    symbol: str = "AAPL"
+    """對某筆候選跑驗證管線時要驗哪檔/哪些檔、回看幾天。"""
+    symbol: str = "AAPL"           # 單檔（向後相容；symbols 沒傳時用它）
+    symbols: list[str] | None = None  # 籃子（跨產業池化）；傳了就蓋過 symbol
     days: int = 365
 
 
@@ -72,6 +74,16 @@ class UsageNoteIn(BaseModel):
 class RejectIn(BaseModel):
     """退回某筆候選，附理由（寫進 explorations 記憶）。"""
     reason: str = ""
+
+
+class DeployIn(BaseModel):
+    """把一筆 curated 策略部署成 Paper Bot。symbols 必填（知識列不綁標的，部署時指定）。"""
+    symbols: list[str]                          # 要部署到哪些標的（一檔或多檔，各建一個 Bot）
+    trade_amount: float = 1000.0               # 每次下單金額（美元）
+    take_profit_pct: float | None = None       # 風控（選填，小數；0.10 = 10%）
+    stop_loss_pct: float | None = None
+    trailing_stop_pct: float | None = None
+    check_interval_sec: int = 60               # 監測頻率（秒）
 
 
 # ---------- 內部小工具 ----------
@@ -274,8 +286,10 @@ def validate_knowledge(kid: int, payload: ValidateIn, db: Session = Depends(get_
     只有「樣本外真加分」判 validated，否則 rejected。判定鍵讀 OOS / walk-forward，非 in-sample。
     """
     k = _get_or_404(db, kid)
+    # 傳了 symbols（籃子）就用籃子池化；否則退回單檔 symbol（向後相容）
+    targets = payload.symbols if payload.symbols else payload.symbol
     try:
-        summary = validate_candidate(k, payload.symbol, payload.days)
+        summary = validate_candidate(k, targets, payload.days)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
@@ -366,3 +380,49 @@ def reject_knowledge(kid: int, payload: RejectIn, db: Session = Depends(get_db))
     reason = payload.reason or "（未填理由）"
     explorations.write_knowledge_note(k.id, k.strategy_key, "reject", reason)
     return _dict(k)
+
+
+# ========== 部署：curated 策略 → Paper Bot（補 curated→Bot 斷層） ==========
+@router.post("/knowledge/{kid}/deploy")
+def deploy_knowledge(kid: int, payload: DeployIn, db: Session = Depends(get_db)):
+    """
+    把一筆 **curated** 策略部署成 Paper Bot（每個 symbol 各建一個）。
+
+    補上「curated 知識庫 → 可交易 Bot」這段斷層。知識列本身不綁標的（驗證是跨籃子做的），
+    所以部署時由人指定 symbols。新 Bot 一律建為：
+      - is_active=False（不自動開跑；人再按 /bots/{id}/start）
+      - promotion_status="paper"（模擬；之後跑出 Paper 實績才走 promotion 提議上真錢）
+
+    鐵則：只允許 status==curated（守人在迴路——必須先經 OOS 驗證 + 人工晉升）。
+    """
+    k = _get_or_404(db, kid)
+    if k.status != "curated":
+        raise HTTPException(
+            status_code=400,
+            detail=f"只有 curated（已策展）的策略可部署成 Bot（目前 status={k.status}）。"
+                   "請先經 OOS 驗證（validated）並由人晉升（promote）。",
+        )
+    # 共用部署邏輯（與自動排程同一支）；手動部署 activate=False，人再按 start
+    try:
+        created = deploy_curated_to_bots(
+            db, k, payload.symbols,
+            trade_amount=payload.trade_amount,
+            take_profit_pct=payload.take_profit_pct,
+            stop_loss_pct=payload.stop_loss_pct,
+            trailing_stop_pct=payload.trailing_stop_pct,
+            check_interval_sec=payload.check_interval_sec,
+            activate=False,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    for bot in created:
+        db.refresh(bot)
+
+    return {
+        "knowledge_id": k.id,
+        "deployed": [
+            {"bot_id": b.id, "name": b.name, "symbol": b.symbol, "strategy": b.strategy}
+            for b in created
+        ],
+    }

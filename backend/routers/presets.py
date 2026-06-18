@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.models import StrategyPreset, BacktestRun, Bot
+from backend.models import StrategyPreset, BacktestRun, Bot, StrategyKnowledge
 from backend.services.backtest_engine import run_backtest
 from backend.services.analytics import tearsheet_html
 
@@ -190,6 +190,36 @@ def preset_to_bot(
     db.commit()
     db.refresh(bot)
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol, "strategy": bot.strategy}
+
+
+@router.post("/presets/{preset_id}/to-knowledge")
+def preset_to_knowledge(preset_id: int, db: Session = Depends(get_db)):
+    """
+    把工作台手做的方案「送進驗證管線」：複製成一筆 StrategyKnowledge(status=candidate)。
+
+    補上「preset 進不了自動驗證」的斷層——auto_validate 只吃 StrategyKnowledge candidate，
+    先前工作台方案是死路。建成 candidate 後，它就會被 auto_validate 跑跨籃子 OOS 閘
+    （validated/rejected），再由人晉升 curated、（自動或手動）部署成 Bot。
+
+    刻意「複製一份」而非綁定（與 to-bot 一致）：之後改方案不會動到已送驗的候選。
+    """
+    p = _get_preset_or_404(db, preset_id)
+    k = StrategyKnowledge(
+        name=p.name,
+        strategy_key=p.strategy_key,
+        params=p.params or {},
+        scenario=p.notes,        # 方案備註當場景描述（供策展檢索；可為 None）
+        status="candidate",
+    )
+    db.add(k)
+    db.commit()
+    db.refresh(k)
+    return {
+        "knowledge_id": k.id,
+        "name": k.name,
+        "strategy_key": k.strategy_key,
+        "status": k.status,
+    }
 
 
 # ========== 一鍵回測（Python 做） ==========

@@ -202,15 +202,74 @@ class Settings:
     #   - AUTO_VALIDATE_ENABLED：總開關（預設 false，不掛排程、行為與沒這功能一樣）。
     #   - AUTO_VALIDATE_BATCH_SIZE：一輪最多驗幾筆（回測吃 CPU，防排程時段跑不完）。
     #   - AUTO_VALIDATE_HOUR：每日幾點跑（24 小時制，預設 8 = discovery(7) 之後）。
-    #   - AUTO_VALIDATE_SYMBOL：驗證用標的（candidate 無自帶 symbol，統一基準才可比）。
+    #   - AUTO_VALIDATE_SYMBOL：單檔相容用標的（舊欄位保留；籃子留空時退回它）。
+    #   - AUTO_VALIDATE_SYMBOLS：★驗證籃子（逗號分隔，跨產業）。單一標的樣本窄＋過擬合單檔
+    #     個性；改用「大盤+科技/金融/能源/醫療/工業/零售/半導體」一籃子，每檔各跑 walk-forward
+    #     → OOS EV 池化 → 同一支 is_layer_worth_it（judge 零改、只改餵料）。增刪標的＝改一行。
+    #   - AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL：每檔最低交易次數門檻 X。某檔在所有 fold 的總
+    #     num_round_trips < X → 整檔排除（避免靠運氣少數幾筆大賺污染池化結果）。預設 5：
+    #     保守低門檻，先求「該檔真的有出手」即納入，太高會把短窗低頻策略全排除掉。
     #   - AUTO_VALIDATE_DAYS：回看天數。要夠長湊出 ≥VALIDATION_MIN_FOLDS(3) 個 walk-forward
     #     fold——365 天只 ~250 根＝1 fold，任何策略都被「樣本太少」打回（OOS 閘等於沒在評）。
-    #     1100 天 ~754 根＝9 folds，樣本外最穩、最難過擬合（實測 540=3 剛好、750=5）。
+    #     預設 3650 天（~10 年 ~2500 根 ~30 folds）：fold 最多、橫跨多種市況、最難過擬合。
+    #     代價：單筆驗證變慢（N 檔 × ~30 folds × 回測）。實測對照：540=3、750=5、1100=9 folds。
+    #     ★ 資料源前提：market_data.get_bars(source=DATA_SOURCE) 要抓得到 10 年——Alpaca 免費約
+    #       2016 起（~9 年）、yfinance 全史。抓不到只會 fold 變少、不會錯（不影響判準正確性）。
     AUTO_VALIDATE_ENABLED: bool = os.getenv("AUTO_VALIDATE_ENABLED", "false").lower() in ("1", "true", "yes")
     AUTO_VALIDATE_BATCH_SIZE: int = int(os.getenv("AUTO_VALIDATE_BATCH_SIZE", "3"))
     AUTO_VALIDATE_HOUR: int = int(os.getenv("AUTO_VALIDATE_HOUR", "8"))
     AUTO_VALIDATE_SYMBOL: str = os.getenv("AUTO_VALIDATE_SYMBOL", "SPY")
-    AUTO_VALIDATE_DAYS: int = int(os.getenv("AUTO_VALIDATE_DAYS", "1100"))
+    AUTO_VALIDATE_SYMBOLS: str = os.getenv(
+        "AUTO_VALIDATE_SYMBOLS",
+        "SPY,AAPL,JPM,XOM,JNJ,CAT,WMT,NVDA",
+    )
+    AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL: int = int(
+        os.getenv("AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL", "5")
+    )
+    AUTO_VALIDATE_DAYS: int = int(os.getenv("AUTO_VALIDATE_DAYS", "3650"))
+
+    @property
+    def auto_validate_symbols(self) -> list[str]:
+        """
+        驗證籃子（拆 AUTO_VALIDATE_SYMBOLS 逗號字串）→ 去空白、去重、轉大寫的清單。
+        留空或全空白時退回 [AUTO_VALIDATE_SYMBOL]（單檔相容，不破壞舊行為）。
+        """
+        raw = [s.strip().upper() for s in (self.AUTO_VALIDATE_SYMBOLS or "").split(",")]
+        symbols: list[str] = []
+        for s in raw:
+            if s and s not in symbols:  # 去空白、去重、保序
+                symbols.append(s)
+        return symbols or [self.AUTO_VALIDATE_SYMBOL.upper()]
+
+    # ========================================================
+    # 知識庫策略 → 自動建 Paper Bot（curated→bot 自動部署排程）
+    # ========================================================
+    # 把「驗證過的好策略」自動部署成 Paper Bot 掛網跑（補上 curated 知識庫接不到 Bot 的斷層，
+    # 取代手動 deploy）。★只建 paper bot、不碰真錢雙閘；上真錢仍須 ALPACA_BASE_URL 實盤 +
+    # ALLOW_LIVE_TRADING=true，由 alpaca_client.submit_market_order 把關。
+    #   - AUTO_DEPLOY_KNOWLEDGE_ENABLED：總開關（預設 false，不掛排程、與沒這功能一樣）。
+    #   - AUTO_DEPLOY_FROM_STATUS：從哪個狀態觸發。curated（預設，保留「validated→人晉升」人工閘，
+    #     最安全）或 validated（全自動、少一道人把關；paper 不燒真錢）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_SYMBOLS：部署到哪些標的（knowledge 不綁標的，部署時才指定）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_HOUR：每日幾點跑（建議排在 auto_validate 之後，吃到當天剛驗過的）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT：每個 Bot 下單金額（美元）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN：一輪最多部署幾筆知識（防一次建爆 Bot）。
+    AUTO_DEPLOY_KNOWLEDGE_ENABLED: bool = os.getenv("AUTO_DEPLOY_KNOWLEDGE_ENABLED", "false").lower() in ("1", "true", "yes")
+    AUTO_DEPLOY_FROM_STATUS: str = os.getenv("AUTO_DEPLOY_FROM_STATUS", "curated")
+    AUTO_DEPLOY_KNOWLEDGE_SYMBOLS: str = os.getenv("AUTO_DEPLOY_KNOWLEDGE_SYMBOLS", "SPY,QQQ,AAPL")
+    AUTO_DEPLOY_KNOWLEDGE_HOUR: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_HOUR", "9"))
+    AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT: float = float(os.getenv("AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT", "1000"))
+    AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN", "3"))
+
+    @property
+    def auto_deploy_knowledge_symbols(self) -> list[str]:
+        """部署標的清單（拆 AUTO_DEPLOY_KNOWLEDGE_SYMBOLS）→ 去空白/去重/大寫。空＝空清單。"""
+        raw = [s.strip().upper() for s in (self.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS or "").split(",")]
+        out: list[str] = []
+        for s in raw:
+            if s and s not in out:
+                out.append(s)
+        return out
 
     # ========================================================
     # 開機補跑（catch-up on boot）— 維運安全軌

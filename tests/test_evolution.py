@@ -160,5 +160,136 @@ def test_validate_positive_with_trades_unaffected(monkeypatch):
     assert "noop" not in row.oos_metrics
 
 
+# ---------- 多標的籃子驗證（Phase 12：跨產業 OOS 池化）----------
+def _folds_rt(ev_each, rt=3):
+    """造 walk_forward fold 清單，可指定每 fold 的交易次數（測門檻用）。"""
+    return [
+        {"fold": i, "test_start": 0, "test_end": 1, "expected_value": ev,
+         "win_rate_pct": 0.0, "total_return_pct": 0.0, "num_round_trips": rt}
+        for i, ev in enumerate(ev_each)
+    ]
+
+
+def _basket_setup(monkeypatch, folds_by_sym, empty_syms=(), raise_syms=()):
+    """
+    籃子測試共用 monkeypatch：每檔回不同 fold。
+    用 df.attrs 把 symbol 帶給 walk_forward（它本身不收 symbol），以區分每檔結果。
+    empty_syms：該檔 get_bars 回空 df；raise_syms：該檔 get_bars 拋例外。
+    """
+    def fake_get_bars(symbol, days, source):
+        if symbol in raise_syms:
+            raise RuntimeError(f"離線：{symbol}")
+        if symbol in empty_syms:
+            return pd.DataFrame()
+        df = _osc_df().copy()
+        df.attrs["sym"] = symbol
+        return df
+
+    def fake_wf(df, *a, **k):
+        return folds_by_sym[df.attrs["sym"]]
+
+    monkeypatch.setattr(market_data, "get_bars", fake_get_bars)
+    monkeypatch.setattr(validation, "walk_forward", fake_wf)
+
+
+def test_validate_basket_pooled_validated(monkeypatch):
+    """3 檔各正 EV、交易數達標 → 池化 validated；per_symbol 三筆、頭條為等權池化 EV。"""
+    _basket_setup(monkeypatch, {
+        "AAA": _folds_rt([10.0, 10.0, 10.0]),  # 平均 10，rt 3*3=9 達標
+        "BBB": _folds_rt([20.0, 20.0, 20.0]),  # 平均 20
+        "CCC": _folds_rt([30.0, 30.0, 30.0]),  # 平均 30
+    })
+    row = _FakeKnowledge()
+    out = validate_candidate(row, ["AAA", "BBB", "CCC"], days=1100)
+    assert out["status"] == "validated"
+    assert row.oos_metrics["verdict"]["worth"] is True
+    assert row.oos_metrics["expected_value"] == 20.0  # (10+20+30)/3 等權
+    assert len(row.oos_metrics["per_symbol"]) == 3
+    assert row.oos_metrics["symbols"] == ["AAA", "BBB", "CCC"]
+    assert all(s["qualified"] for s in row.oos_metrics["per_symbol"])
+
+
+def test_validate_basket_all_noop_rejected(monkeypatch):
+    """整籃無達標檔（全零交易）→ rejected，含 noop 鍵、無 verdict。"""
+    _basket_setup(monkeypatch, {
+        "AAA": _folds_rt([0.0, 0.0, 0.0], rt=0),
+        "BBB": _folds_rt([0.0, 0.0, 0.0], rt=0),
+        "CCC": _folds_rt([0.0, 0.0, 0.0], rt=0),
+    })
+    row = _FakeKnowledge()
+    out = validate_candidate(row, ["AAA", "BBB", "CCC"], days=1100)
+    assert out["status"] == "rejected"
+    assert "noop" in row.oos_metrics
+    assert "verdict" not in row.oos_metrics
+    assert row.oos_metrics["noop"]["qualified_symbols"] == 0
+
+
+def test_validate_basket_threshold_excludes_symbol(monkeypatch):
+    """一檔交易數低於門檻被排除，剩 3 檔達標 → 仍 validated；被排除檔記 excluded。"""
+    _basket_setup(monkeypatch, {
+        "AAA": _folds_rt([10.0, 10.0, 10.0]),       # 達標
+        "BBB": _folds_rt([10.0, 10.0, 10.0]),       # 達標
+        "CCC": _folds_rt([10.0, 10.0, 10.0]),       # 達標
+        "LOW": _folds_rt([99.0], rt=1),             # 只 1 fold、rt 1 < 門檻 5 → 排除
+    })
+    row = _FakeKnowledge()
+    out = validate_candidate(row, ["AAA", "BBB", "CCC", "LOW"], days=1100)
+    assert out["status"] == "validated"
+    low = next(s for s in row.oos_metrics["per_symbol"] if s["symbol"] == "LOW")
+    assert low["qualified"] is False
+    assert low["excluded"] is not None
+    # 池化只看達標 3 檔（不含 LOW 的 99）
+    assert row.oos_metrics["expected_value"] == 10.0
+
+
+def test_validate_basket_too_few_qualified_rejected(monkeypatch):
+    """達標檔數 < VALIDATION_MIN_FOLDS(3) → rejected（fold 數語意＝達標標的數）。"""
+    _basket_setup(monkeypatch, {
+        "AAA": _folds_rt([10.0, 10.0, 10.0]),
+        "BBB": _folds_rt([10.0, 10.0, 10.0]),
+    })
+    row = _FakeKnowledge()
+    out = validate_candidate(row, ["AAA", "BBB"], days=1100)
+    assert out["status"] == "rejected"
+    assert row.oos_metrics["verdict"]["worth"] is False
+
+
+def test_validate_basket_skips_no_data_symbol(monkeypatch):
+    """某檔抓不到資料 → 跳過該檔、用剩餘達標檔判（不 raise）。"""
+    _basket_setup(monkeypatch, {
+        "AAA": _folds_rt([10.0, 10.0, 10.0]),
+        "BBB": _folds_rt([10.0, 10.0, 10.0]),
+        "CCC": _folds_rt([10.0, 10.0, 10.0]),
+    }, empty_syms=("DEAD",))
+    row = _FakeKnowledge()
+    out = validate_candidate(row, ["AAA", "BBB", "CCC", "DEAD"], days=1100)
+    assert out["status"] == "validated"
+    dead = next(s for s in row.oos_metrics["per_symbol"] if s["symbol"] == "DEAD")
+    assert dead["folds"] == 0 and dead["excluded"] is not None
+
+
+def test_validate_basket_all_fail_raises(monkeypatch):
+    """全部標的都抓不到資料 → raise（沒有任何證據可判）。"""
+    _basket_setup(monkeypatch, {}, empty_syms=("X", "Y", "Z"))
+    try:
+        validate_candidate(_FakeKnowledge(), ["X", "Y", "Z"], days=1100)
+        assert False, "全失敗應 raise ValueError"
+    except ValueError:
+        pass
+
+
+def test_validate_single_str_keeps_old_shape(monkeypatch):
+    """傳單一 str → 走原路徑：oos_metrics 保留 walk_forward/symbol，無 per_symbol（向後相容）。"""
+    monkeypatch.setattr(market_data, "get_bars", lambda symbol, days, source: _osc_df())
+    monkeypatch.setattr(validation, "walk_forward",
+                        lambda *a, **k: _folds([10.0, 12.0, 8.0]))
+    row = _FakeKnowledge()
+    out = validate_candidate(row, "FAKE", days=160)
+    assert out["status"] == "validated"
+    assert "walk_forward" in row.oos_metrics
+    assert row.oos_metrics["symbol"] == "FAKE"
+    assert "per_symbol" not in row.oos_metrics
+
+
 if __name__ == "__main__":
     print("（evolution 測試需 pytest 的 monkeypatch，請用 pytest 執行）")

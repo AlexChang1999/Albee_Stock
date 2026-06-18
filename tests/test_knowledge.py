@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import backend.routers.knowledge as kr
 from backend.config import settings
 from backend.database import SessionLocal
-from backend.models import StrategyKnowledge
+from backend.models import StrategyKnowledge, Bot
 from backend.services import explorations, llm
 from fastapi.testclient import TestClient
 
@@ -256,6 +256,83 @@ def test_reject_idempotent(monkeypatch):
         r = client.post(f"/knowledge/{kid}/reject", json={"reason": "第二次"})
         assert r.status_code == 400, "已 rejected 不該能重複退回"
     finally:
+        _delete(kid)
+
+
+# ========== 部署：curated → Paper Bot（補斷層） ==========
+def _delete_bots(bot_ids):
+    db = SessionLocal()
+    for bid in bot_ids:
+        obj = db.query(Bot).filter(Bot.id == bid).first()
+        if obj:
+            db.delete(obj)
+    db.commit()
+    db.close()
+
+
+def test_deploy_curated_creates_paper_bots(monkeypatch):
+    """curated 策略 deploy 2 檔 → 2 個 Paper Bot（inactive、strategy/params 正確映射）。"""
+    monkeypatch.setattr(settings, "EXPLORATIONS_DIR", str(Path(__file__).parent / "_tmp_expl_deploy"))
+    r = client.post("/knowledge", json={
+        "name": "RSI 反轉", "strategy_key": "rsi",
+        "params": {"period": 14}, "status": "curated",
+    })
+    kid = r.json()["id"]
+    bot_ids = []
+    try:
+        r = client.post(f"/knowledge/{kid}/deploy", json={
+            "symbols": ["aapl", "MSFT"], "trade_amount": 2000.0,
+            "stop_loss_pct": 0.05,
+        })
+        assert r.status_code == 200, r.text
+        deployed = r.json()["deployed"]
+        bot_ids = [d["bot_id"] for d in deployed]
+        assert len(deployed) == 2
+        # 驗證建出的 Bot：strategy/params 映射、Paper、未啟用、symbol 大寫
+        db = SessionLocal()
+        bots = db.query(Bot).filter(Bot.id.in_(bot_ids)).all()
+        by_sym = {b.symbol: b for b in bots}
+        db.close()
+        assert set(by_sym) == {"AAPL", "MSFT"}
+        for b in by_sym.values():
+            assert b.strategy == "rsi"
+            assert b.params == {"period": 14}
+            assert b.trade_amount == 2000.0
+            assert b.stop_loss_pct == 0.05
+            assert b.is_active is False
+            assert b.promotion_status == "paper"
+    finally:
+        _delete_bots(bot_ids)
+        _delete(kid)
+
+
+def test_deploy_non_curated_400():
+    """非 curated（candidate）deploy → 400（守人在迴路：須先驗證 + 晉升）。"""
+    r = client.post("/knowledge", json={"name": "未策展", "strategy_key": "macd"})
+    kid = r.json()["id"]
+    try:
+        r = client.post(f"/knowledge/{kid}/deploy", json={"symbols": ["AAPL"]})
+        assert r.status_code == 400, "candidate 不該能直接部署成 Bot"
+    finally:
+        _delete(kid)
+
+
+def test_deploy_dedups_symbols(monkeypatch):
+    """重複 symbol 去重 → 只建一個 Bot。"""
+    monkeypatch.setattr(settings, "EXPLORATIONS_DIR", str(Path(__file__).parent / "_tmp_expl_deploy2"))
+    r = client.post("/knowledge", json={
+        "name": "去重測試", "strategy_key": "rsi", "status": "curated",
+    })
+    kid = r.json()["id"]
+    bot_ids = []
+    try:
+        r = client.post(f"/knowledge/{kid}/deploy", json={"symbols": ["AAPL", "aapl", " AAPL "]})
+        assert r.status_code == 200, r.text
+        deployed = r.json()["deployed"]
+        bot_ids = [d["bot_id"] for d in deployed]
+        assert len(deployed) == 1 and deployed[0]["symbol"] == "AAPL"
+    finally:
+        _delete_bots(bot_ids)
         _delete(kid)
 
 
