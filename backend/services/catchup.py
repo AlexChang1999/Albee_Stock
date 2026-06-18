@@ -87,11 +87,13 @@ def make_daily_idempotent(job_name: str, fn):
 def _daily_steps():
     """
     可補跑的每日 job 清單，**依管線順序**：
-    探勘橋（產候選）→ 自動驗證（候選過 OOS 閘）→ 領導股回測（落每日紀錄）
-    → 心跳日報（排在驗證後，日報才含今天剛 validated 的待審數）→ tracking 對帳。
+    探勘橋（產候選）→ 自動驗證（候選過 OOS 閘）→ 知識庫自動部署 Paper Bot（驗過的掛網跑）
+    → 領導股回測（落每日紀錄）→ 心跳日報（排在驗證後，日報才含今天剛 validated 的待審數）
+    → tracking 對帳。
 
     刻意排除：
-    - auto_deploy：「盤前」自動部署，補跑到盤中語義就變了，不碰。
+    - auto_deploy（screener 版）：「盤前」自動部署，補跑到盤中語義就變了，不碰。
+      （知識庫版 auto_deploy_knowledge 只建 paper bot、與盤前盤中無關，補跑安全 → 納入。）
     - opportunity_scan / deadman_ping / collector_scan：interval job，開機後自己會跑
       （collector 另在 run_catchup 開頭先收一輪料，讓 discovery 有新素材）。
 
@@ -99,6 +101,7 @@ def _daily_steps():
     """
     from backend.services.discovery import run_discovery_batch
     from backend.services.auto_validate import run_auto_validate
+    from backend.services.auto_deploy_knowledge import run_auto_deploy_knowledge
     from backend.services.daily_watch import run_leader_backtest
     from backend.services.heartbeat import run_daily_heartbeat
     from backend.services.tracking import run_tracking_check
@@ -107,6 +110,7 @@ def _daily_steps():
         # (job 名（沿用排程器 job id）, enable 閘, 每日排定時刻, 函式)
         ("discovery_bridge", settings.DISCOVERY_ENABLED, settings.DISCOVERY_HOUR, run_discovery_batch),
         ("auto_validate", settings.AUTO_VALIDATE_ENABLED, settings.AUTO_VALIDATE_HOUR, run_auto_validate),
+        ("auto_deploy_knowledge", settings.AUTO_DEPLOY_KNOWLEDGE_ENABLED, settings.AUTO_DEPLOY_KNOWLEDGE_HOUR, run_auto_deploy_knowledge),
         ("leader_backtest", settings.LEADER_BACKTEST_ENABLED, settings.LEADER_BACKTEST_HOUR, run_leader_backtest),
         ("heartbeat_daily", True, settings.HEARTBEAT_HOUR, run_daily_heartbeat),
         ("tracking_check", True, settings.TRACKING_CHECK_HOUR, run_tracking_check),

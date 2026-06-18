@@ -15,26 +15,116 @@
 
 ## [未發布]
 
-### 待辦／規劃中（已批准，下個 session 接手）
+### 接下來要做（我跟你，下個 session 接手）
 
-- **多標的籃子驗證（跨產業 OOS 池化）+ 全庫重驗（Phase 12 延伸，尚未實作）**：
-  目前驗證只用單一標的（`AUTO_VALIDATE_SYMBOL` 預設 `"SPY"`），樣本窄＋過擬合單檔個性；
-  已晉升 7 筆 curated 全只在 SPY 上測過、且含退化參數（`period=2`）。要升級成「**跨產業一籃子**」：
-  每檔各跑 `walk_forward`，把所有檔所有 fold 的 OOS EV **池化**後餵**同一支**
-  `is_layer_worth_it`（judge 與 `is_noop` **零改**，只改餵料）。樣本從「1 檔 × 9 fold」變
-  「N 檔 × 9 fold」。然後**連 candidate 全庫重驗**，過不了的（含 7 筆 curated）降級。
-  - **籃子設定**：`.env` 的 `AUTO_VALIDATE_SYMBOLS`（逗號分隔，預設
-    `"SPY,AAPL,JPM,XOM,JNJ,CAT,WMT,NVDA"`＝大盤+科技/金融/能源/醫療/工業/零售/半導體）。
-    增刪標的＝改一行 .env + 重啟。**不建 DB 表、不做前端面板**（使用者拍板：先用最簡單方式）。
-  - **池化權重（使用者拍板）**：不是把所有 fold 無腦攤平（會被交易次數多的標的吃走結果）。
-    採「**每檔等權 + 最低交易次數門檻**」：某檔在所有 fold 的總 `num_round_trips` **未達門檻 X**
-    （避免靠運氣少數幾筆大賺污染）→ **整檔排除**不納入；達標的檔各自先算平均 EV，再 N 檔等權平均。
-    （或先算「每檔每日平均 EV」再跨檔平均，兼顧高周轉短線特性——下個 session 二擇一實作並記錄選法。）
-  - **完整實作提示詞（下個 session 必讀）**：見
+> 本批程式已落地（全套件 547 passed / 0 failed），但**有幾件要人觸發 / 要拍板的事還沒做**：
+
+- **全庫籃子重驗（人手動跑）**：`scripts/revalidate_basket.py` 已備、**尚未對 Neon 執行**。runbook：
+  複製主 repo `.env` 進 worktree → `python scripts\revalidate_basket.py`（dry-run 看報告）→ 確認合理 →
+  `--apply` 寫 Neon。跑前先 inspect Neon 看 `strategy_knowledge` 各狀態筆數 + `strategy_preset` 筆數
+  （回答「我的策略在哪」具體數字 + 估耗時）。已晉升 7 筆 curated 重驗後去留待回填本檔。
+- **兩個預設待拍板**：① 自動部署觸發狀態 `AUTO_DEPLOY_FROM_STATUS`：`curated`（現預設，保留人晉升閘）
+  vs `validated`（全自動少一道人把關）。② 重驗 / 驗證窗：10 年（現 `AUTO_VALIDATE_DAYS=3650`，慢但穩）
+  vs 先用 3 年快跑清庫。
+- **Neon schema 遷移**：`deployed_at` 遷移檔 `b9c0d1e2f3a4` 已建，**本機測試 DB 已套**；
+  **Neon 由 CICD 在 merge/deploy 時自動套**（沒手動碰 Neon）。merge 後確認 CD 有跑 `alembic upgrade head`。
+- **啟用新排程（要才開）**：所有新功能**預設全關**。要全自動管線上線需在 `.env`/VM 設
+  `AUTO_DEPLOY_KNOWLEDGE_ENABLED=true`（+ 視需要 `DISCOVERY_ENABLED`/`AUTO_VALIDATE_ENABLED`=true）。
+  上線前讀 `docs/reference/human-vs-ai-operation.md`（分階段上線）。
+- **前端（選配二期）**：`PresetsPage` 加「送進驗證」鈕（呼叫 `/presets/{id}/to-knowledge`）、
+  `LibraryPage` curated 卡加「部署成 Bot」鈕（呼叫 `/knowledge/{kid}/deploy`）。本批只做後端。
+- **兩週 paper 觀察 → 自動送審 + 報告（缺最後一段自動化）**：paper bot 跑出實績後，
+  `promotion.propose_promotion` 達標證據 + `GET /backtest-runs/{id}/report` 報告都已存在，但**沒有排程
+  自動把達標 bot 提議送審**。下一步可加「auto_propose」排程串起最後一哩。
+
+### 新增
+
+- **知識庫策略 → 自動建 Paper Bot 排程（curated→bot 自動部署，補全自動管線）**：先前「驗證過的好
+  策略」要手動逐筆 deploy 才變 Bot。新增每日排程把目標狀態的知識自動部署成 Paper Bot 掛網跑：
+  - 共用函式 `backend/services/knowledge_deploy.py: deploy_curated_to_bots(...)`：手動 deploy 端點
+    與自動排程**共用同一支**（行為一致、一處維護）。`activate=False`（手動，人再 start）/
+    `activate=True`（自動，建好即掛網跑）；兩者一律 `promotion_status="paper"`。
+  - 服務 `backend/services/auto_deploy_knowledge.py: run_auto_deploy_knowledge()`（仿
+    `auto_validate` 範式）：取 `status==AUTO_DEPLOY_FROM_STATUS`（預設 `curated`）且 `deployed_at`
+    為空的知識，至多 `AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN` 筆，逐筆建 Paper Bot；**冪等**（建完戳
+    `deployed_at`，永不重建）；單筆失敗隔離。
+  - 排程：`bot_manager.schedule_auto_deploy_knowledge`（job_id `auto_deploy_knowledge`，與既有
+    screener 版 `schedule_auto_deploy` 區隔）+ `main.py` 掛載（排在 auto_validate 之後）+
+    `catchup._daily_steps` 納入開機補跑（只建 paper、與盤前盤中無關，補跑安全）。
+  - **新欄 `strategy_knowledge.deployed_at`**（Alembic `b9c0d1e2f3a4`，batch add_column；冪等戳記）。
+  - config 旗標群（**預設全關 / 保守**）：`AUTO_DEPLOY_KNOWLEDGE_ENABLED=false`、
+    `AUTO_DEPLOY_FROM_STATUS=curated`（可切 `validated` 全自動）、`AUTO_DEPLOY_KNOWLEDGE_SYMBOLS`
+    （逗號字串 + property）、`_HOUR=9`、`_TRADE_AMOUNT=1000`、`_MAX_PER_RUN=3`。`.env.example` 同步。
+  - ★ **安全紅線**：只建 **paper** bot、完全不碰真錢雙閘（`ALPACA_BASE_URL` 實盤 +
+    `ALLOW_LIVE_TRADING`）；上真錢仍走既有 `promotion.py`（人核准 + 雙閘）。預設從 curated 觸發，
+    保留「validated→人晉升 curated」人工閘。手動 deploy 端點重構成呼叫共用函式（行為不變）。
+  - 測試：`tests/test_auto_deploy_knowledge.py`（自足 temp sqlite）11 例——helper 建 paper bot/
+    activate 旗標/去重/空清單、批次器建+冪等/disabled/狀態過濾/validated 觸發/MAX 上限/空 symbols。
+- **preset → 知識庫候選 橋（讓工作台手做方案進自動驗證管線）**：先前 `auto_validate` 只吃
+  `StrategyKnowledge` candidate，使用者在「策略方案」工作台（`StrategyPreset`）手做的是死路、進不了
+  驗證。新增 `POST /presets/{preset_id}/to-knowledge`（`backend/routers/presets.py`，鏡像既有
+  `to-bot` 的「複製一份」精神）：把 preset 的 `name`/`strategy_key`/`params` 複製成一筆
+  `StrategyKnowledge(status="candidate")`（`notes`→`scenario`），之後就被 auto_validate 吃。
+  測試：`tests/test_presets.py` 加 to-knowledge→建 candidate 映射正確、404 共 2 例。
+- **curated 策略 → Paper Bot 部署橋（補「策展庫接不到 Bot」斷層）**：先前管線到
+  `curated`（人晉升的策展庫）就斷——`promote_knowledge` 只改狀態、不建 Bot，curated 是死路；
+  Bot 只能手建或自動部署（screener 海選、不查知識庫）。新增 `POST /knowledge/{kid}/deploy`
+  （`backend/routers/knowledge.py`）：
+  - **只允許 `status==curated`**（非 curated 回 400，守人在迴路：必先經 OOS 驗證 + 人晉升）。
+  - knowledge 列**不綁標的**（驗證是跨籃子做的），部署時由人指定 `symbols`（一檔或多檔，
+    各建一個 Bot；自動去空白/去重/大寫）。
+  - 新 Bot 一律 `is_active=False` + `promotion_status="paper"`（不自動開跑、不碰雙閘安全閥）；
+    人再按 `/bots/{id}/start`，跑出 Paper 實績後走**既有** `promotion.py` 提議上真錢。
+    至此「collector→discovery→OOS 驗證→validated→人晉升 curated→部署 Paper Bot→上真錢」整條鏈接通。
+  - 部署軌跡寫 explorations 記憶（沿用 `write_knowledge_note`，action=`deploy`）。
+  - 測試：`tests/test_knowledge.py` 加 curated→建 N 個 Paper Bot（strategy/params/Paper/inactive
+    映射正確）、非 curated→400、symbol 去重 3 例。
+
+### 變更
+
+- **自動驗證回看窗：3 年 → 10 年（`AUTO_VALIDATE_DAYS` 1100→3650）**：~30 folds、橫跨更多市況、
+  最難過擬合。代價是單筆驗證變慢（N 檔 × ~30 folds）。★前提：`market_data.get_bars(source=
+  DATA_SOURCE)` 要抓得到 10 年（Alpaca 免費約 2016 起 ~9 年、yfinance 全史）；抓不到只會 fold 變少、
+  不影響判準正確性。`auto_validate` / `revalidate_basket.py` 自動吃新值。`.env.example` + test_validation
+  守門註解同步。
+- **驗證標的：單檔 SPY → 跨產業一籃子池化（Phase 12 延伸，judge 零改、只改餵料）**：
+  先前 OOS 驗證只用單一標的（`AUTO_VALIDATE_SYMBOL="SPY"`），樣本窄＋過擬合單檔個性
+  （已晉升 7 筆 curated 全只在 SPY 測過、含退化參數 `period=2`）。改成每檔各跑 `walk_forward`、
+  OOS EV **池化**後餵**同一支** `is_layer_worth_it`（`validation.py` judge 與
+  `VALIDATION_MIN_IMPROVEMENT=0` **完全沒動**，只改匯進去的料）：
+  - **新 config 兩欄**（`backend/config.py` + `.env.example`）：`AUTO_VALIDATE_SYMBOLS`
+    （逗號字串，預設 `"SPY,AAPL,JPM,XOM,JNJ,CAT,WMT,NVDA"`＝大盤+科技/金融/能源/醫療/工業/
+    零售/半導體）+ `AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL`（門檻 X）。新增 `@property
+    auto_validate_symbols`（拆逗號/去空白/去重/大寫，空字串退回單檔 `AUTO_VALIDATE_SYMBOL`）。
+    舊 `AUTO_VALIDATE_SYMBOL` 保留不刪。
+  - **池化選法（採方案 a）**：某檔所有 fold 總 `num_round_trips` < 門檻 X → **整檔排除**
+    （避免靠運氣少數幾筆大賺污染）；達標檔各自先算「該檔所有 fold 平均 EV」，再 N 檔**等權平均**
+    成池化 EV（簡單夠用；「每檔每日平均 EV」的方案 b 列為 future）。
+  - **門檻 X 取 5**（`AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL=5`）：保守低門檻，先求「該檔真的有
+    出手」即納入；太高會把短窗低頻策略全排除掉。
+  - **fold 數語意改**：原「walk-forward fold 數 ≥ `VALIDATION_MIN_FOLDS`(3)」→「**達標標的數**
+    ≥ 3」。`is_layer_worth_it` 的 `min_folds` 檢查零改，餵進去的 `candidate_oos` 從「各 fold EV」
+    變「各達標檔的平均 EV」，語意自然轉為「達標檔數」，避免單檔撐全場。
+  - **`evolution.validate_candidate` 簽名 `symbol` → `symbols`**：內部正規化 str/list——
+    **單檔（str 或長度 1）走原路徑、`oos_metrics` 結構不變**（既有測試 / `rejudge_noop` 相容）；
+    多檔走新 `_validate_basket`。`oos_metrics` 新增 `symbols` / `per_symbol`（每檔 fold 數 / 總交易 /
+    平均 EV / 是否達標 / 被排除原因）稽核欄；頭條 `expected_value`＝池化平均；保留
+    `noop`/`verdict` 鍵的稽核區分。某檔抓不到資料/湊不出 fold → 跳過記 `per_symbol`，**全失敗才 raise**。
+  - **跨檔 no-op 守門**：整籃無任何達標檔（全被門檻排除/全零交易）→ rejected 掛 `noop` 鍵
+    （沿用 `is_noop` 精神，但籃子層是逐檔門檻）。
+  - **`auto_validate.run_auto_validate` 改丟籃子** `settings.auto_validate_symbols`；失敗隔離/批次/
+    冪等不動。手動端點 `POST /knowledge/{id}/validate` 新增可選 `symbols`（不傳用單 `symbol`，相容）。
+  - **新腳本 `scripts/revalidate_basket.py`**（一次性維運，同 `rejudge_noop.py` 範式）：對 Neon
+    `status in (candidate,validated,curated)` 逐筆用籃子**重跑**回測重判，預設 **dry-run 只印不改**
+    （印 舊→新 status / 池化 EV / per_symbol 分布 / 哪檔被門檻排除；curated 降級前印明顯警告行），
+    `--apply` 才寫 DB、逐筆 commit、單筆失敗隔離。**本次只實作，尚未對 Neon 執行全庫重驗**
+    （含 7 筆 curated 去留待日後人工 `--apply` 後回填）。
+  - **測試**：`tests/test_evolution.py` 加籃子池化→validated、跨檔 no-op→rejected、門檻排除一檔、
+    達標檔數不足→rejected、某檔無資料跳過、全失敗 raise、單檔 str 保留舊結構 7 例；
+    `tests/test_auto_validate.py` 對齊籃子斷言。**`pytest test_evolution test_auto_validate
+    test_validation test_knowledge test_discovery test_strategy_generator test_strategies → 85 passed`**。
+  - 預設仍**全關**（`AUTO_VALIDATE_ENABLED=false`）；晉升 curated 仍只能人觸發。實作合約見
     [`docs/history/phase-12-strategy-discovery/handoff-multi-symbol-basket.md`](docs/history/phase-12-strategy-discovery/handoff-multi-symbol-basket.md)。
-  - **誰跑**：回測一律 Python 引擎跑（不偽造績效）；`scripts/revalidate_basket.py`（待建）由人手動觸發
-    （同 `rejudge_noop.py` 模式，預設 dry-run、`--apply` 才寫 Neon）；日後新候選由 `auto_validate`
-    排程（預設關）自動吃籃子。
 
 ### 修正
 

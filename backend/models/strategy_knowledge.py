@@ -53,6 +53,10 @@ class StrategyKnowledge(Base):
     # 狀態親和性（連 Phase 7：這策略在哪種市場狀態 OOS 最好）；未算為 None
     regime_affinity = Column(JSON, nullable=True)
 
+    # 自動部署冪等戳記（curated→Paper Bot 自動部署排程用）：None = 還沒部署過。
+    # 自動 / 手動部署成功後戳上時間，避免排程重複對同一筆知識建 Bot。
+    deployed_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

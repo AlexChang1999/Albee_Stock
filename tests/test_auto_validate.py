@@ -41,10 +41,11 @@ def _session(tmp_path):
     return sessionmaker(bind=engine)()
 
 
-def _enable(monkeypatch, batch_size=3, symbol="SPY"):
+def _enable(monkeypatch, batch_size=3, symbols="SPY,AAPL,JPM"):
     monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_ENABLED", True)
     monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_BATCH_SIZE", batch_size)
-    monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_SYMBOL", symbol)
+    # 驗證標的現在統一吃籃子（auto_validate_symbols property 拆這個逗號字串）
+    monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_SYMBOLS", symbols)
 
 
 def _seed(db, n=1, status="candidate", oos_metrics=None):
@@ -63,11 +64,11 @@ def _seed(db, n=1, status="candidate", oos_metrics=None):
 def test_pass_marks_validated(monkeypatch, tmp_path):
     db = _session(tmp_path)
     _seed(db)
-    _enable(monkeypatch, symbol="QQQ")
+    _enable(monkeypatch, symbols="QQQ,DIA,IWM")
     seen = {}
 
-    def _fake(row, symbol, days=365, **kw):
-        seen["symbol"] = symbol
+    def _fake(row, symbols, days=365, **kw):
+        seen["symbols"] = symbols
         row.status = "validated"
         row.oos_metrics = {"expected_value": 1.2, "verdict": {"worth_it": True}}
         return {"id": row.id, "status": "validated", "oos_metrics": row.oos_metrics}
@@ -75,8 +76,8 @@ def test_pass_marks_validated(monkeypatch, tmp_path):
     monkeypatch.setattr(auto_validate.evolution, "validate_candidate", _fake)
     stats = run_auto_validate(db)
     assert stats == {"processed": 1, "validated": 1, "rejected": 0, "failed": 0}
-    # 驗證標的統一吃設定（candidate 無自帶 symbol）
-    assert seen["symbol"] == "QQQ"
+    # 驗證標的統一吃籃子（candidate 無自帶 symbol；property 拆逗號 + 大寫）
+    assert seen["symbols"] == ["QQQ", "DIA", "IWM"]
     assert db.query(StrategyKnowledge).first().status == "validated"
 
 

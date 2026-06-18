@@ -136,8 +136,8 @@ def test_production_window_needs_enough_bars_for_min_folds():
     # 湊滿 mf 個 fold 的最少根數公式：tw + (mf-1)*step + test_window
     need = tw + (mf - 1) * st + te
     assert len(walk_forward_splits(need, tw, te, st)) >= mf
-    # AUTO_VALIDATE_DAYS=1100 實測 SPY ~754 根，遠超 need → 穩定多 fold
-    assert len(walk_forward_splits(754, tw, te, st)) >= mf
+    # production AUTO_VALIDATE_DAYS=3650（~10年 ~2500 根），遠超 need → ~30 folds
+    assert len(walk_forward_splits(2500, tw, te, st)) >= mf
 
 
 if __name__ == "__main__":

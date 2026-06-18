@@ -10,7 +10,8 @@ validated / rejected。本檔是薄薄一層批次器，**判準零修改**。
 - 通過門檻全在 evolution / validation 既有程式，本檔只做排程取批與失敗隔離。
 - 不自動晉升 curated（人在迴路鐵則：validated → curated 只能由人按）。
 - 驗證資料走 validate_candidate 內的 market_data.get_bars（鐵則：回測=實盤同資料源）。
-- 驗證標的統一用 AUTO_VALIDATE_SYMBOL（candidate 無自帶 symbol；同一基準各候選才可比）。
+- 驗證標的統一用籃子 settings.auto_validate_symbols（跨產業池化；candidate 無自帶 symbol，
+  同一基準各候選才可比）。籃子留空時退回單檔 AUTO_VALIDATE_SYMBOL（向後相容）。
 
 失敗隔離（單筆炸不擋整批、不放行也不誤殺）：
 - 單筆例外（資料抓不到 / 回測例外）→ 失敗計數 +1、維持 candidate、繼續下一筆，下批重試。
@@ -90,7 +91,7 @@ def run_auto_validate(db=None) -> dict:
             stats["processed"] += 1
             try:
                 result = evolution.validate_candidate(
-                    row, settings.AUTO_VALIDATE_SYMBOL, days=settings.AUTO_VALIDATE_DAYS
+                    row, settings.auto_validate_symbols, days=settings.AUTO_VALIDATE_DAYS
                 )
             except Exception as e:
                 # 失敗隔離：這筆炸（資料抓不到 / 回測例外）不擋整批
