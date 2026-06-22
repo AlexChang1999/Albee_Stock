@@ -282,9 +282,13 @@ def run_collector_scan() -> None:
     try:
         result = upsert_finds(db, rows)
         if result["inserted"] > 0:
+            # 收件匣累計總筆數（DB 全表）。舊版顯示的「跳過 N 篇已收過」是「這一輪 RSS
+            # 抓回的批次裡有幾篇重複」，每輪 feed 都抓最新固定幾篇 → 收齊後永遠卡同一個
+            # 死數字、又跟實際總收數對不上，會誤導。改顯示累計總數，真實且會成長。
+            inbox_total = db.query(RawStrategyFind).count()
             msg = (
                 f"📰 市場蒐集員收到 {result['inserted']} 篇新策略素材"
-                f"（跳過 {result['skipped']} 篇已收過）。到「市場蒐集員」頁消化。"
+                f"（收件匣目前共 {inbox_total} 篇）。到「市場蒐集員」頁消化。"
             )
             if result.get("watch_hits"):
                 msg += f"\n🛰️ 其中 {result['watch_hits']} 篇命中監控關鍵字（{settings.PRIVATE_WATCH_KEYWORDS}）。"
