@@ -83,9 +83,9 @@ describe("CompanyPage", () => {
     expect(evLink).toHaveAttribute("href", "/backtest-runs");
   });
 
-  it("探勘漏斗卡：計數、待審徽章、淘汰率、連到知識庫策展", async () => {
+  it("探勘漏斗卡：計數、待審徽章、淘汰率、連到漏斗全貌", async () => {
     renderPage();
-    expect(await screen.findByText("探勘漏斗")).toBeInTheDocument();
+    expect(await screen.findByText(/探勘漏斗/)).toBeInTheDocument();
     // raw 收料合計 = 3+1+2+4 = 10
     expect(screen.getByText("raw 收料").parentElement).toHaveTextContent("10");
     expect(screen.getByText("candidate").parentElement).toHaveTextContent("5");
@@ -93,14 +93,15 @@ describe("CompanyPage", () => {
     expect(screen.getByText("curated").parentElement).toHaveTextContent("1");
     expect(screen.getByText("待審 2")).toBeInTheDocument(); // validated 待人審徽章
     expect(screen.getByText(/淘汰率 75/)).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: /知識庫策展/ });
-    expect(link).toHaveAttribute("href", "/library");
+    // Phase 14：漏斗卡變操作台，連到漏斗全貌頁（/funnel）
+    const link = screen.getByRole("link", { name: /看漏斗全貌/ });
+    expect(link).toHaveAttribute("href", "/funnel");
   });
 
   it("舊版回應沒有 discovery_funnel 時不畫漏斗卡也不崩", async () => {
     api.getCompanyOverview.mockResolvedValue({ ...OVERVIEW, discovery_funnel: undefined });
     renderPage();
     await screen.findByText("Bot 艦隊");
-    expect(screen.queryByText("探勘漏斗")).not.toBeInTheDocument();
+    expect(screen.queryByText(/探勘漏斗/)).not.toBeInTheDocument();
   });
 });

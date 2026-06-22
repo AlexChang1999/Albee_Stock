@@ -202,6 +202,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  // Phase 14：把一筆 curated 知識部署成 paper bot（每個 symbol 各一個；is_active=false，人再 start）
+  deployKnowledge: (id, body) =>
+    request(`/knowledge/${id}/deploy`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // ===== Phase 10：公司戰情（各部門現況聚合，唯讀）=====
   getCompanyOverview: () => request("/company/overview"),
@@ -263,6 +269,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  // 手動收料一次（不等排程）：抓 RSS feeds 進收件匣，回收料統計
+  runCollectorScan: () => request("/collector/scan", { method: "POST" }),
+
+  // ===== Phase 14：探勘管線手動觸發（每個 AI 角色「跑一次」；排程維持關閉）=====
+  // 對單筆收件匣素材即時試轉策略（LLM 判讀成既有策略候選，回 status/knowledge_id/note/proposal）
+  triageFind: (id) => request(`/discovery/triage/${id}`, { method: "POST" }),
+  // 探勘橋批次：raw new → candidate
+  runDiscovery: () => request("/discovery/run", { method: "POST" }),
+  // 自動驗證批次：candidate → validated/rejected（38 籃子 walk-forward OOS）
+  runValidateBatch: () => request("/discovery/validate-batch", { method: "POST" }),
+  // 自動部署批次：curated（門檻及以上）→ 各標的 paper bot
+  runAutoDeployKnowledge: () => request("/discovery/auto-deploy", { method: "POST" }),
 
   // ===== Phase 10 step-05：政治專討員（Discord 事件流，唯讀）=====
   // 政治事件清單：依發文時間由新到舊（可選 limit / label）

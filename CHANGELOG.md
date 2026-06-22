@@ -53,6 +53,14 @@
 
 ### 新增
 
+- **公司可操作化 + 漏斗透明 + 個股策略擂台（Phase 14）**：把「探勘管線預設全關、後端能力沒前端入口、淘汰項被藏」三個讓人困惑的缺口補上，全程人工逐步推進（不開任何排程旗標）。
+  - **每個 AI 角色一顆「跑一次」鈕**：戰情頁漏斗卡變操作台（收料／探勘／驗證／部署／審查），跑完漏斗數字當場跳動。後端新增 `backend/routers/discovery.py`（`/discovery/run`、`/triage/{id}`、`/validate-batch`、`/auto-deploy`）+ `POST /collector/scan`；`run_discovery_batch`/`run_auto_validate`/`run_auto_deploy_knowledge` 加 `force`（只略過 `*_ENABLED`，**安全閘全留**）。
+  - **文字 → 策略橋可見可按**：CollectorPage 每筆加「🔬 試轉策略」（打 `/discovery/triage/{id}`，走共用 `discovery.triage_one`，防幻覺約束不變）、顯示 `triage_note` + 候選連結；`_serialize` 補 `triage_note`/`knowledge_id`。
+  - **出處與漏斗透明**：KnowledgeCard 秀 `oos_metrics` 出處（籃子檔數／walk-forward 折數／回看天數）；新頁 `FunnelPage`（`/funnel`）兩條流水線各階段可點開看實際項目 + 淘汰理由；LibraryPage 切換補 candidate/rejected。
+  - **驗證嚴謹度拉齊**：`/knowledge/{id}/validate` 加 `use_basket`——人工驗證可用 `AUTO_VALIDATE_SYMBOLS` 完整籃子（與自動路徑同嚴謹度），EvolutionPage 預設籃子、可切單檔。
+  - **個股策略擂台**：新頁 `StockArenaPage`（`/stock-arena`）輸入股票 → `/auto-backtest` 跑遍 9 策略排名 → 每列「部署成 paper bot」；LibraryPage curated 卡加「部署到標的」（補孤兒端點 `/knowledge/{id}/deploy`）；BotReviewPage 適配表加「依標的分組」（每股策略競賽排名）。
+  - 測試：`tests/test_discovery_api.py`（新）+ 擴充 `test_discovery`/`test_collector`/`test_auto_validate`/`test_auto_deploy_knowledge`（triage_one / force / scan 回統計 / 端點閘）。藍圖 `docs/history/phase-14-company-operability/`。
+
 - **bot 汰弱審查員（Phase 13，新「職位」：考核 paper 艦隊 + 哪股票配哪策略 fit 註冊 + 軟汰弱）**：
   自動部署讓 Bot 數＝好策略數 × 標的數會持續長（5 策略 × 38 檔 = 190 Bot）。沒人管，艦隊很快
   塞滿「驗證時看似可以、實跑卻爛」的 Bot。新增每日排程的審查員補這個治理缺口：

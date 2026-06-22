@@ -24,6 +24,8 @@ import {
   TableContainer,
   Paper,
   Chip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import { api } from "../api";
 
@@ -39,12 +41,24 @@ const VERDICT = {
   insufficient: { label: "樣本不足", color: "default" },
 };
 
+// 把平鋪的 fit 列依標的分組（保留全域 good→poor 排序，故每組內也是好的在前）。
+// 回 [[symbol, [fits]], ...]，標的依首次出現（＝全域排名）順序。
+function groupBySymbol(fits) {
+  const m = new Map();
+  for (const f of fits) {
+    if (!m.has(f.symbol)) m.set(f.symbol, []);
+    m.get(f.symbol).push(f);
+  }
+  return [...m.entries()];
+}
+
 export default function BotReviewPage() {
   const [fits, setFits] = useState([]);
   const [culled, setCulled] = useState([]);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [running, setRunning] = useState(false);
+  const [groupBy, setGroupBy] = useState("symbol"); // 預設依標的分組（每股策略競賽）
 
   const load = useCallback(async () => {
     setErr("");
@@ -116,15 +130,64 @@ export default function BotReviewPage() {
       )}
 
       {/* ── 策略×標的適配排行 ── */}
-      <Typography variant="h6" sx={{ mb: 1 }}>
-        策略 × 標的 適配排行
-      </Typography>
+      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1 }}>
+        <Typography variant="h6">策略 × 標的 適配排行</Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={groupBy}
+          onChange={(e, v) => v && setGroupBy(v)}
+        >
+          <ToggleButton value="symbol">依標的分組</ToggleButton>
+          <ToggleButton value="flat">平鋪</ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           {fits.length === 0 ? (
             <Typography color="text.secondary">
               還沒有適配紀錄（paper Bot 累積夠交易、審查員跑過後會出現）。
             </Typography>
+          ) : groupBy === "symbol" ? (
+            // 每股一塊：這檔股票上各策略的實跑競賽（好的在前）
+            groupBySymbol(fits).map(([sym, rows]) => (
+              <Box key={sym} sx={{ mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
+                  {sym}（{rows.length} 策略競賽）
+                </Typography>
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>策略</TableCell>
+                        <TableCell>評等</TableCell>
+                        <TableCell align="right">回合數</TableCell>
+                        <TableCell align="right">勝率%</TableCell>
+                        <TableCell align="right">報酬%</TableCell>
+                        <TableCell align="right">最大回撤%</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {rows.map((r) => {
+                        const v = VERDICT[r.verdict] || { label: r.verdict, color: "default" };
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell>{r.strategy_key}</TableCell>
+                            <TableCell>
+                              <Chip size="small" color={v.color} label={v.label} />
+                            </TableCell>
+                            <TableCell align="right">{r.num_round_trips}</TableCell>
+                            <TableCell align="right">{fmt(r.win_rate_pct)}</TableCell>
+                            <TableCell align="right">{fmt(r.return_pct)}</TableCell>
+                            <TableCell align="right">{fmt(r.max_drawdown_pct)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
+            ))
           ) : (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">

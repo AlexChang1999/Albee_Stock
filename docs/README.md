@@ -23,6 +23,7 @@
 | [`history/phase-10-ai-company/`](history/phase-10-ai-company/README.md) | AI 交易公司（戰情頁/蒐集員/政治員/董事會核准/常駐化，step-01~07）。 |
 | [`history/phase-11-macro-data/`](history/phase-11-macro-data/README.md) | 總經環境資料地基（FRED/快取/環境特徵/引擎吃 features/OOS 驗證，step-01~05）。 |
 | [`history/phase-12-strategy-discovery/`](history/phase-12-strategy-discovery/README.md) | 策略自動探勘入庫管線**藍圖**（收料→LLM 產候選→自動 OOS 閘→人在迴路晉升，step-01~05，未開工）。 |
+| [`history/phase-14-company-operability/`](history/phase-14-company-operability/README.md) | 公司可操作化 + 漏斗透明 + 個股策略擂台（每角色「跑一次」鈕 / 文字→策略橋可見 / FunnelPage 看淘汰理由 / 個股多策略擂台 + 部署）。 |
 | [`history/redesign/`](history/redesign/README.md) | 「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化，P1~P4）。 |
 
 ## guides/ — 操作與教學

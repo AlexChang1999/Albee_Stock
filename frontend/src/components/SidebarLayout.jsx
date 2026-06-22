@@ -38,6 +38,8 @@ const NAV_ITEMS = [
   { to: "/decisions", label: "決策審計" },
   { to: "/evolution", label: "進化實驗室" },
   { to: "/library", label: "策略知識庫" },
+  { to: "/funnel", label: "探勘漏斗" },
+  { to: "/stock-arena", label: "個股擂台" },
   { to: "/ai-explore", label: "AI 探勘" },
   { to: "/charts", label: "K 線圖" },
   { to: "/fundamentals", label: "基本面" },

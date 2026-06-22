@@ -60,20 +60,22 @@ def record_validation_failure(row, error_msg: str) -> bool:
     return failures >= _MAX_FAILURES
 
 
-def run_auto_validate(db=None) -> dict:
+def run_auto_validate(db=None, force: bool = False) -> dict:
     """
     跑一輪自動驗證：取 status=candidate 的知識至多 AUTO_VALIDATE_BATCH_SIZE 筆，
     逐筆送既有 OOS 閘（evolution.validate_candidate，判準零修改）。
 
-    - AUTO_VALIDATE_ENABLED=false → 直接 return（排程掛載處也有閘，這裡是雙保險）。
+    - AUTO_VALIDATE_ENABLED=false 且 force=False → 直接 return（排程掛載處也有閘，雙保險）。
+      手動「跑一次」端點傳 force=True 略過此旗標；判準（38 籃子 walk-forward）一字不改。
     - 單筆例外 → 記失敗計數、維持 candidate、繼續下一筆（連續 3 次才 rejected）。
     - 冪等：只取 status=candidate，已 validated/rejected 的永不重驗。
 
     :param db: 測試可注入 session；None = 自建（排程入口用）。
+    :param force: True = 略過 AUTO_VALIDATE_ENABLED 旗標（人工手動觸發用），判準不變。
     :return: {"processed", "validated", "rejected", "failed"} 統計。
     """
     stats = {"processed": 0, "validated": 0, "rejected": 0, "failed": 0}
-    if not settings.AUTO_VALIDATE_ENABLED:
+    if not settings.AUTO_VALIDATE_ENABLED and not force:
         return stats
 
     own_session = db is None

@@ -23,7 +23,8 @@ import KnowledgeCard from "../components/KnowledgeCard";
 export default function EvolutionPage() {
   const [status, setStatus] = useState("candidate");
   const [items, setItems] = useState([]);
-  const [symbol, setSymbol] = useState("AAPL"); // 驗證用標的
+  const [symbol, setSymbol] = useState("AAPL"); // 單檔驗證用標的（籃子模式忽略）
+  const [useBasket, setUseBasket] = useState(true); // 預設完整籃子（與自動驗證路徑同嚴謹度）
   const [busyId, setBusyId] = useState(null);
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -48,12 +49,15 @@ export default function EvolutionPage() {
     setBusyId(item.id);
     try {
       const summary = await api.validateKnowledge(item.id, {
+        use_basket: useBasket,
         symbol: symbol.toUpperCase(),
         days: 365,
       });
+      const ev = summary?.oos_metrics?.expected_value;
       setMsg(
         `驗證 #${item.id}：${summary.status ?? "完成"}` +
-          (summary.reason ? `（${summary.reason}）` : "")
+          (ev != null ? `（OOS EV ${ev}）` : "") +
+          (useBasket ? "·完整籃子" : `·單檔 ${symbol.toUpperCase()}`)
       );
       load();
     } catch (e) {
@@ -106,12 +110,22 @@ export default function EvolutionPage() {
           <ToggleButton value="validated">已驗證</ToggleButton>
           <ToggleButton value="rejected">已退回</ToggleButton>
         </ToggleButtonGroup>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={useBasket ? "basket" : "single"}
+          onChange={(e, v) => v && setUseBasket(v === "basket")}
+        >
+          <ToggleButton value="basket">完整籃子（嚴謹·較慢）</ToggleButton>
+          <ToggleButton value="single">單檔（快）</ToggleButton>
+        </ToggleButtonGroup>
         <TextField
           size="small"
-          label="驗證標的"
+          label="單檔標的（籃子模式忽略）"
           value={symbol}
           onChange={(e) => setSymbol(e.target.value)}
-          sx={{ width: 130 }}
+          disabled={useBasket}
+          sx={{ width: 190 }}
         />
       </Stack>
 

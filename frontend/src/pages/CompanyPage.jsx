@@ -30,6 +30,23 @@ function fmtMoney(v) {
   return Number.isNaN(n) ? "—" : `$${n.toLocaleString()}`;
 }
 
+// 把後端各「跑一次」端點回的統計 dict 壓成一句中文摘要（只挑有值的鍵）。
+function summarizeResult(r) {
+  if (!r || typeof r !== "object") return "完成";
+  const labels = {
+    inserted: "新收", built: "建候選", discarded: "丟棄", processed: "處理",
+    validated: "通過", rejected: "退回", deployed_knowledge: "部署策略",
+    bots_created: "建Bot", reviewed: "考核", culled: "汰弱", skipped: "跳過",
+    fits_updated: "更新fit", failed: "失敗",
+  };
+  const parts = [];
+  for (const [k, label] of Object.entries(labels)) {
+    if (r[k] != null && r[k] !== 0) parts.push(`${label} ${r[k]}`);
+  }
+  if (parts.length === 0) return r.note || r.message || "完成（無新增）";
+  return parts.join("、") + (r.note ? `（${r.note}）` : "");
+}
+
 // 部門卡外殼：標題 + 狀態 chip + 內容 + 「前往」連結。
 function DeptCard({ title, role, chip, to, linkLabel, children }) {
   return (
@@ -66,6 +83,9 @@ export default function CompanyPage() {
   const [err, setErr] = useState("");
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
+  // 探勘流水線「跑一次」：哪顆鈕正在跑（互斥）+ 結果摘要訊息
+  const [busyAction, setBusyAction] = useState("");
+  const [actionMsg, setActionMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +109,24 @@ export default function CompanyPage() {
       setScanning(false);
     }
   }, [load]);
+
+  // 探勘流水線逐關手動推進：跑完重抓 overview，漏斗數字當場跳動（擬人操作）。
+  const runAction = useCallback(
+    async (key, label, fn) => {
+      setBusyAction(key);
+      setActionMsg("");
+      try {
+        const r = await fn();
+        setActionMsg(`${label}：${summarizeResult(r)}`);
+        await load();
+      } catch (e) {
+        setActionMsg(`${label}失敗：${e.message}`);
+      } finally {
+        setBusyAction("");
+      }
+    },
+    [load]
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -302,10 +340,10 @@ export default function CompanyPage() {
         {funnel && (
           <Grid item xs={12} sm={6} md={4}>
             <DeptCard
-              title="探勘漏斗"
-              role="收料 → 候選 → 驗證 → 入庫 · 人只審最後一道閘"
-              to="/library"
-              linkLabel="知識庫策展 →"
+              title="探勘漏斗 · 操作台"
+              role="收料 → 候選 → 驗證 → 入庫 · 人逐關手動推進"
+              to="/funnel"
+              linkLabel="看漏斗全貌 →"
               chip={
                 <Chip
                   size="small"
@@ -324,6 +362,36 @@ export default function CompanyPage() {
                 淘汰率 {funnel.rejection_rate_pct ?? "—"}
                 {funnel.rejection_rate_pct != null && "%"}（高是健康的：大部分點子過不了 OOS 閘是預期）
               </Typography>
+
+              {/* 排程關閉中：每個 AI 角色一顆「跑一次」鈕，逐關推進，數字當場跳動 */}
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                人工逐關推進（排程關閉中）：
+              </Typography>
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {[
+                  ["collect", "收料", () => api.runCollectorScan()],
+                  ["discover", "探勘", () => api.runDiscovery()],
+                  ["validate", "驗證", () => api.runValidateBatch()],
+                  ["deploy", "部署", () => api.runAutoDeployKnowledge()],
+                  ["review", "審查", () => api.runBotReview()],
+                ].map(([key, label, fn]) => (
+                  <Button
+                    key={key}
+                    size="small"
+                    variant="outlined"
+                    disabled={!!busyAction}
+                    onClick={() => runAction(key, label, fn)}
+                  >
+                    {busyAction === key ? "…" : `▶ ${label}`}
+                  </Button>
+                ))}
+              </Stack>
+              {actionMsg && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                  {actionMsg}
+                </Typography>
+              )}
             </DeptCard>
           </Grid>
         )}

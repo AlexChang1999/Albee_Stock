@@ -38,20 +38,22 @@ def _deployable_statuses(from_status: str) -> list:
     return [s for s, tier in _STATUS_TIER.items() if tier >= floor]
 
 
-def run_auto_deploy_knowledge(db=None) -> dict:
+def run_auto_deploy_knowledge(db=None, force: bool = False) -> dict:
     """
     跑一輪自動部署：取 status 在 AUTO_DEPLOY_FROM_STATUS「門檻及以上」（見 _deployable_statuses）
     且 deployed_at 為空的知識至多 AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN 筆，逐筆部署成 Paper Bot。
 
-    - AUTO_DEPLOY_KNOWLEDGE_ENABLED=false → 直接 return（排程掛載處也有閘，雙保險）。
+    - AUTO_DEPLOY_KNOWLEDGE_ENABLED=false 且 force=False → 直接 return（排程掛載處也有閘，雙保險）。
+      手動「跑一次」端點傳 force=True 略過此旗標；★仍只建 paper bot、不碰真錢雙閘。
     - 冪等：只取 deployed_at IS NULL；建完戳 deployed_at（deploy_curated_to_bots 內處理）。
     - 單筆例外 → 隔離，維持原狀、繼續下一筆。
 
     :param db: 測試可注入 session；None = 自建（排程入口用）。
+    :param force: True = 略過 AUTO_DEPLOY_KNOWLEDGE_ENABLED 旗標（人工手動觸發用），paper-only 不變。
     :return: {"processed", "deployed_knowledge", "bots_created", "failed"} 統計。
     """
     stats = {"processed": 0, "deployed_knowledge": 0, "bots_created": 0, "failed": 0}
-    if not settings.AUTO_DEPLOY_KNOWLEDGE_ENABLED:
+    if not settings.AUTO_DEPLOY_KNOWLEDGE_ENABLED and not force:
         return stats
 
     symbols = settings.auto_deploy_knowledge_symbols
