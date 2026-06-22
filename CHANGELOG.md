@@ -19,15 +19,21 @@
 
 > 本批程式已落地（全套件 547 passed / 0 failed），但**有幾件要人觸發 / 要拍板的事還沒做**：
 
-- **全庫籃子重驗（人手動跑）**：`scripts/revalidate_basket.py` 已備、**尚未對 Neon 執行**。runbook：
-  複製主 repo `.env` 進 worktree → `python scripts\revalidate_basket.py`（dry-run 看報告）→ 確認合理 →
-  `--apply` 寫 Neon。跑前先 inspect Neon 看 `strategy_knowledge` 各狀態筆數 + `strategy_preset` 筆數
-  （回答「我的策略在哪」具體數字 + 估耗時）。已晉升 7 筆 curated 重驗後去留待回填本檔。
+- **全庫籃子重驗（已對 Neon 執行，2026-06-22）**：`scripts/revalidate_basket.py` dry-run→`--apply` 跑完。
+  結果：原 7 筆 curated 先**去重 2 筆**（#21≡#17 bollinger、#33≡#16 momentum，key+params 完全相同）→
+  剩 5 筆全部**通過**新籃子 OOS（池化 EV 全正：#17 bollinger 118.66、#11 ma_crossover 85.58、
+  #19 adx_trend 19.86、#16 momentum 2.62、#29 stochastic 1.49），但機制性 `curated→validated`
+  （curated 是人晉升專屬狀態、重驗一律退回 validated，待人去 LibraryPage 逐筆重晉升）。Neon 終態：
+  validated 5 / rejected 26 / curated 0。零 reject、零失敗。
 - **兩個預設待拍板**：① 自動部署觸發狀態 `AUTO_DEPLOY_FROM_STATUS`：`curated`（現預設，保留人晉升閘）
   vs `validated`（全自動少一道人把關）。② 重驗 / 驗證窗：10 年（現 `AUTO_VALIDATE_DAYS=3650`，慢但穩）
   vs 先用 3 年快跑清庫。
-- **Neon schema 遷移**：`deployed_at` 遷移檔 `b9c0d1e2f3a4` 已建，**本機測試 DB 已套**；
-  **Neon 由 CICD 在 merge/deploy 時自動套**（沒手動碰 Neon）。merge 後確認 CD 有跑 `alembic upgrade head`。
+- **Neon schema 遷移（已手動套 + 修幽靈 rev，2026-06-22）**：`deployed_at` 遷移 `b9c0d1e2f3a4` 已套 Neon
+  （current=head）。★踩到坑：Neon `alembic_version` 原卡在幽靈 rev `7d4a3f725a53`（本機/VM/所有遠端分支
+  全查無、source 從沒進 git——當初某機直接對 Neon 套了一個建 `validation_symbols` 表的遷移卻沒 commit）。
+  修法：`alembic stamp a8f1c2d3e4b5 --purge`（清孤兒戳記→真實父節點）→ `upgrade head`（套 deployed_at）。
+  孤兒 `validation_symbols` 表（68 列手挑種子）**暫留未刪**（要復活那「DB 版驗證 universe」功能再決定）。
+  CICD 後續 merge 時 `alembic upgrade head` 會是 no-op（已是 head），不再撞幽靈 rev。
 - **啟用新排程（要才開）**：所有新功能**預設全關**。要全自動管線上線需在 `.env`/VM 設
   `AUTO_DEPLOY_KNOWLEDGE_ENABLED=true`（+ 視需要 `DISCOVERY_ENABLED`/`AUTO_VALIDATE_ENABLED`=true）。
   上線前讀 `docs/reference/human-vs-ai-operation.md`（分階段上線）。
