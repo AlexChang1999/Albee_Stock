@@ -25,10 +25,23 @@ from backend.services.knowledge_deploy import deploy_curated_to_bots
 logger = logging.getLogger(__name__)
 
 
+# 知識狀態階序：candidate < validated < curated（rejected 為終態，永不部署）。
+# AUTO_DEPLOY_FROM_STATUS 當「門檻」而非「精確值」：取該階「及以上」。
+# 這樣 from=validated 也涵蓋已被人晉升到 curated 的好策略（curated 比 validated 更可信，
+# 更該上網）；from=curated（預設）則仍只取 curated，與原行為一致（向後相容）。
+_STATUS_TIER = {"candidate": 0, "validated": 1, "curated": 2}
+
+
+def _deployable_statuses(from_status: str) -> list:
+    """回傳「該門檻及以上」的可部署狀態清單；不認得的值保守當 validated（階 1）。"""
+    floor = _STATUS_TIER.get(from_status, 1)
+    return [s for s, tier in _STATUS_TIER.items() if tier >= floor]
+
+
 def run_auto_deploy_knowledge(db=None) -> dict:
     """
-    跑一輪自動部署：取 status=AUTO_DEPLOY_FROM_STATUS 且 deployed_at 為空的知識至多
-    AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN 筆，逐筆部署成 Paper Bot（掛網跑 paper）。
+    跑一輪自動部署：取 status 在 AUTO_DEPLOY_FROM_STATUS「門檻及以上」（見 _deployable_statuses）
+    且 deployed_at 為空的知識至多 AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN 筆，逐筆部署成 Paper Bot。
 
     - AUTO_DEPLOY_KNOWLEDGE_ENABLED=false → 直接 return（排程掛載處也有閘，雙保險）。
     - 冪等：只取 deployed_at IS NULL；建完戳 deployed_at（deploy_curated_to_bots 內處理）。
@@ -50,10 +63,11 @@ def run_auto_deploy_knowledge(db=None) -> dict:
     if own_session:
         db = SessionLocal()
     try:
+        allowed = _deployable_statuses(settings.AUTO_DEPLOY_FROM_STATUS)
         rows = (
             db.query(StrategyKnowledge)
             .filter(
-                StrategyKnowledge.status == settings.AUTO_DEPLOY_FROM_STATUS,
+                StrategyKnowledge.status.in_(allowed),
                 StrategyKnowledge.deployed_at.is_(None),
             )
             .order_by(StrategyKnowledge.id)

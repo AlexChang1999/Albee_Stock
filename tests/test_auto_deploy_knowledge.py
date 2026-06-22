@@ -168,6 +168,24 @@ def test_auto_deploy_from_validated(tmp_path, monkeypatch):
     assert stats["deployed_knowledge"] == 1 and db.query(Bot).count() == 1
 
 
+def test_auto_deploy_validated_threshold_includes_curated(tmp_path, monkeypatch):
+    """門檻語義：from=validated 取「validated 及以上」→ 涵蓋已被人晉升的 curated，
+    但不碰較低階的 candidate。"""
+    db = _session(tmp_path)
+    _seed(db, status="candidate")   # 階 0：不該部署
+    _seed(db, status="validated")   # 階 1：該部署
+    _seed(db, status="curated")     # 階 2：該部署（驗過再被人晉升，更該上）
+    _enable(monkeypatch, status="validated", symbols="SPY", max_per_run=10)
+    stats = run_auto_deploy_knowledge(db)
+    assert stats["processed"] == 2          # validated + curated
+    assert stats["bots_created"] == 2       # 各 1 symbol（SPY）
+    # candidate 仍未部署
+    assert db.query(StrategyKnowledge).filter(
+        StrategyKnowledge.status == "candidate",
+        StrategyKnowledge.deployed_at.is_(None),
+    ).count() == 1
+
+
 def test_auto_deploy_max_per_run(tmp_path, monkeypatch):
     db = _session(tmp_path)
     _seed(db, status="curated", n=5)

@@ -169,6 +169,12 @@
 
 ### 修正
 
+- **自動部署改吃「狀態門檻」而非精確值——救回撈不到 curated 的盲點**（`backend/services/auto_deploy_knowledge.py`）：
+  原查詢 `status == AUTO_DEPLOY_FROM_STATUS` 是**精確比對**。上線後設 `validated`（跳人工閘）時，
+  既有 5 筆**已被人晉升的 `curated`** 好策略（階序比 validated 高）反而撈不到，加上當下 `validated` 為 0，
+  導致開機 catchup 全鏈跑完卻 **0 bot**。改成階序門檻 `_deployable_statuses`（candidate<validated<curated，
+  rejected 永不部署）：`from=validated` 取「validated 及以上」涵蓋 curated；`from=curated`（預設）仍只取
+  curated，**向後相容、VM 姿態不變**。加測試 `test_auto_deploy_validated_threshold_includes_curated`。
 - **蒐集員通知數字不再誤導——改顯示收件匣累計總數**（`backend/services/collector.py`）：
   Discord/LINE 推播原本顯示「跳過 N 篇已收過」，N 是「這一輪 RSS 抓回的批次裡有幾篇重複」。
   每輪 feed 都只抓最新固定幾篇，收齊後 N 永遠卡同一個死數字（例如 34），又跟使用者實際
