@@ -528,12 +528,6 @@ class Settings:
     QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
 
     # ========================================================
-    # LINE 通知（之後再填，現在可留空）
-    # ========================================================
-    LINE_CHANNEL_ACCESS_TOKEN: str = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-    LINE_CHANNEL_SECRET: str = os.getenv("LINE_CHANNEL_SECRET", "")
-
-    # ========================================================
     # 探討（檢討）檔案記憶（Phase 5）
     # ========================================================
     # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，

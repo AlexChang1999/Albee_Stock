@@ -44,9 +44,6 @@ psycopg2-binary==2.9.12
 # --- 任務排程（讓 Bot 定時跑策略） ---
 apscheduler==3.11.0
 
-# --- LINE 通知 ---
-line-bot-sdk==3.23.0
-
 # --- HTTP 請求（通知、備用） ---
 requests==2.34.2
 

@@ -44,6 +44,13 @@
   `promotion.propose_promotion` 達標證據 + `GET /backtest-runs/{id}/report` 報告都已存在，但**沒有排程
   自動把達標 bot 提議送審**。下一步可加「auto_propose」排程串起最後一哩。
 
+### 變更
+
+- **移除 LINE 通知**：LINE Notify 2025 停服後遺留的 Messaging API 推播已全數移除（`notifier.py` / `config.py` / `requirements.txt` 砍 `line-bot-sdk`）；通知管道統一走 Discord Webhook（`DISCORD_WEBHOOK_URL`）。
+- **Discord Webhook 429 重試**：`_send_discord` 遇到 rate limit 時依 `retry_after` 等完再重試，最多 3 次，不再印 ⚠️ 警告。
+- **政治專討員看門狗修正**：沒設 `POLITICAL_DISCORD_TOKEN` 或未裝 `discord.py` 時改以 `sys.exit(2)` 退出；`.bat` 看門狗偵測到 exit code 2 即停止（不再無窮重啟）。
+- **安裝 `discord.py==2.7.1`**：`requirements.txt` 已記載但 venv 未裝，現已補裝，`political_watcher` 可正常啟動。
+
 ### 新增
 
 - **bot 汰弱審查員（Phase 13，新「職位」：考核 paper 艦隊 + 哪股票配哪策略 fit 註冊 + 軟汰弱）**：
