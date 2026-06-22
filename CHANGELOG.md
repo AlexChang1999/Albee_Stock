@@ -38,6 +38,11 @@
 
 ### 修正
 
+- **蒐集員通知數字不再誤導——改顯示收件匣累計總數**（`backend/services/collector.py`）：
+  Discord/LINE 推播原本顯示「跳過 N 篇已收過」，N 是「這一輪 RSS 抓回的批次裡有幾篇重複」。
+  每輪 feed 都只抓最新固定幾篇，收齊後 N 永遠卡同一個死數字（例如 34），又跟使用者實際
+  累計總收數對不上，造成誤解。改成「（收件匣目前共 M 篇）」，M = `RawStrategyFind` 全表筆數，
+  真實且會隨收料成長。測試不受影響（`test_collector.py` 16 passed）。
 - **修 no-op 漏洞——零交易候選不再混進 validated（Phase 12，收上一條待辦）**：
   上一條重驗暴露的「5 筆 `oos_mean=0.0` 假性過閘」（零交易＝跟「不出手」基準打平＝
   `worth=True`）正式堵掉。**判準其餘不動**（`VALIDATION_MIN_IMPROVEMENT=0` 保留），
