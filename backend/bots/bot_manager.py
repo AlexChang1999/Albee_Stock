@@ -23,6 +23,7 @@ Phase 6 設計重點：
 - step-09：空手買進前先過組合回撤熔斷，熔斷時只擋進、不擋出。
 """
 
+import math
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -48,9 +49,50 @@ from backend.services.protective_orders import (
     plan_protective_order,
     whole_share_qty,
 )
+from backend.services.indicator_overlays import compute_overlays
 from backend.services.risk_manager import check_exit
 from backend.strategies import get_strategy, Signal
 from backend.strategies.lookback import required_lookback_days
+
+
+def _bar_volume(df) -> float | None:
+    """決策當下那根 K 的成交量（量）。無 volume 欄 / NaN / 空 df → None。"""
+    try:
+        if df is None or df.empty or "volume" not in df.columns:
+            return None
+        v = float(df["volume"].iloc[-1])
+        return None if math.isnan(v) else v
+    except Exception:
+        return None
+
+
+def _indicator_snapshot(strategy_name: str, params: dict, df) -> dict | None:
+    """該策略「看的指標」當下值快照：取 compute_overlays 各序列最後一根。
+
+    與策略圖表同一套公式（services.indicator_overlays），故畫面看到的指標線末端值
+    ＝這裡記下的數字。算不出 / 無資料 → None（不擋交易主流程）。
+    """
+    try:
+        ov = compute_overlays(strategy_name, params or {}, df)
+    except Exception:
+        return None
+
+    def _last(data):
+        # compute_overlays 的 _points 已濾掉 NaN，故末筆即最後一個有效值
+        return float(data[-1]["value"]) if data else None
+
+    snap: dict = {}
+    for s in ov.get("overlays") or []:
+        v = _last(s.get("data") or [])
+        if v is not None:
+            snap[s["id"]] = v
+    pane = ov.get("pane")
+    if pane:
+        for s in pane.get("series") or []:
+            v = _last(s.get("data") or [])
+            if v is not None:
+                snap[s["id"]] = v
+    return snap or None
 
 
 # 追蹤止損要記住「持倉期間出現過的最高價」。
@@ -214,7 +256,7 @@ def _settle_broker_exit(bot: Bot) -> bool:
             price = float(getattr(order, "filled_avg_price", 0) or 0)
             reason = "券商端止損/追蹤止損觸發（託管單成交，本機回填）"
             _record_and_notify(bot, "sell", qty, price, order, reason)
-            _record_decision(bot, Signal.SELL, reason, price, ACTION_SOLD)
+            _record_decision(bot, Signal.SELL, reason, price, ACTION_SOLD, qty=qty)
             _persist_peak(bot, None)
             _persist_protective_order_id(bot, None)
             return True
@@ -240,11 +282,18 @@ def _mark_checked(bot: Bot) -> None:
     bot.last_checked_at = now
 
 
-def _record_decision(bot, signal: str, reason: str, price, action: str) -> None:
-    """寫一筆決策審計（Phase 6 step-08）。
+def _record_decision(
+    bot, signal: str, reason: str, price, action: str,
+    volume=None, qty=None, indicators=None,
+) -> None:
+    """寫一筆決策審計（Phase 6 step-08；Phase 15 加 量/股數/指標快照）。
 
     連「沒成交但有決策」的時點都記（觀望 / 續抱 / 休市 / 購買力不足 / 熔斷），
-    讓自動跑真錢的系統可事後查驗每個決定。寫入失敗不可影響交易主流程，故吞例外。
+    讓自動跑真錢的系統可事後查驗每個決定，也是「讀教訓」的素材。寫入失敗不可影響
+    交易主流程，故吞例外。
+    - volume：決策當下那根 K 的成交量（量）；風控出場/休市等無 df 的時點為 None。
+    - qty：實際下單股數（買/賣才有；觀望/跳過為 None）。
+    - indicators：該策略當下指標快照（dict）；無資料時 None。
     """
     # 這裡是所有決策分支的單一漏斗 → 順手發即時事件給前端可視化（fire-and-forget）
     emit_activity(
@@ -254,6 +303,9 @@ def _record_decision(bot, signal: str, reason: str, price, action: str) -> None:
             "action": action,
             "reason": reason,
             "price": safe_float(price),
+            "volume": safe_float(volume),
+            "qty": safe_float(qty),
+            "indicators": indicators,
         },
     )
     db = SessionLocal()
@@ -264,6 +316,9 @@ def _record_decision(bot, signal: str, reason: str, price, action: str) -> None:
             signal=signal,
             reason=reason,
             price=price,
+            volume=volume,
+            qty=qty,
+            indicators=indicators,
             action=action,
         ))
         db.commit()
@@ -395,25 +450,32 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, exit_reason)
-        _record_decision(bot, Signal.SELL, exit_reason, current_price, ACTION_SOLD)
+        _record_decision(bot, Signal.SELL, exit_reason, current_price, ACTION_SOLD, qty=qty)
         _persist_peak(bot, None)  # 已平倉，清掉最高價紀錄
         return
 
     # --- 風控沒觸發 → 看策略要不要賣 ---
-    signal, reason = _run_strategy(bot)
+    # ctx（量 + 指標快照）是選用第三元素：測試常 monkeypatch _run_strategy 回 2-tuple，
+    # 用 *rest 容錯，沒帶就視為空 ctx，不影響賣出主流程。
+    signal, reason, *rest = _run_strategy(bot)
+    ctx = rest[0] if rest else {}
+    vol, inds = ctx.get("volume"), ctx.get("indicators")
     if signal == Signal.SELL:
         if not _cancel_protective_order(bot):  # 同上：cancel-before-sell
-            _record_decision(bot, Signal.SELL, "券商端保護單已先成交，待下一輪回填", current_price, ACTION_HOLD)
+            _record_decision(bot, Signal.SELL, "券商端保護單已先成交，待下一輪回填",
+                             current_price, ACTION_HOLD, volume=vol, indicators=inds)
             return
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, reason)
-        _record_decision(bot, Signal.SELL, reason, current_price, ACTION_SOLD)
+        _record_decision(bot, Signal.SELL, reason, current_price, ACTION_SOLD,
+                         volume=vol, qty=qty, indicators=inds)
         _persist_peak(bot, None)
     else:
         # 策略買進/觀望且風控未觸發 → 續抱（不重複買進）
         print(f"[{bot.name}] 續抱 {bot.symbol}：{reason}")
-        _record_decision(bot, signal, reason, current_price, ACTION_HOLD)
+        _record_decision(bot, signal, reason, current_price, ACTION_HOLD,
+                         volume=vol, indicators=inds)
 
 
 def _handle_flat(bot: Bot, current_price: float) -> None:
@@ -422,16 +484,21 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
     if bot.peak_price is not None:
         _persist_peak(bot, None)
 
-    signal, reason = _run_strategy(bot)
+    # ctx（量 + 指標快照）是選用第三元素，沿用容錯：測試 monkeypatch 回 2-tuple 時 ctx 為空
+    signal, reason, *rest = _run_strategy(bot)
+    ctx = rest[0] if rest else {}
+    vol, inds = ctx.get("volume"), ctx.get("indicators")
     if signal != Signal.BUY:
         print(f"[{bot.name}] {bot.symbol} 空手觀望：{reason}")
-        _record_decision(bot, signal, reason, current_price, ACTION_HOLD)
+        _record_decision(bot, signal, reason, current_price, ACTION_HOLD,
+                         volume=vol, indicators=inds)
         return
 
     # --- 想買進：組合回撤熔斷（step-09，只擋進不擋出）---
     if check_breaker()["tripped"]:
         print(f"[{bot.name}] 組合回撤熔斷中，跳過買進 {bot.symbol}。")
-        _record_decision(bot, signal, "組合回撤熔斷，暫停新增曝險", current_price, ACTION_SKIPPED_CIRCUIT_BREAKER)
+        _record_decision(bot, signal, "組合回撤熔斷，暫停新增曝險", current_price,
+                         ACTION_SKIPPED_CIRCUIT_BREAKER, volume=vol, indicators=inds)
         return
 
     # 用設定金額換算要買幾股。
@@ -451,6 +518,7 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
                 bot, signal,
                 f"trade_amount ${bot.trade_amount:.2f} 買不起 1 股（${current_price:.2f}；券商端止損需整股）",
                 current_price, ACTION_SKIPPED_NO_BUYING_POWER,
+                volume=vol, indicators=inds,
             )
             return
     else:
@@ -464,12 +532,14 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
             bot, signal,
             f"購買力不足：需 ${qty * current_price:.2f}，可用 ${buying_power:.2f}",
             current_price, ACTION_SKIPPED_NO_BUYING_POWER,
+            volume=vol, indicators=inds,
         )
         return
 
     order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
     _record_and_notify(bot, "buy", qty, current_price, order, reason)
-    _record_decision(bot, Signal.BUY, reason, current_price, ACTION_BOUGHT)
+    _record_decision(bot, Signal.BUY, reason, current_price, ACTION_BOUGHT,
+                     volume=vol, qty=qty, indicators=inds)
     _persist_peak(bot, current_price)  # 進場價當作最高價的起點
     if needs_protection:
         # 把止損託管到券商端（失敗不擋主流程，下一輪自癒補掛）
@@ -500,10 +570,14 @@ def _run_strategy(bot: Bot):
     emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
-        return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
+        return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
     emit_activity(bot, "compute_signal", f"計算 {bot.strategy} 策略訊號")
     strategy = get_strategy(bot.strategy, bot.params or {})
     signal, reason = strategy.generate_signal(df)
+
+    # 決策上下文（量 + 指標快照）：抓到 df 就算一次，沿 3-tuple 帶回給 _record_decision。
+    ctx = {"volume": _bar_volume(df),
+           "indicators": _indicator_snapshot(bot.strategy, bot.params or {}, df)}
 
     # meta 二級過濾：只把關進場（BUY）。流程與 layer_validation.MetaFilteredStrategy
     # 一致，線上行為才等於樣本外驗證量到的那條（+27.8 OOS EV）。SELL/HOLD 不受影響。
@@ -516,10 +590,10 @@ def _run_strategy(bot: Bot):
         regime = classify_regime(features)
         take, conf = should_take(signal, features, regime)
         if not take:
-            return Signal.HOLD, f"[meta {regime}] 二級過濾否決進場（信心 {conf:.2f} < 門檻）"
+            return Signal.HOLD, f"[meta {regime}] 二級過濾否決進場（信心 {conf:.2f} < 門檻）", ctx
         reason = f"二級信心 {conf:.2f}｜{reason}"
 
-    return signal, reason
+    return signal, reason, ctx
 
 
 def _run_adaptive_strategy(bot: Bot):
@@ -539,35 +613,41 @@ def _run_adaptive_strategy(bot: Bot):
     emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線（自適應）")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
-        return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
+        return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
+
+    # 量先算（df 已在手）；指標快照要等選定策略後才算（用該策略的公式）。
+    vol = _bar_volume(df)
 
     try:
         emit_activity(bot, "compute_signal", "自適應：辨識市場狀態、挑選策略中")
         regime_map = get_regime_strategy_map(bot.symbol)
     except Exception as e:
-        return Signal.HOLD, f"自適應：對照表建立失敗（{e}），保守觀望"
+        return Signal.HOLD, f"自適應：對照表建立失敗（{e}），保守觀望", {"volume": vol, "indicators": None}
 
     features = compute_features(df)
     pick = select_strategy(features, regime_map)
     if pick["fallback"] or not pick["strategy"]:
-        return Signal.HOLD, f"自適應：{pick['regime']} 狀態無可信策略，保守觀望"
+        return (Signal.HOLD, f"自適應：{pick['regime']} 狀態無可信策略，保守觀望",
+                {"volume": vol, "indicators": None})
 
     strategy = get_strategy(pick["strategy"], pick["params"])
     signal, reason = strategy.generate_signal(df)
+    # 指標快照用「這輪實際挑中的策略」的公式（與固定策略路徑同一套 compute_overlays）
+    ctx = {"volume": vol, "indicators": _indicator_snapshot(pick["strategy"], pick["params"], df)}
 
     # Phase 7 step-05：二級過濾（meta-labeling）只把關「進場」。一級給了 BUY，再問二級
     # 「這次該不該下注、信心多高」；信心不足 → 縮回觀望（出場 SELL 不受此門檻影響）。
     if signal == Signal.BUY:
         take, conf = should_take(signal, features, pick["regime"])
         if not take:
-            return Signal.HOLD, (
+            return (Signal.HOLD, (
                 f"[自適應 {pick['regime']}→{pick['strategy']}] 二級過濾否決進場"
                 f"（信心 {conf:.2f} < 門檻），保守觀望"
-            )
+            ), ctx)
         reason = f"二級信心 {conf:.2f}｜{reason}"
 
     # 把「這輪是哪個狀態挑了哪個策略」帶進原因，方便決策審計事後查驗
-    return signal, f"[自適應 {pick['regime']}→{pick['strategy']}] {reason}"
+    return signal, f"[自適應 {pick['regime']}→{pick['strategy']}] {reason}", ctx
 
 
 def _record_and_notify(bot, side, qty, price, order, reason) -> None:

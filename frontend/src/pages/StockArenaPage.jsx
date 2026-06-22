@@ -9,7 +9,7 @@
 // 純呈現：EV 一律後端算（含成本 / 隔日成交 / OOS 切分），前端不重算。
 // 顏色吃 theme/NEON，不寫死 hex。
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -44,6 +44,13 @@ export default function StockArenaPage() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [deployKey, setDeployKey] = useState(null); // 正在部署哪一列（strategy_key）
+  // 批次部署設定（每股多策略艦隊）：前 N 名、每單金額、輪詢秒數
+  const [topN, setTopN] = useState(5);
+  const [tradeAmount, setTradeAmount] = useState(1000);
+  const [intervalSec, setIntervalSec] = useState(60);
+  const [busyBatch, setBusyBatch] = useState(false);
+
+  const board = useMemo(() => result?.leaderboard || [], [result]);
 
   const runScan = useCallback(async () => {
     setErr("");
@@ -77,7 +84,8 @@ export default function StockArenaPage() {
           strategy: entry.strategy_key,
           symbol: sym,
           params: entry.params || {},
-          trade_amount: 1000,
+          trade_amount: Number(tradeAmount),
+          check_interval_sec: Number(intervalSec),
         });
         await api.startBot(bot.id); // 立刻掛排程開始虛擬交易（全程 paper）
         setMsg(`已部署 paper bot：${sym} · ${entry.strategy_key}（每股策略虛擬交易，之後看汰弱審查員適配排行）`);
@@ -87,10 +95,58 @@ export default function StockArenaPage() {
         setDeployKey(null);
       }
     },
-    [result, symbol]
+    [result, symbol, tradeAmount, intervalSec]
   );
 
-  const board = result?.leaderboard || [];
+  // 批次：把排行榜「前 N 名」一次部署成 N 個 paper bot（每股多策略並存）。
+  // 去重：先查現有 bot，同 symbol+strategy 已存在就跳過，避免重複建艦。
+  const deployTopN = useCallback(async () => {
+    setErr("");
+    setMsg("");
+    setBusyBatch(true);
+    try {
+      const sym = (result?.symbol || symbol).toUpperCase();
+      const top = board.slice(0, Number(topN));
+      if (top.length === 0) {
+        setMsg("排行榜是空的，先開跑擂台。");
+        return;
+      }
+      const existing = await api.getBots();
+      const seen = new Set(
+        (existing || [])
+          .filter((b) => (b.symbol || "").toUpperCase() === sym)
+          .map((b) => b.strategy)
+      );
+      let created = 0;
+      let skipped = 0;
+      for (const entry of top) {
+        if (seen.has(entry.strategy_key)) {
+          skipped += 1;
+          continue;
+        }
+        const bot = await api.createBot({
+          name: `Arena-${sym}-${entry.strategy_key}`,
+          strategy: entry.strategy_key,
+          symbol: sym,
+          params: entry.params || {},
+          trade_amount: Number(tradeAmount),
+          check_interval_sec: Number(intervalSec),
+        });
+        await api.startBot(bot.id); // 全程 paper
+        seen.add(entry.strategy_key);
+        created += 1;
+      }
+      setMsg(
+        `已部署 ${created} 個 paper bot（${sym}）` +
+          (skipped ? `，跳過 ${skipped} 個已存在` : "") +
+          "。每股多策略並存，之後看汰弱審查員適配排行。"
+      );
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyBatch(false);
+    }
+  }, [result, symbol, board, topN, tradeAmount, intervalSec]);
 
   return (
     <Box>
@@ -140,6 +196,46 @@ export default function StockArenaPage() {
             <Typography variant="h6" sx={{ mb: 1 }}>
               {result.symbol} 排行榜（{result.strategies_tested} 策略 · {result.combos_tested} 組合 · 依 OOS EV）
             </Typography>
+
+            {/* 批次部署：一鍵把前 N 名變成 N 個 paper bot（每股多策略並存） */}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1.5}
+              alignItems={{ sm: "center" }}
+              sx={{ mb: 2 }}
+            >
+              <TextField
+                size="small"
+                label="部署前 N 名"
+                type="number"
+                value={topN}
+                onChange={(e) => setTopN(e.target.value)}
+                sx={{ width: 120 }}
+              />
+              <TextField
+                size="small"
+                label="每單金額($)"
+                type="number"
+                value={tradeAmount}
+                onChange={(e) => setTradeAmount(e.target.value)}
+                sx={{ width: 120 }}
+              />
+              <TextField
+                size="small"
+                label="輪詢秒數"
+                type="number"
+                value={intervalSec}
+                onChange={(e) => setIntervalSec(e.target.value)}
+                sx={{ width: 110 }}
+              />
+              <Button variant="contained" onClick={deployTopN} disabled={busyBatch}>
+                {busyBatch ? "部署中…" : `🚀 部署前 ${topN} 名為 paper bots`}
+              </Button>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
+              輪詢秒數＝每隔幾秒檢查一次行情；止損是券商端 GTC 單即時成交、不受此延遲影響（大型自動艦隊才需拉到 300 省額度）。已存在的同股同策略 bot 會自動跳過。
+            </Typography>
+
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
                 <TableHead>

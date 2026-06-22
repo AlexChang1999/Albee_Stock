@@ -53,6 +53,12 @@
 
 ### 新增
 
+- **每股多策略艦隊落地 + 決策教訓 Log（Phase 15）**：把「每股只有一個 bot」真正變成「每股多策略並存虛擬交易」，並讓每筆決策記下夠深的脈絡供回頭學。
+  - **個股擂台一鍵建艦隊**：`StockArenaPage` 加批次「🚀 部署前 N 名為 paper bots」（N 預設 5）+ 可設每單金額／輪詢秒數；去重（先查 `getBots` 比對同 `symbol+strategy` 已存在就跳過），一次把排行榜前段策略各建一個 paper bot 對該股虛擬交易，最佳由汰弱審查員浮現。全程 paper、複用既有 `createBot`/`startBot`，零新後端。
+  - **決策 Log 加深（量／股數／指標快照）**：`DecisionLog` 加 `volume`（決策當下那根 K 的成交量）、`qty`（實際下單股數）、`indicators`（該策略當下指標快照，如 `{"rsi":28.1}`）三欄（Alembic `4810c1ec25d9`）。`bot_manager._run_strategy`/`_run_adaptive_strategy` 改回 `(signal, reason, ctx)`，ctx 的指標快照**複用 `indicator_overlays.compute_overlays`** 取各序列末根（零策略改寫）；各決策分支補傳，`get_bot_decisions` API 補三鍵。
+  - **讀教訓（LLM 覆盤摘要）**：新端點 `POST /chat/bot-lessons`——撈該 Bot 決策史（含量/股數/指標）請本機 LLM 產一段「為何那些點買/賣/沒動、下次怎麼改」的檢討。複用 chat 既有 LLM client + **雲端外送閘**（`_cloud_blocked`）；只讀資料不下單。DecisionsPage 表格加「量／股數」欄 + 指標 tooltip + 頭部「📖 讀教訓」鈕。
+  - **「300 秒太久？」結論**：不是。`AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL=300` 只用於大型自動艦隊防 Alpaca 限流；手動部署本來就 60 秒，且止損是券商端 GTC 單即時成交、不受輪詢延遲影響。改為**部署時可自選輪詢秒數**，全域預設不動。
+  - 測試：`tests/test_bot_lessons.py`（新，端點閘 400/404 + stub 成功）+ 擴 `test_decision_log`（寫入量/股數/指標、`_run_strategy` 回 3-tuple ctx）+ `StockArenaPage.test.jsx`（新，批次部署 + 去重）+ `DecisionsPage.test.jsx`（量欄 + 讀教訓）。藍圖 `docs/history/phase-15-fleet-and-lessons/`。
 - **公司可操作化 + 漏斗透明 + 個股策略擂台（Phase 14）**：把「探勘管線預設全關、後端能力沒前端入口、淘汰項被藏」三個讓人困惑的缺口補上，全程人工逐步推進（不開任何排程旗標）。
   - **每個 AI 角色一顆「跑一次」鈕**：戰情頁漏斗卡變操作台（收料／探勘／驗證／部署／審查），跑完漏斗數字當場跳動。後端新增 `backend/routers/discovery.py`（`/discovery/run`、`/triage/{id}`、`/validate-batch`、`/auto-deploy`）+ `POST /collector/scan`；`run_discovery_batch`/`run_auto_validate`/`run_auto_deploy_knowledge` 加 `force`（只略過 `*_ENABLED`，**安全閘全留**）。
   - **文字 → 策略橋可見可按**：CollectorPage 每筆加「🔬 試轉策略」（打 `/discovery/triage/{id}`，走共用 `discovery.triage_one`，防幻覺約束不變）、顯示 `triage_note` + 候選連結；`_serialize` 補 `triage_note`/`knowledge_id`。

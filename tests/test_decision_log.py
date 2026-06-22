@@ -150,6 +150,42 @@ def test_risk_sold_decision(tmp_path, monkeypatch):
     print("✅ 各分支決策審計寫入測試通過")
 
 
+def test_decision_records_volume_qty_indicators(tmp_path, monkeypatch):
+    """Phase 15：買進決策要落 量(volume)/股數(qty)/指標快照(indicators)。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    _patch(monkeypatch, position=None, price=50)
+    ctx = {"volume": 123456.0, "indicators": {"ma_short": 231.2, "ma_long": 228.4}}
+    # 真實路徑回 3-tuple（signal, reason, ctx）
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉", ctx))
+    bid = _create_bot(TestSession)
+    bm.run_bot_once(bid)
+    d = _last_decision(TestSession, bid)
+    assert d.action == ACTION_BOUGHT
+    assert d.volume == 123456.0
+    assert d.qty == 20.0  # round(1000 / 50, 4)
+    assert d.indicators == {"ma_short": 231.2, "ma_long": 228.4}
+
+
+def test_run_strategy_returns_ctx_with_volume_and_indicators(monkeypatch):
+    """_run_strategy 回 (signal, reason, ctx)；ctx 帶 df 末根量 + compute_overlays 指標快照。"""
+    import pandas as pd
+    from types import SimpleNamespace
+
+    n = 40
+    df = pd.DataFrame({
+        "timestamp": pd.date_range("2026-01-01", periods=n, freq="D"),
+        "open": [100.0] * n, "high": [101.0] * n, "low": [99.0] * n,
+        "close": [100.0] * n,                       # 平盤 → ma_crossover 觀望，不觸發 meta 路徑
+        "volume": [1000.0 + i for i in range(n)],
+    })
+    monkeypatch.setattr(bm.market_data, "get_bars", lambda *a, **k: df)
+    bot = SimpleNamespace(symbol="TEST", strategy="ma_crossover",
+                          params={"short_window": 5, "long_window": 20}, adaptive=False)
+    signal, reason, ctx = bm._run_strategy(bot)
+    assert ctx["volume"] == 1039.0                  # 末根 1000+39
+    assert ctx["indicators"] and "ma_short" in ctx["indicators"]  # 指標快照有值
+
+
 def test_decisions_endpoint_roundtrip(tmp_path, monkeypatch):
     """GET /bots/{id}/decisions：建幾筆 → 查回來，依時間倒序、受 limit 上限。"""
     from fastapi.testclient import TestClient

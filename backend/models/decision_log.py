@@ -12,7 +12,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
 
 from backend.database import Base
 
@@ -48,6 +48,19 @@ class DecisionLog(Base):
 
     # 決策當下的參考價（最新成交價；查不到時為 None）
     price = Column(Float, nullable=True)
+
+    # 決策當下那根 K 線的成交量（「量」；查不到/風控出場無 df 時為 None）。
+    # 跟價格一起記，事後才看得出「在放量還是縮量時進出場」（讀教訓的關鍵脈絡）。
+    volume = Column(Float, nullable=True)
+
+    # 實際下單股數（買進/賣出才有；觀望/續抱/休市/跳過等沒下單的動作為 None）。
+    # 跟 TradeLog.qty 同義，但 DecisionLog 連「沒成交但有決策」的時點都收，這裡冗存方便單表回顧。
+    qty = Column(Float, nullable=True)
+
+    # 決策當下「該策略看的指標」快照（如 {"rsi":28.1,"ma_short":231.2,"ma_long":228.4}）。
+    # 來源：services.indicator_overlays.compute_overlays 取各序列最後一根值（與圖表同公式）。
+    # 用 JSON 存（不同策略指標欄位不同）；風控出場/抓不到資料時為 None。
+    indicators = Column(JSON, nullable=True)
 
     # 實際採取的動作（見上方 ACTION_* 常數）
     action = Column(String, nullable=False)

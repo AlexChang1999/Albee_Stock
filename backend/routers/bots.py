@@ -274,6 +274,9 @@ def get_bot_decisions(bot_id: int, limit: int = 50, db: Session = Depends(get_db
             "signal": r.signal,
             "reason": r.reason,
             "price": r.price,
+            "volume": r.volume,          # 決策當下那根 K 的成交量（量）
+            "qty": r.qty,                # 實際下單股數（觀望/跳過為 None）
+            "indicators": r.indicators,  # 該策略當下指標快照（dict 或 None）
             "action": r.action,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }

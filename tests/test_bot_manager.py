@@ -444,7 +444,7 @@ def test_settle_broker_exit_backfills_trade(tmp_path, monkeypatch):
     monkeypatch.setattr(bm, "_record_and_notify",
                         lambda bot, side, qty, price, order, reason: trades.append((side, qty, price)))
     monkeypatch.setattr(bm, "_record_decision",
-                        lambda bot, signal, reason, price, action: decisions.append((signal, action)))
+                        lambda bot, signal, reason, price, action, **k: decisions.append((signal, action)))
 
     bot_id = _create_bot(TestSession, stop_loss_pct=0.05, peak_price=120.0)
     s = TestSession()
