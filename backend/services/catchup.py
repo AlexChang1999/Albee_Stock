@@ -102,6 +102,7 @@ def _daily_steps():
     from backend.services.discovery import run_discovery_batch
     from backend.services.auto_validate import run_auto_validate
     from backend.services.auto_deploy_knowledge import run_auto_deploy_knowledge
+    from backend.services.bot_review import run_bot_review
     from backend.services.daily_watch import run_leader_backtest
     from backend.services.heartbeat import run_daily_heartbeat
     from backend.services.tracking import run_tracking_check
@@ -111,6 +112,7 @@ def _daily_steps():
         ("discovery_bridge", settings.DISCOVERY_ENABLED, settings.DISCOVERY_HOUR, run_discovery_batch),
         ("auto_validate", settings.AUTO_VALIDATE_ENABLED, settings.AUTO_VALIDATE_HOUR, run_auto_validate),
         ("auto_deploy_knowledge", settings.AUTO_DEPLOY_KNOWLEDGE_ENABLED, settings.AUTO_DEPLOY_KNOWLEDGE_HOUR, run_auto_deploy_knowledge),
+        ("bot_review", settings.BOT_REVIEW_ENABLED, settings.BOT_REVIEW_HOUR, run_bot_review),
         ("leader_backtest", settings.LEADER_BACKTEST_ENABLED, settings.LEADER_BACKTEST_HOUR, run_leader_backtest),
         ("heartbeat_daily", True, settings.HEARTBEAT_HOUR, run_daily_heartbeat),
         ("tracking_check", True, settings.TRACKING_CHECK_HOUR, run_tracking_check),

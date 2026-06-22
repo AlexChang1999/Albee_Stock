@@ -66,6 +66,7 @@ def run_auto_deploy_knowledge(db=None) -> dict:
                 created = deploy_curated_to_bots(
                     db, row, symbols,
                     trade_amount=settings.AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT,
+                    check_interval_sec=settings.AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL,  # 艦隊降載
                     activate=True,   # 自動部署：建好即啟用，掛網跑 paper
                 )
                 db.commit()          # 逐筆 commit，防中途斷

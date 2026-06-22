@@ -111,5 +111,12 @@ class Bot(Base):
     demoted_at = Column(DateTime, nullable=True)
     demote_reason = Column(String, nullable=True)
 
+    # ----- bot 汰弱審查員（Phase 13，軟汰弱）-----
+    # 審查員每日考核 paper Bot 實跑績效，夠久夠多筆但不及格 → 「軟汰弱」：停用 + 標記，
+    # **不刪資料**（保留交易史 / 審計 / strategy_symbol_fit 的來源）。與 tracking 降級
+    # （demoted_at，回測 vs Paper 對帳分岔）語義不同，分開記。None = 還在艦隊、沒被汰。
+    culled_at = Column(DateTime, nullable=True)      # 被汰弱的時間
+    cull_reason = Column(String, nullable=True)      # 汰弱理由（帶績效數字的一句話，給人看）
+
     def __repr__(self) -> str:
         return f"<Bot {self.id} {self.name} ({self.strategy} on {self.symbol})>"

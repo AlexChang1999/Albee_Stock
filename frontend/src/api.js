@@ -238,6 +238,21 @@ export const api = {
   factorsCsvUrl: (symbol) =>
     `${BASE_URL}/factors/export.csv${symbol ? `?symbol=${symbol}` : ""}`,
 
+  // ===== Phase 13：bot 汰弱審查員（哪股票配哪策略 fit 排行 / 汰弱清單 / 手動觸發）=====
+  // fit 排行：good→poor→insufficient，同級按報酬率高到低（可選 strategy/symbol/verdict）
+  getBotReviewFits: ({ strategy, symbol, verdict, limit = 200 } = {}) =>
+    request(
+      `/bot-review/fits?limit=${limit}` +
+        `${strategy ? `&strategy=${strategy}` : ""}` +
+        `${symbol ? `&symbol=${symbol}` : ""}` +
+        `${verdict ? `&verdict=${verdict}` : ""}`
+    ),
+  // 被審查員汰弱的 Bot 清單（最近汰的在前）
+  getBotReviewCulled: ({ limit = 200 } = {}) =>
+    request(`/bot-review/culled?limit=${limit}`),
+  // 手動跑一輪審查（考核 + 軟汰弱），回統計
+  runBotReview: () => request(`/bot-review/run`, { method: "POST" }),
+
   // ===== Phase 10 step-04：市場蒐集員（爬蟲收料，靈感收件匣）=====
   // 收件匣素材清單：依抓取時間由新到舊（可選 limit / status）
   getCollectorFinds: ({ limit = 50, status } = {}) =>

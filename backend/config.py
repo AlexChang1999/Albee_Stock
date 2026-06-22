@@ -221,7 +221,15 @@ class Settings:
     AUTO_VALIDATE_SYMBOL: str = os.getenv("AUTO_VALIDATE_SYMBOL", "SPY")
     AUTO_VALIDATE_SYMBOLS: str = os.getenv(
         "AUTO_VALIDATE_SYMBOLS",
-        "SPY,AAPL,JPM,XOM,JNJ,CAT,WMT,NVDA",
+        # 跨產業 38 檔籃子（跳過醫療/零售）：大盤指數 5、半導體 10、能源 3、科技 10、
+        # 金融 5、工業 5。籃子越寬越難過擬合單檔個性；各檔跑 walk-forward → OOS EV 池化
+        # （evolution._validate_basket）。增刪標的＝改這一行（或用 .env 覆寫）。
+        "SPY,QQQ,DIA,IWM,VTI,"                                  # 大盤指數 5
+        "NVDA,AMD,AVGO,TSM,INTC,QCOM,MU,AMAT,LRCX,ASML,"        # 半導體 10
+        "XOM,CVX,COP,"                                          # 能源 3
+        "AAPL,MSFT,GOOGL,AMZN,META,TSLA,NFLX,ADBE,CRM,ORCL,"    # 科技 10
+        "JPM,BAC,WFC,GS,MS,"                                    # 金融 5
+        "CAT,BA,HON,UNP,GE",                                    # 工業 5
     )
     AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL: int = int(
         os.getenv("AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL", "5")
@@ -254,12 +262,17 @@ class Settings:
     #   - AUTO_DEPLOY_KNOWLEDGE_HOUR：每日幾點跑（建議排在 auto_validate 之後，吃到當天剛驗過的）。
     #   - AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT：每個 Bot 下單金額（美元）。
     #   - AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN：一輪最多部署幾筆知識（防一次建爆 Bot）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL：自動建的艦隊每幾秒輪檢一次行情。每筆知識
+    #     部署到全部標的（N 檔各一個 Bot），好策略一多艦隊就大（5 策略 × 38 檔 = 190 Bot）。
+    #     190 Bot × 60 秒 ≈ 3.2 req/s，逼近 Alpaca 免費 200/min；拉長到 300 秒壓到 ~0.6 req/s，
+    #     省 CPU 與 API 額度。手動 deploy（人按）仍用既有 60 秒預設，不受此值影響。
     AUTO_DEPLOY_KNOWLEDGE_ENABLED: bool = os.getenv("AUTO_DEPLOY_KNOWLEDGE_ENABLED", "false").lower() in ("1", "true", "yes")
     AUTO_DEPLOY_FROM_STATUS: str = os.getenv("AUTO_DEPLOY_FROM_STATUS", "curated")
     AUTO_DEPLOY_KNOWLEDGE_SYMBOLS: str = os.getenv("AUTO_DEPLOY_KNOWLEDGE_SYMBOLS", "SPY,QQQ,AAPL")
     AUTO_DEPLOY_KNOWLEDGE_HOUR: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_HOUR", "9"))
     AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT: float = float(os.getenv("AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT", "1000"))
     AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN", "3"))
+    AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL", "300"))
 
     @property
     def auto_deploy_knowledge_symbols(self) -> list[str]:
@@ -270,6 +283,32 @@ class Settings:
             if s and s not in out:
                 out.append(s)
         return out
+
+    # ========================================================
+    # bot 汰弱審查員（fleet 績效考核 + 軟汰弱 + 哪股票配哪策略 fit 註冊）
+    # ========================================================
+    # 自動部署讓 Bot 數 ＝ 好策略數 × 標的數，會持續長（5 策略 × 38 檔 = 190 Bot）。
+    # 審查員每日定時：①算每支 paper Bot 實跑績效（performance.compute_bot_stats）→
+    # ②把「(策略, 標的) → 績效 + 評等」upsert 進 strategy_symbol_fit 註冊表（哪股票配哪策略）→
+    # ③實跑夠久夠多筆但不及格的 Bot「軟汰弱」（is_active=False + culled_at，不刪資料）。
+    # ★ 只碰 promotion_status="paper"；proposed_live/approved_live（真錢相關）一律不動。
+    #   - BOT_REVIEW_ENABLED：總開關（預設 false，不掛排程、與沒這功能一樣）。
+    #   - BOT_REVIEW_HOUR：每日幾點跑（排在 auto_deploy_knowledge(9) 之後，先建 Bot 再有得審）。
+    #   - BOT_REVIEW_MIN_ROUND_TRIPS：判生死的最低完整買賣次數。低於此＝樣本不足，續觀察不汰。
+    #   - BOT_REVIEW_MIN_AGE_DAYS：建立後給的觀察寬限天數。沒滿這天數不汰（給新 Bot 時間表現）。
+    #   - BOT_REVIEW_CULL_WINRATE / CULL_RETURN_PCT / CULL_MAX_DD：汰弱門檻——夠久夠多筆後，
+    #     勝率 < CULL_WINRATE 或 報酬率 < CULL_RETURN_PCT 或 最大回撤 > CULL_MAX_DD 任一中 → 汰。
+    #   - BOT_REVIEW_GOOD_WINRATE：評「good」的勝率門檻（且報酬率為正）；good/poor 寫進 fit 表。
+    #   - BOT_REVIEW_MAX_CULL_PER_RUN：一輪最多汰幾支（防門檻設錯一次誤殺整片艦隊）。
+    BOT_REVIEW_ENABLED: bool = os.getenv("BOT_REVIEW_ENABLED", "false").lower() in ("1", "true", "yes")
+    BOT_REVIEW_HOUR: int = int(os.getenv("BOT_REVIEW_HOUR", "11"))
+    BOT_REVIEW_MIN_ROUND_TRIPS: int = int(os.getenv("BOT_REVIEW_MIN_ROUND_TRIPS", "10"))
+    BOT_REVIEW_MIN_AGE_DAYS: int = int(os.getenv("BOT_REVIEW_MIN_AGE_DAYS", "14"))
+    BOT_REVIEW_CULL_WINRATE: float = float(os.getenv("BOT_REVIEW_CULL_WINRATE", "40"))
+    BOT_REVIEW_CULL_RETURN_PCT: float = float(os.getenv("BOT_REVIEW_CULL_RETURN_PCT", "0"))
+    BOT_REVIEW_CULL_MAX_DD: float = float(os.getenv("BOT_REVIEW_CULL_MAX_DD", "35"))
+    BOT_REVIEW_GOOD_WINRATE: float = float(os.getenv("BOT_REVIEW_GOOD_WINRATE", "55"))
+    BOT_REVIEW_MAX_CULL_PER_RUN: int = int(os.getenv("BOT_REVIEW_MAX_CULL_PER_RUN", "20"))
 
     # ========================================================
     # 開機補跑（catch-up on boot）— 維運安全軌

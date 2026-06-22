@@ -26,6 +26,7 @@ ACTION_SKIPPED_MARKET_CLOSED = "skipped_market_closed"      # 休市跳過
 ACTION_SKIPPED_NO_BUYING_POWER = "skipped_no_buying_power"  # 購買力不足跳過（step-05）
 ACTION_SKIPPED_CIRCUIT_BREAKER = "skipped_circuit_breaker"  # 組合回撤熔斷跳過（step-09）
 ACTION_DEMOTED = "demoted"                            # tracking error 自動降級停 Bot（維運安全軌 H3）
+ACTION_BOT_CULLED = "bot_culled"                      # 審查員汰弱停 Bot（Phase 13，績效不及格軟汰弱）
 
 
 class DecisionLog(Base):

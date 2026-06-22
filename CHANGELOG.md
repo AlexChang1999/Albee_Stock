@@ -25,9 +25,10 @@
   #19 adx_trend 19.86、#16 momentum 2.62、#29 stochastic 1.49），但機制性 `curated→validated`
   （curated 是人晉升專屬狀態、重驗一律退回 validated，待人去 LibraryPage 逐筆重晉升）。Neon 終態：
   validated 5 / rejected 26 / curated 0。零 reject、零失敗。
-- **兩個預設待拍板**：① 自動部署觸發狀態 `AUTO_DEPLOY_FROM_STATUS`：`curated`（現預設，保留人晉升閘）
-  vs `validated`（全自動少一道人把關）。② 重驗 / 驗證窗：10 年（現 `AUTO_VALIDATE_DAYS=3650`，慢但穩）
-  vs 先用 3 年快跑清庫。
+- **兩個預設已拍板（2026-06-22）**：① 自動部署觸發狀態 → **`validated`**（跳過 `validated→curated`
+  人工閘，驗過即自動建 paper bot；只建 paper、不碰真錢，安全）。config 預設仍留 `curated`（不影響
+  VM 等其他機器姿態），由**本機 `.env` 覆寫** `AUTO_DEPLOY_FROM_STATUS=validated`。② 驗證窗 → **10 年**
+  （`AUTO_VALIDATE_DAYS=3650` 維持）。新增治理機制見上方「bot 汰弱審查員（Phase 13）」。
 - **Neon schema 遷移（已手動套 + 修幽靈 rev，2026-06-22）**：`deployed_at` 遷移 `b9c0d1e2f3a4` 已套 Neon
   （current=head）。★踩到坑：Neon `alembic_version` 原卡在幽靈 rev `7d4a3f725a53`（本機/VM/所有遠端分支
   全查無、source 從沒進 git——當初某機直接對 Neon 套了一個建 `validation_symbols` 表的遷移卻沒 commit）。
@@ -44,6 +45,28 @@
   自動把達標 bot 提議送審**。下一步可加「auto_propose」排程串起最後一哩。
 
 ### 新增
+
+- **bot 汰弱審查員（Phase 13，新「職位」：考核 paper 艦隊 + 哪股票配哪策略 fit 註冊 + 軟汰弱）**：
+  自動部署讓 Bot 數＝好策略數 × 標的數會持續長（5 策略 × 38 檔 = 190 Bot）。沒人管，艦隊很快
+  塞滿「驗證時看似可以、實跑卻爛」的 Bot。新增每日排程的審查員補這個治理缺口：
+  - 服務 `backend/services/bot_review.py: run_bot_review()`（仿 `auto_validate`/`auto_deploy_knowledge`
+    範式）：取 `promotion_status="paper"` 且 `culled_at IS NULL` 的 Bot，逐支用既有
+    `performance.compute_bot_stats` 算實跑績效 →（a）**upsert** 進 `strategy_symbol_fits` 註冊表
+    （(策略,標的) 唯一，記 good/poor/insufficient 評等）；（b）夠久（≥`BOT_REVIEW_MIN_AGE_DAYS`）
+    夠多筆（≥`BOT_REVIEW_MIN_ROUND_TRIPS`）但不及格（勝率/報酬/回撤任一過線）→ **軟汰弱**
+    （`is_active=False` + `culled_at`/`cull_reason`，**不刪資料**、不平倉、不撤保護單）。
+  - 評等與汰弱判斷抽純函式 `review_bot(stats, age_days, *, 門檻...)`（好寫測試、零魔術數字）。
+  - 界線（仿 tracking 降級）：★**只碰 paper Bot**，`proposed_live`/`approved_live`（真錢相關）一律
+    不動；冪等（汰過的下輪不再碰）；失敗隔離（單支例外不擋整批）；一輪汰弱數受
+    `BOT_REVIEW_MAX_CULL_PER_RUN` 上限保護（門檻設錯不會一次清空艦隊）；落 `DecisionLog`
+    （`ACTION_BOT_CULLED`）+ 通知。
+  - 新模型 `backend/models/strategy_symbol_fit.py: StrategySymbolFit`；`Bot` 加 `culled_at`/`cull_reason`
+    （Alembic `dad6dd04845c`）。排程 `bot_manager.schedule_bot_review`（仿 `schedule_auto_validate`）+
+    `main.py` 接線 + `catchup._daily_steps` 納入（排在自動部署之後，先建 Bot 再有得審）。
+  - API `backend/routers/bot_review.py`：`GET /bot-review/fits`（適配排行）、`GET /bot-review/culled`
+    （汰弱清單）、`POST /bot-review/run`（手動跑一輪）。前端頁 `frontend/src/pages/BotReviewPage.jsx`
+    （fit 排行 + 汰弱清單 + 立即審查鈕，左側導覽「汰弱審查員」）。
+  - config 新增 `BOT_REVIEW_*`（總開關**預設 false**、時刻 11 點、門檻全可調）。要開才掛排程。
 
 - **知識庫策略 → 自動建 Paper Bot 排程（curated→bot 自動部署，補全自動管線）**：先前「驗證過的好
   策略」要手動逐筆 deploy 才變 Bot。新增每日排程把目標狀態的知識自動部署成 Paper Bot 掛網跑：
@@ -88,6 +111,18 @@
 
 ### 變更
 
+- **驗證籃子擴成 38 檔跨產業（8→38）**：`config.py: AUTO_VALIDATE_SYMBOLS` 預設由 8 檔擴為
+  大盤指數 5 / 半導體 10 / 能源 3 / 科技 10 / 金融 5 / 工業 5（跳過醫療、零售）。籃子越寬越難
+  過擬合單檔個性；各檔跑 walk-forward → OOS EV 池化（judge 零改、只改餵料）。`.env.example` 同步。
+  ★代價：單筆驗證更慢（38 檔 × ~30 folds），建議搭 `AUTO_VALIDATE_BATCH_SIZE=1` + 下面的 keepalives。
+- **Neon 長算連線：database.py engine 加 TCP keepalives（取代 worktree-only 的臨時 .env hack）**：
+  `_connect_args` 對非 SQLite 加 `keepalives=1/idle=30/interval=10/count=5`。`pool_pre_ping` 只救
+  「借用前」的死連線，救不到「已借出、正跑 38 檔 × 10 年驗證 / 審查員掃艦隊」中途被 Neon
+  serverless 掐掉的閒置連線（算完 commit/rollback 才炸 `server closed the connection unexpectedly`）。
+  keepalives 讓 OS 每 30 秒探測撐住連線。所有長算 Neon 操作（含 VM/排程端）一勞永逸受惠。
+- **自動建艦隊降載：`AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL`（預設 300 秒）**：每筆知識部署到全部
+  標的，好策略一多艦隊就大（190 Bot × 60 秒 ≈ 3.2 req/s 逼近 Alpaca 免費 200/min）；自動建的 Bot
+  改用 5 分鐘輪檢（~0.6 req/s）。手動 deploy 仍用 60 秒預設，不受影響。
 - **自動驗證回看窗：3 年 → 10 年（`AUTO_VALIDATE_DAYS` 1100→3650）**：~30 folds、橫跨更多市況、
   最難過擬合。代價是單筆驗證變慢（N 檔 × ~30 folds）。★前提：`market_data.get_bars(source=
   DATA_SOURCE)` 要抓得到 10 年（Alpaca 免費約 2016 起 ~9 年、yfinance 全史）；抓不到只會 fold 變少、

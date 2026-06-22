@@ -27,7 +27,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity, bot_review
 from backend.services.bot_activity import hub as activity_hub
 from backend.services.scheduler_lock import acquire_scheduler_lock, release_scheduler_lock
 
@@ -91,6 +91,9 @@ async def lifespan(app: FastAPI):
         # 知識庫策略 → 自動建 Paper Bot（排在驗證之後，吃到當天剛驗過的；★只建 paper、
         # 不碰真錢雙閘；AUTO_DEPLOY_KNOWLEDGE_ENABLED=false = 完全不掛）
         bot_manager.schedule_auto_deploy_knowledge(settings.AUTO_DEPLOY_KNOWLEDGE_HOUR)
+        # Phase 13：bot 汰弱審查員（排在自動部署之後，先建 Bot 再有得審）。考核 paper 艦隊、
+        # 記 fit、軟汰弱不及格 Bot（★只碰 paper；BOT_REVIEW_ENABLED=false = 完全不掛）
+        bot_manager.schedule_bot_review(settings.BOT_REVIEW_HOUR)
         # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
         bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)
@@ -187,3 +190,4 @@ app.include_router(collector.router)
 app.include_router(political.router)
 app.include_router(macro.router)
 app.include_router(positions.router)
+app.include_router(bot_review.router)

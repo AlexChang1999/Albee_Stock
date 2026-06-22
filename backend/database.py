@@ -21,7 +21,22 @@ from backend.config import settings
 # 「invalid connection option」。所以依 DATABASE_URL 的方言判斷，只在 SQLite 才加，
 # 兌現 CLAUDE.md「換 PostgreSQL 只改 .env、程式不用改」的承諾。
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
-_connect_args = {"check_same_thread": False} if _is_sqlite else {}
+# 非 SQLite（雲端 PostgreSQL/Neon）：加 psycopg2 TCP keepalives（libpq 連線參數）。
+# 為何不只靠下面的 pool_pre_ping：pre_ping 只在「從池子借出『前』」檢查連線死活，
+# 救不到「已借出、正跑長算（38 檔 × 10 年驗證、審查員掃整片艦隊）」中途被 Neon
+# serverless 掐掉的閒置連線——那段整個沒回 DB、pre_ping 沒機會插手，等算完要
+# commit/rollback 才炸 `server closed the connection unexpectedly`。keepalives 讓 OS
+# 每 30 秒對閒置連線送一個 TCP 探測「撐住」它，長算中途不被斷。SQLite 是本機檔案不需要。
+_connect_args = (
+    {"check_same_thread": False}
+    if _is_sqlite
+    else {
+        "keepalives": 1,            # 啟用 TCP keepalive
+        "keepalives_idle": 30,      # 閒置 30 秒就開始送探測
+        "keepalives_interval": 10,  # 探測間隔 10 秒
+        "keepalives_count": 5,      # 連 5 次沒回應才判定斷線
+    }
+)
 
 # 雲端 PostgreSQL（Neon）會把「閒置太久」的連線從伺服器端直接斷掉，連線池裡那條
 # 已死的 socket 下次拿來用就炸 `SSL connection has been closed unexpectedly`

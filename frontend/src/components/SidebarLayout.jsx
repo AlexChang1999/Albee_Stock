@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: "/", label: "監控中心", end: true },
   { to: "/company", label: "公司戰情" },
   { to: "/promotions", label: "董事會核准" },
+  { to: "/bot-review", label: "汰弱審查員" },
   { to: "/factors", label: "因子報表" },
   { to: "/collector", label: "市場蒐集員" },
   { to: "/political", label: "政治專討員" },
