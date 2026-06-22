@@ -29,6 +29,26 @@
   color-scheme: dark;
 }
 
+/* 亮色模式（E1）：App.jsx 切換時在 <body> 設 data-mode="light"，
+   整套底色變數換亮色；NEON 數據色共用（亮底上是飽和點綴）。 */
+body[data-mode="light"] {
+  --ink: #16243f; /* 主文字：深海軍藍 */
+  --ink-soft: #5a6a88; /* 次要文字：灰藍 */
+  --panel: #ffffff; /* 卡片/面板底：白 */
+  --bg-base: #eef2f9; /* 頁面底：冷調淺灰藍 */
+  --line: rgba(22, 36, 63, 0.14); /* 深色髮絲線 */
+  color-scheme: light;
+}
+
+/* 亮底上的光暈與顆粒收斂（深色那套會讓淺底看起來髒） */
+body[data-mode="light"]::before {
+  opacity: 0.015;
+}
+body[data-mode="light"]::-webkit-scrollbar-thumb {
+  background: rgba(22, 36, 63, 0.2);
+  background-clip: content-box;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -110,4 +130,18 @@ body::before {
 
 ::selection {
   background: rgba(77, 163, 255, 0.28);
+}
+
+/* 尊重「減少動態效果」系統偏好（無障礙 prefers-reduced-motion）：
+   使用者若在 OS 開了「減少動態」，把全站動畫/轉場幾乎關掉，
+   避免前庭不適。涵蓋 App 進場的 albeeFadeUp、卡片 hover 的 transition 等。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

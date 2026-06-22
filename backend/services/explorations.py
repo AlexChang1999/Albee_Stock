@@ -200,6 +200,55 @@ def _upsert_index_line(filename: str, new_line: str) -> None:
     idx.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
 
 
+def filename_for_knowledge(knowledge_id: int, strategy_key: str) -> str:
+    """策展決定檔名：knowledge-{id:04d}-{strategy}.md（與回測檢討的 run- 前綴區隔，不撞檔）。"""
+    return f"knowledge-{int(knowledge_id):04d}-{_safe(strategy_key)}.md"
+
+
+def write_knowledge_note(
+    knowledge_id: int, strategy_key: str, decision: str, reason: str,
+    references: list[str] | None = None,
+) -> str:
+    """
+    把一次「策展決定」（晉升 / 退回）的理由寫成 md 檔並更新路標索引 ── Phase 8 step-06。
+
+    沿用既有檔案記憶機制（同資料夾 / 同 INDEX 路標 / 同防穿越讀取），只是檔名前綴用
+    knowledge- 與回測檢討區隔。形成「採用 / 淘汰理由」的可追溯軌跡，連結 knowledge id。
+    同一個 knowledge id 重覆決定 → 覆寫同檔、取代同一行路標（不重覆）。
+
+    :param decision: 'promote'（晉升 curated）或 'reject'（退回）等決定字串
+    :return: 寫出的檔名
+    """
+    ensure_dir()
+    references = references or []
+    fname = filename_for_knowledge(knowledge_id, strategy_key)
+    date = datetime.now().strftime("%Y-%m-%d")
+    summary = _summary_from(reason)
+
+    frontmatter = (
+        "---\n"
+        f"knowledge_id: {knowledge_id}\n"
+        f"date: {date}\n"
+        f"strategy: {strategy_key}\n"
+        f"decision: {decision}\n"
+        f"references: {json.dumps(references, ensure_ascii=False)}\n"
+        "---\n\n"
+    )
+    body = (
+        f"# 策展決定：{decision}（knowledge #{knowledge_id} · {strategy_key}）\n\n"
+        f"{reason.strip()}\n"
+    )
+    (_dir() / fname).write_text(frontmatter + body, encoding="utf-8")
+
+    # 路標行：- [knowledge#3 · 2026-06-08 · rsi · promote](檔名) — 摘要
+    line = (
+        f"- [knowledge#{knowledge_id} · {date} · {strategy_key} · {decision}]"
+        f"({fname}) — {summary}"
+    )
+    _upsert_index_line(fname, line)
+    return fname
+
+
 def select_candidates_by_meta(run, entries: list[dict], limit: int = 3) -> list[str]:
     """
     回退挑檔（當 LLM 挑檔失敗時用）：同策略優先，再補最近的其他探討，

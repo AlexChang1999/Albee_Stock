@@ -106,3 +106,54 @@ def compute_bot_stats(trades: list[dict]) -> dict:
         "return_pct": round(return_pct, 2),
         "max_drawdown_pct": round(max_dd, 2),
     }
+
+
+def compute_round_trip_returns(trades: list[dict]) -> list[dict]:
+    """
+    把交易紀錄配成「完整買賣回合」，回傳每回合的明細（時間正序）。
+
+    維運安全軌 H3（tracking error 對帳）的左半邊資料源：拿每回合的
+    **已實現報酬率 %** 去跟回測的 OOS expectancy_pct 比（單位都是 %，
+    才能跨「回測全進全出複利 vs Paper 固定 trade_amount」比較）。
+
+    配對邏輯與 compute_bot_stats 同一套「平均成本法」（買進累加持倉成本、
+    賣出用平均進場價算損益），邊界行為也一致：沒持倉的賣單跳過、部分成交按比例。
+
+    :param trades: 交易紀錄（時間正序），每筆需有 side("buy"/"sell")、qty、price；
+                   可選 created_at（帶進回合的 closed_at，沒有就 None）。
+    :return: 每回合一個 dict：
+        - profit     : 該回合已實現損益($)
+        - entry_cost : 該回合的進場成本($)＝平均進場價 × 賣出股數
+        - return_pct : 已實現報酬率(%) = profit / entry_cost × 100
+        - closed_at  : 平倉那筆賣單的時間（trades 沒帶就 None）
+    """
+    position_qty = 0.0
+    position_cost = 0.0
+    round_trips: list[dict] = []
+
+    for t in trades or []:
+        side = t.get("side")
+        qty = float(t.get("qty") or 0)
+        price = float(t["price"]) if t.get("price") is not None else 0.0
+
+        if side == "buy":
+            position_qty += qty
+            position_cost += price * qty
+
+        elif side == "sell":
+            if position_qty <= 0:
+                continue  # 沒持倉卻出現賣單（資料異常），跳過不計
+            sell_qty = min(qty, position_qty)
+            avg_entry = position_cost / position_qty
+            entry_cost = avg_entry * sell_qty
+            profit = (price - avg_entry) * sell_qty
+            round_trips.append({
+                "profit": round(profit, 4),
+                "entry_cost": round(entry_cost, 4),
+                "return_pct": round(profit / entry_cost * 100, 4) if entry_cost > 0 else 0.0,
+                "closed_at": t.get("created_at"),
+            })
+            position_cost -= entry_cost
+            position_qty -= sell_qty
+
+    return round_trips

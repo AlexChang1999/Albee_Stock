@@ -2,55 +2,48 @@
 // Albee Stock 主畫面（編排層）
 // ============================================================
 // 拆分後 App.jsx 只負責三件事：
-//   1. 管所有「狀態」(useState)——資料、表單、分頁、訊息
+//   1. 管所有「狀態」(useState)——資料、表單、訊息
 //   2. 管所有「跟後端溝通的動作」(handleXxx)——呼叫 api.js
-//   3. 把資料與動作「分配」給各個畫面元件 (components/)
+//   3. 把資料與動作經 react-router 的 <Outlet context> 分配給各路由頁
 //
-// 實際長相（卡片、表格、彈窗）都搬到 components/ 底下，這裡只管邏輯。
-// 想改某一塊的外觀，去對應的元件檔改；想改資料流，留在這裡改。
+// Phase 9 step-01：導覽從「上方 4 個 Tabs」重構成「左側 sidebar + 路由多頁」。
+//   外殼在 components/SidebarLayout.jsx，各頁在 pages/。狀態與動作仍集中在這裡，
+//   行為與原本一致（只是改用路由切換、儀表板瘦身）。
 
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { api } from "./api";
-import {
-  Typography,
-  Container,
-  Box,
-  TextField,
-  Button,
-  Alert,
-  CssBaseline,
-  Tabs,
-  Tab,
-  ToggleButton,
-  ToggleButtonGroup,
-  LinearProgress,
-} from "@mui/material";
+import { CssBaseline } from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
-import { theme } from "./theme";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { buildTheme } from "./theme";
 import { useDashboardData } from "./hooks/useDashboardData";
 
-// 用 React.lazy 延遲載入 K 線圖元件：
-//   一般 import 會把元件打包進主程式，一開啟網頁就下載。
-//   lazy(() => import(...)) 改成「第一次真的要顯示它時」才另外去下載那一塊。
-//   K 線圖在獨立分頁、不是一進來就看的東西，很適合這樣切出去。
-//   注意：lazy 元件一定要包在 <Suspense> 裡，提供載入中的替代畫面。
-const LightweightChart = lazy(() => import("./LightweightChart"));
-// 2x2 多視窗網格（同樣延遲載入，因為內含圖表庫）
-const ChartGrid = lazy(() => import("./components/ChartGrid"));
+// 外殼 + 路由頁
+import SidebarLayout from "./components/SidebarLayout";
+import DashboardPage from "./pages/DashboardPage";
+import AiExplorePage from "./pages/AiExplorePage";
+import ChartsPage from "./pages/ChartsPage";
+import FundamentalsPage from "./pages/FundamentalsPage";
+import BacktestToolsPage from "./pages/BacktestToolsPage";
+import TradesPage from "./pages/TradesPage";
+import BacktestRunsPage from "./pages/BacktestRunsPage";
+import PresetsPage from "./pages/PresetsPage";
+import ExplorationsPage from "./pages/ExplorationsPage";
+import DecisionsPage from "./pages/DecisionsPage";
+import LibraryPage from "./pages/LibraryPage";
+import EvolutionPage from "./pages/EvolutionPage";
+import FunnelPage from "./pages/FunnelPage";
+import StockArenaPage from "./pages/StockArenaPage";
+import CompanyPage from "./pages/CompanyPage";
+import PromotionPage from "./pages/PromotionPage";
+import FactorsPage from "./pages/FactorsPage";
+import CollectorPage from "./pages/CollectorPage";
+import PoliticalPage from "./pages/PoliticalPage";
+import BotReviewPage from "./pages/BotReviewPage";
 
-// 畫面元件（每塊一個檔案）
-import Header from "./components/Header";
-import AccountCard from "./components/AccountCard";
-import BotList from "./components/BotList";
-import BacktestPanel from "./components/BacktestPanel";
-import AutoBacktestPanel from "./components/AutoBacktestPanel";
-import TradesTable from "./components/TradesTable";
+// 常駐元件（外殼與彈窗）
 import EditBotDialog from "./components/EditBotDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
-import StrategyWorkbench from "./components/StrategyWorkbench";
-import LiveQuote from "./components/LiveQuote";
-import FundamentalsPanel from "./components/FundamentalsPanel";
-import RecommendationsPanel from "./components/RecommendationsPanel";
 import { buildBotPriceLines, findBotForSymbol } from "./utils/priceLines";
 
 // 風控欄位用：使用者在畫面填「百分比整數」（例如 10 代表 10%），
@@ -68,27 +61,35 @@ function decimalToPct(v) {
 
 function App() {
   // 儀表板資料（account/status/bots/trades）與「重新載入」都交給自訂 Hook 管理。
-  // App 不必再自己寫一堆 useState 與 loadAll，畫面邏輯更乾淨。
   const { account, status, bots, trades, loading, loadError, reload } =
     useDashboardData();
 
-  // 這兩個是「操作」產生的訊息（建立/刪除/啟停 Bot 的結果），跟資料載入分開管理。
+  // 操作訊息（建立/刪除/啟停 Bot 的結果），跟資料載入分開管理。
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  // 亮/暗模式（E1）：記在 localStorage，下次開啟沿用；預設深藍。
+  const [colorMode, setColorMode] = useState(
+    () => localStorage.getItem("albee-color-mode") || "dark"
+  );
+  const muiTheme = useMemo(() => buildTheme(colorMode), [colorMode]);
+  useEffect(() => {
+    // index.css 用 body[data-mode] 切整套 CSS 變數（頁面底色、髮絲線…）
+    document.body.dataset.mode = colorMode;
+    localStorage.setItem("albee-color-mode", colorMode);
+  }, [colorMode]);
+  const toggleColorMode = () =>
+    setColorMode((m) => (m === "dark" ? "light" : "dark"));
 
   // 圖表目前顯示的股票（chartSymbol）與輸入框的暫存值（symbolInput）
   const [chartSymbol, setChartSymbol] = useState("AAPL");
   const [symbolInput, setSymbolInput] = useState("AAPL");
 
   // 圖表水位線：找出正在跑這檔股票的 Bot，算出進場/止損/追蹤止盈三條線。
-  // 用 useMemo 快取，避免每次 render 都產生新陣列（否則圖表會一直重畫線）。
   const chartPriceLines = useMemo(
     () => buildBotPriceLines(findBotForSymbol(bots, chartSymbol)),
     [bots, chartSymbol]
   );
-
-  // 目前分頁：0 = 儀表板，1 = K 線圖
-  const [tab, setTab] = useState(0);
 
   // K 線圖佈局："single" = 單一大圖，"grid" = 2x2 四格同時盯
   const [chartView, setChartView] = useState("single");
@@ -105,12 +106,12 @@ function App() {
 
   // 正在編輯的 Bot（null = 沒有打開編輯視窗）
   const [editBot, setEditBot] = useState(null);
-
   // 準備要刪除的 Bot（null = 沒有打開刪除確認視窗）
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // 準備要停止的 Bot（停止 = 危險動作，尤其實盤；與刪除一樣走二次確認）
+  const [stopTarget, setStopTarget] = useState(null);
 
   // 一鍵部署：把 AI 推薦的策略直接變成一個啟用中的 Bot
-  // （重用既有 createBot + startBot 流程，不另造邏輯）
   async function handleDeploy(rec) {
     setError("");
     setMessage("");
@@ -180,19 +181,34 @@ function App() {
   }
 
   // 啟動 / 停止 Bot（依目前狀態切換）
+  // 啟動：直接做（無風險）。停止：危險動作 → 先開確認視窗，由 confirmStop 真正執行。
   async function handleToggleActive(bot) {
     setError("");
     setMessage("");
+    if (bot.is_active) {
+      setStopTarget(bot); // 開「停止 Bot」確認視窗
+      return;
+    }
     try {
-      if (bot.is_active) {
-        await api.stopBot(bot.id);
-        setMessage(`已停止 Bot：${bot.name}`);
-      } else {
-        await api.startBot(bot.id);
-        setMessage(
-          `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
-        );
-      }
+      await api.startBot(bot.id);
+      setMessage(
+        `已啟動 Bot：${bot.name}（每 ${bot.check_interval_sec || 60} 秒檢查一次）`
+      );
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  // 真正執行停止（由停止確認視窗的「停止」鈕觸發）
+  async function confirmStop() {
+    const bot = stopTarget;
+    setStopTarget(null);
+    setError("");
+    setMessage("");
+    try {
+      await api.stopBot(bot.id);
+      setMessage(`已停止 Bot：${bot.name}`);
       reload();
     } catch (e) {
       setError(e.message);
@@ -212,6 +228,17 @@ function App() {
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  // 打開編輯視窗：後端存小數，編輯框顯示百分比整數
+  function openEdit(b) {
+    setEditBot({
+      ...b,
+      tp: decimalToPct(b.take_profit_pct),
+      sl: decimalToPct(b.stop_loss_pct),
+      trail: decimalToPct(b.trailing_stop_pct),
+      interval: b.check_interval_sec ?? 60,
+    });
   }
 
   // 儲存編輯（送出 PUT）
@@ -238,206 +265,92 @@ function App() {
     }
   }
 
+  // 傳給各路由頁的共享資料/動作（頁面用 useOutletContext() 取）
+  const outletContext = {
+    // 資料
+    account,
+    status, // 交易環境（含 live_armed，給 AI 探勘頁的實盤部署確認用）
+    bots,
+    trades,
+    loading, // 載入中（給各頁畫 Skeleton 載入態，E3）
+    reload, // 讓子頁（如自動化試跑後）能要求重抓 account/bots/trades
+    // Bot 動作
+    onToggleActive: handleToggleActive,
+    onRun: handleRun,
+    onEdit: openEdit,
+    onDelete: setDeleteTarget,
+    onDeploy: handleDeploy,
+    // 圖表
+    chartView,
+    setChartView,
+    symbolInput,
+    setSymbolInput,
+    chartSymbol,
+    setChartSymbol,
+    chartPriceLines,
+    onPriceLineDrag: handlePriceLineDrag,
+    // 回測
+    btForm,
+    setBtForm,
+    btResult,
+    btLoading,
+    onBacktest: handleBacktest,
+  };
+
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={muiTheme}>
       {/* CssBaseline：統一各瀏覽器的預設樣式 */}
       <CssBaseline />
 
-      {/* 頂部標題列（右側顯示模擬／實盤標示） */}
-      <Header status={status} />
+      <BrowserRouter>
+        <Routes>
+          <Route
+            element={
+              <SidebarLayout
+                status={status}
+                loading={loading}
+                error={error}
+                message={message}
+                onClearMessage={() => setMessage("")}
+                loadError={loadError}
+                context={outletContext}
+                colorMode={colorMode}
+                onToggleColorMode={toggleColorMode}
+              />
+            }
+          >
+            <Route index element={<DashboardPage />} />
+            <Route path="company" element={<CompanyPage />} />
+            <Route path="promotions" element={<PromotionPage />} />
+            <Route path="bot-review" element={<BotReviewPage />} />
+            <Route path="factors" element={<FactorsPage />} />
+            <Route path="collector" element={<CollectorPage />} />
+            <Route path="political" element={<PoliticalPage />} />
+            <Route path="trades" element={<TradesPage />} />
+            <Route path="backtest-runs" element={<BacktestRunsPage />} />
+            <Route path="presets" element={<PresetsPage />} />
+            <Route path="explorations" element={<ExplorationsPage />} />
+            <Route path="decisions" element={<DecisionsPage />} />
+            <Route path="evolution" element={<EvolutionPage />} />
+            <Route path="library" element={<LibraryPage />} />
+            <Route path="funnel" element={<FunnelPage />} />
+            <Route path="stock-arena" element={<StockArenaPage />} />
+            <Route path="ai-explore" element={<AiExplorePage />} />
+            <Route path="charts" element={<ChartsPage />} />
+            <Route path="fundamentals" element={<FundamentalsPage />} />
+            <Route path="backtest" element={<BacktestToolsPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
 
-      {/* 實盤警告橫幅：雙閘全開時才出現，提醒此刻下單會動真錢 */}
-      {status?.live_armed && (
-        <Alert severity="error" square sx={{ borderRadius: 0 }}>
-          ⚠️ 目前是<strong>實盤模式</strong>，所有下單將動用<strong>真實資金</strong>。請務必確認。
-        </Alert>
-      )}
-
-      {/* 載入中時，在標題列下方顯示一條細進度條（抓資料時才出現） */}
-      {loading && <LinearProgress />}
-
-      {/* 主內容（左）＋ 策略工作台（右）橫向並排 */}
-      <Box sx={{ display: "flex", alignItems: "flex-start" }}>
-        <Container
-          maxWidth={false}
-          sx={{
-            flex: 1,
-            minWidth: 0,
-            py: 4,
-            px: { xs: 2, md: 4 },
-            // 進場輕輕浮現（index.css 定義的 keyframes，克制的高級感）
-            animation: "albeeFadeUp .5s ease both",
-          }}
-        >
-        {/* 訊息提示：操作錯誤(error) 與 資料載入錯誤(loadError) 都顯示出來 */}
-        {(error || loadError) && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error || loadError}
-          </Alert>
-        )}
-        {message && (
-          <Alert severity="success" sx={{ mb: 2 }}>
-            {message}
-          </Alert>
-        )}
-
-        {/* 分頁切換 */}
-        <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 3 }}>
-          <Tab label="儀表板" />
-          <Tab label="AI 探勘" />
-          <Tab label="K 線圖" />
-          <Tab label="基本面" />
-        </Tabs>
-
-        {/* ===== 儀表板分頁（純監控中心：上方總覽 + AI 燈號，下方服役中 Bot）===== */}
-        {tab === 0 && (
-          <Box>
-            <AccountCard account={account} />
-            {/* AI 市場燈號：不再手填表單建 Bot，改引導去「AI 探勘」一鍵部署 */}
-            <Alert
-              severity="info"
-              sx={{ mb: 2 }}
-              action={
-                <Button color="inherit" size="small" onClick={() => setTab(1)}>
-                  前往 AI 探勘
-                </Button>
-              }
-            >
-              想新增 Bot？讓 AI 盤前海選幫你挑高期望值（EV）策略，檢閱後一鍵部署。
-            </Alert>
-            <BotList
-              bots={bots}
-              onToggle={handleToggleActive}
-              onRun={handleRun}
-              onEdit={(b) =>
-                setEditBot({
-                  ...b,
-                  // 後端存小數，編輯框顯示百分比整數
-                  tp: decimalToPct(b.take_profit_pct),
-                  sl: decimalToPct(b.stop_loss_pct),
-                  trail: decimalToPct(b.trailing_stop_pct),
-                  interval: b.check_interval_sec ?? 60,
-                })
-              }
-              onDelete={setDeleteTarget}
-            />
-            {/* 全自動掃描最佳策略（一鍵最強）：放在手動回測上方當主打 */}
-            <AutoBacktestPanel />
-            <BacktestPanel
-              btForm={btForm}
-              setBtForm={setBtForm}
-              btResult={btResult}
-              btLoading={btLoading}
-              onRun={handleBacktest}
-            />
-            <TradesTable trades={trades} />
-          </Box>
-        )}
-
-        {/* ===== AI 探勘分頁 ===== */}
-        {tab === 1 && <RecommendationsPanel onDeploy={handleDeploy} />}
-
-        {/* ===== K 線圖分頁 ===== */}
-        {tab === 2 && (
-          <Box>
-            {/* 佈局切換：單一大圖 / 2x2 四格 */}
-            <Box sx={{ mb: 2 }}>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={chartView}
-                onChange={(e, v) => v && setChartView(v)}
-              >
-                <ToggleButton value="single">單一</ToggleButton>
-                <ToggleButton value="grid">2x2 四格</ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-
-            {/* Suspense：lazy 圖表元件還在下載時，先顯示 fallback 提示 */}
-            <Suspense
-              fallback={
-                <Box
-                  sx={{
-                    height: "75vh",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "text.secondary",
-                  }}
-                >
-                  圖表載入中…
-                </Box>
-              }
-            >
-              {chartView === "grid" ? (
-                // ----- 2x2 網格：每格自帶代號輸入與水位線 -----
-                <ChartGrid bots={bots} onPriceLineDrag={handlePriceLineDrag} />
-              ) : (
-                // ----- 單一大圖 -----
-                <Box>
-                  <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
-                    <TextField
-                      size="small"
-                      label="股票代號"
-                      value={symbolInput}
-                      onChange={(e) => setSymbolInput(e.target.value)}
-                      placeholder="例如：AAPL、TSLA、NVDA"
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={() => setChartSymbol(symbolInput.toUpperCase())}
-                    >
-                      載入圖表
-                    </Button>
-                  </Box>
-                  {/* 即時報價（WebSocket 推送，價格會即時跳動、依漲跌變色） */}
-                  <Box sx={{ mb: 2 }}>
-                    <LiveQuote symbol={chartSymbol} />
-                  </Box>
-                  {/* 可拖拉調整大小的圖表容器（拉右下角） */}
-                  <Box
-                    sx={{
-                      resize: "vertical",
-                      overflow: "hidden",
-                      height: "75vh",
-                      minHeight: 320,
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 1,
-                    }}
-                  >
-                    <LightweightChart
-                      symbol={chartSymbol}
-                      height="100%"
-                      priceLines={chartPriceLines}
-                      onPriceLineDrag={handlePriceLineDrag}
-                    />
-                  </Box>
-                  <Typography variant="caption" color="text.secondary">
-                    提示：拖曳圖表框的右下角可調整高度。
-                  </Typography>
-                </Box>
-              )}
-            </Suspense>
-          </Box>
-        )}
-
-        {/* ===== 基本面分頁 ===== */}
-        {tab === 3 && <FundamentalsPanel />}
-        </Container>
-
-        {/* 右側策略工作台（自管資料流，可收合／橫向拉寬） */}
-        <StrategyWorkbench />
-      </Box>
-
-      {/* 編輯 Bot 的彈出視窗 */}
+      {/* 編輯 Bot 的彈出視窗（常駐，不隨路由切換消失） */}
       <EditBotDialog
         editBot={editBot}
         setEditBot={setEditBot}
         onSave={handleEditSave}
       />
 
-      {/* 刪除 Bot 的確認視窗（取代原本的 window.confirm） */}
+      {/* 刪除 Bot 的確認視窗 */}
       <ConfirmDialog
         open={!!deleteTarget}
         title="刪除 Bot"
@@ -449,6 +362,23 @@ function App() {
         confirmText="刪除"
         onConfirm={confirmDelete}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* 停止 Bot 的確認視窗（停止 = 危險動作；實盤時文案加強提醒） */}
+      <ConfirmDialog
+        open={!!stopTarget}
+        title="停止 Bot"
+        message={
+          stopTarget
+            ? `確定要停止「${stopTarget.name}」嗎？停止後它將不再依排程監聽、也不會自動執行出場。${
+                status?.live_armed ? "（目前為實盤模式，請特別確認手上部位。）" : ""
+              }`
+            : ""
+        }
+        confirmText="停止"
+        confirmColor="warning"
+        onConfirm={confirmStop}
+        onClose={() => setStopTarget(null)}
       />
     </ThemeProvider>
   );

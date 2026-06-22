@@ -26,9 +26,18 @@ from fastapi.testclient import TestClient
 
 from backend.main import app
 from backend.database import SessionLocal
-from backend.models import BacktestRun
+from backend.models import BacktestRun, StrategyKnowledge
 
 client = TestClient(app)
+
+
+def _delete_knowledge(kid):
+    db = SessionLocal()
+    obj = db.query(StrategyKnowledge).filter(StrategyKnowledge.id == kid).first()
+    if obj:
+        db.delete(obj)
+        db.commit()
+    db.close()
 
 
 def test_preset_crud():
@@ -117,6 +126,40 @@ def test_backtest_runs_sorted_by_ev():
                 db.delete(obj)
         db.commit()
         db.close()
+
+
+def test_preset_to_knowledge_creates_candidate():
+    """方案「送進驗證」→ 複製成 StrategyKnowledge candidate（strategy/params 映射、notes 進 scenario）。"""
+    r = client.post("/presets", json={
+        "name": "送驗測試", "strategy_key": "rsi", "symbol": "AAPL",
+        "params": {"period": 21}, "notes": "震盪盤反轉",
+    })
+    pid = r.json()["id"]
+    kid = None
+    try:
+        r = client.post(f"/presets/{pid}/to-knowledge")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        kid = body["knowledge_id"]
+        assert body["status"] == "candidate"
+        assert body["strategy_key"] == "rsi"
+        # 查 DB 確認映射
+        db = SessionLocal()
+        k = db.query(StrategyKnowledge).filter(StrategyKnowledge.id == kid).first()
+        db.close()
+        assert k.params == {"period": 21}
+        assert k.scenario == "震盪盤反轉"
+        assert k.status == "candidate"
+    finally:
+        if kid:
+            _delete_knowledge(kid)
+        client.delete(f"/presets/{pid}")
+
+
+def test_preset_to_knowledge_missing_404():
+    """不存在的方案送驗 → 404。"""
+    r = client.post("/presets/999999/to-knowledge")
+    assert r.status_code == 404, r.text
 
 
 if __name__ == "__main__":

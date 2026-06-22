@@ -1,0 +1,113 @@
+# ============================================================
+# GitHub Actions — CI（部署前驗證關卡）+ CD（自動部署 VM）
+# ============================================================
+# 取代舊的 test.yml。兩段式：
+#   1. test  job：每次 push / PR 都跑「部署前驗證關卡」——先把可能炸的問題擋在上線前。
+#   2. deploy job：只有 push 到 main 且 test 全綠，才 SSH 進 VM 自動部署 + 健康檢查 + 失敗回滾。
+#
+# 「先預測可能出現的問題」靠 test job 這幾關：
+#   - 單元測試（策略 / 回測 / 績效）
+#   - 錯誤級 lint（語法錯、未定義名稱…真正會爆的，不管風格）
+#   - import 煙霧測試（import backend.main → 抓 import/設定階段就爆的問題）
+#   - DB 遷移可套用（alembic upgrade head 跑得過 → 抓壞掉的 migration）
+#   - 遷移漂移檢查（model 改了沒出 migration → 提醒，不擋）
+
+name: CI / CD
+
+on:
+  push:
+    branches: [main, master, develop] # develop 也跑（主力開發分支，舊設定漏了）
+  pull_request:
+
+jobs:
+  # ---------- 部署前驗證關卡 ----------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: 安裝依賴
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff   # lint 工具（不寫進 requirements，只 CI 用）
+
+      - name: 錯誤級 lint（只抓真正會爆的，不管風格）
+        # E9=語法錯, F63=無效比較, F7=語意錯, F82=未定義名稱
+        run: ruff check --select=E9,F63,F7,F82 backend/
+
+      - name: 煙霧測試（先驗系統起得來 + 核心端點回得了話）
+        # 把「啟動級故障」最快擋下：lifespan 起得來、核心 GET 端點回 200、無金鑰優雅降級。
+        # 也含在下面的全套裡，這裡單列只為先跑、失敗早退。
+        run: pytest -m smoke -q
+
+      - name: 單元測試（全套）
+        # 全套測試在無金鑰 / 無網路環境皆優雅降級通過（已驗 490 passed）。
+        # 含去重相關：test_political_watcher / test_notifier / test_collector / test_scheduler_lock。
+        run: pytest tests/ -q
+
+      - name: DB 遷移可套用（用臨時 SQLite，無金鑰）
+        # 沒設 DATABASE_URL → 自動退回 SQLite。能 upgrade head = migration 沒壞。
+        run: |
+          rm -f albee_stock.db
+          alembic upgrade head
+
+      - name: import 煙霧測試（抓啟動階段就爆的問題）
+        run: python -c "import backend.main; print('backend.main import OK')"
+
+      - name: 遷移漂移檢查（model 改了沒出 migration → 提醒，不擋）
+        continue-on-error: true
+        run: alembic check
+
+  # ---------- 前端驗證關卡（Vitest + build）----------
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安裝依賴（lockfile 一致安裝）
+        run: npm ci
+        working-directory: frontend
+
+      - name: 前端單元測試（Vitest）
+        run: npm run test
+        working-directory: frontend
+
+      - name: production build（驗 bundle 建得起來，抓 import/語法錯）
+        run: npm run build
+        working-directory: frontend
+
+  # ---------- 自動部署到 VM ----------
+  deploy:
+    needs: [test, frontend] # 後端 + 前端關卡都全綠才部署
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH 進 VM 跑部署腳本（失敗自動回滾）
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd ~/Albee_Stock
+            # 自我 bootstrap：先撈最新的 deploy.sh 本身（VM 可能還是舊 checkout、沒這支腳本）。
+            # 只 checkout 腳本、不動 HEAD，讓 deploy.sh 內部的 PREV/rollback 語意保持正確。
+            git fetch origin main
+            git checkout origin/main -- scripts/deploy.sh
+            bash scripts/deploy.sh main

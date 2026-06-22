@@ -10,7 +10,7 @@
 | 1 | `backend/strategies/<name>.py` | 策略本體，定義 `<Class>Strategy` | 沒策略可用 |
 | 2 | `backend/strategies/__init__.py` | import + 加進 `STRATEGY_REGISTRY` | `get_strategy('<name>')` 報「未知的策略」 |
 | 3 | `frontend/src/constants.js` | `STRATEGIES` 加 `{value,label}` | 前端下拉選單看不到 |
-| 4 | `docs/strategies/<name>.md` | 策略說明文件 | 別人看不懂這策略在幹嘛 |
+| 4 | `docs/reference/strategies/<name>.md` | 策略說明文件 | 別人看不懂這策略在幹嘛 |
 | 5 | `tests/test_<name>.py` | BUY/SELL/資料不足 三情境測試 | 沒測試保護，改壞不知道 |
 | 6 | 命名一致性（跨上面所有檔） | 註冊鍵 == `name` 屬性 == doc 檔名 == constants `value` | 對不起來、查無此策略 |
 

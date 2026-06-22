@@ -40,8 +40,14 @@ from backend.models.decision_log import (
 )
 from backend.services import market_data
 from backend.services.alpaca_client import alpaca_client
+from backend.services.bot_activity import emit as emit_activity, safe_float
 from backend.services.circuit_breaker import check_breaker
 from backend.services.notifier import notify
+from backend.services.protective_orders import (
+    order_matches_plan,
+    plan_protective_order,
+    whole_share_qty,
+)
 from backend.services.risk_manager import check_exit
 from backend.strategies import get_strategy, Signal
 from backend.strategies.lookback import required_lookback_days
@@ -68,6 +74,158 @@ def _persist_peak(bot: Bot, peak: float | None) -> None:
     bot.peak_price = peak
 
 
+def _persist_protective_order_id(bot: Bot, order_id: str | None) -> None:
+    """把某 Bot 的「券商端保護單 id」寫回資料庫（None 代表清除）。
+
+    與 _persist_peak 同款：用 bot.id 重查最新列更新、查不到靜默跳過，
+    並同步更新手上物件讓同一輪後續邏輯讀到新值。
+    """
+    db = SessionLocal()
+    try:
+        row = db.query(Bot).filter(Bot.id == bot.id).first()
+        if row is not None:
+            row.protective_order_id = order_id
+            db.commit()
+    finally:
+        db.close()
+    bot.protective_order_id = order_id
+
+
+# 券商端訂單「還活著（未成交、掛著）」的狀態集合。
+# Alpaca 的訂單狀態是字串列舉，這幾種代表單還掛在券商端等觸發。
+_OPEN_ORDER_STATUSES = {"new", "accepted", "held", "pending_new", "accepted_for_bidding"}
+
+
+def _order_status(order) -> str:
+    """把 Alpaca 訂單物件的 status（列舉或字串）統一轉成小寫字串。"""
+    status = getattr(order, "status", "")
+    return str(getattr(status, "value", status)).lower()
+
+
+def _place_protective_order(bot: Bot, qty: float, entry_price: float) -> None:
+    """進場成交後，把止損「託管」到券商端（維運安全軌 H1）。
+
+    依 Bot 風控設定掛 GTC 保護賣單（trailing 優先，否則 stop），
+    訂單 id 持久化到 bot.protective_order_id。
+    掛失敗**不擋主流程**（本機輪詢仍是備援），但發通知警告 + 交給下一輪自癒補掛。
+    """
+    if not settings.BROKER_STOP_ENABLED:
+        return
+    plan = plan_protective_order(
+        entry_price,
+        stop_loss_pct=bot.stop_loss_pct,
+        trailing_stop_pct=bot.trailing_stop_pct,
+    )
+    if plan is None:
+        return  # 沒設止損/追蹤止損 → 不掛（止盈 v1 仍走本機輪詢）
+    try:
+        if plan["type"] == "trailing_stop":
+            order = alpaca_client.submit_trailing_stop_order(
+                bot.symbol, qty, trail_percent=plan["trail_percent"]
+            )
+        else:
+            order = alpaca_client.submit_stop_order(
+                bot.symbol, qty, stop_price=plan["stop_price"]
+            )
+        _persist_protective_order_id(bot, str(getattr(order, "id", "")) or None)
+    except Exception as e:
+        # 保護單沒掛上 ≠ 交易失敗：本機輪詢照常守著，下一輪 _ensure 會再補掛
+        notify(f"⚠️ [{bot.name}] 券商端保護單掛單失敗（{e}），暫由本機輪詢守備，下一輪自動補掛。")
+
+
+def _ensure_protective_order(bot: Bot, position) -> None:
+    """每輪自癒（reconcile）：有持倉 + 有風控設定 → 券商端保護單必須活著且參數正確。
+
+    涵蓋：後端重啟（DB 記得 id）、保護單被手動撤掉、掛單曾失敗、
+    使用者改了止損百分比（撤舊掛新）。整段 best-effort：任何查詢失敗不阻斷主流程
+    （本機輪詢備援仍在）。
+    """
+    if not settings.BROKER_STOP_ENABLED:
+        return
+    try:
+        entry_price = float(position.avg_entry_price)
+        plan = plan_protective_order(
+            entry_price,
+            stop_loss_pct=bot.stop_loss_pct,
+            trailing_stop_pct=bot.trailing_stop_pct,
+        )
+        if plan is None:
+            # 風控設定被拿掉 → 不需要保護單；還掛著就撤
+            if bot.protective_order_id:
+                alpaca_client.cancel_order(bot.protective_order_id)
+                _persist_protective_order_id(bot, None)
+            return
+
+        if bot.protective_order_id:
+            order = alpaca_client.get_order(bot.protective_order_id)
+            if (
+                order is not None
+                and _order_status(order) in _OPEN_ORDER_STATUSES
+                and order_matches_plan(
+                    str(getattr(getattr(order, "order_type", None), "value", getattr(order, "order_type", ""))).lower(),
+                    float(order.stop_price) if getattr(order, "stop_price", None) else None,
+                    float(order.trail_percent) if getattr(order, "trail_percent", None) else None,
+                    plan,
+                )
+            ):
+                return  # 單活著且符合計畫 → 不動
+            # 單不見了 / 參數漂移 → 撤舊（best-effort）再補掛
+            alpaca_client.cancel_order(bot.protective_order_id)
+            _persist_protective_order_id(bot, None)
+
+        # 補掛：股數用「目前實際持倉」取整（保護單只支援整股；舊碎股倉位的零頭不掛）
+        qty = int(float(position.qty))
+        if qty > 0:
+            _place_protective_order(bot, qty, entry_price)
+    except Exception:
+        pass  # 自癒失敗不阻斷：本機輪詢照常守備，下一輪再試
+
+
+def _cancel_protective_order(bot: Bot) -> bool:
+    """本機要出場（風控/策略賣出）前，先撤掉券商端保護單。
+
+    券商端掛著 sell stop 時股數被保留，不先撤、本機市價賣單會被 Alpaca 拒絕。
+    :return: True = 已撤掉（或本來就沒掛），可以繼續本機賣出；
+             False = 撤不掉（多半是券商端剛好已成交）→ 呼叫端放棄本機賣出，
+             下一輪由 _settle_broker_exit 回填帳。
+    """
+    if not bot.protective_order_id:
+        return True
+    if alpaca_client.cancel_order(bot.protective_order_id):
+        _persist_protective_order_id(bot, None)
+        return True
+    return False
+
+
+def _settle_broker_exit(bot: Bot) -> bool:
+    """券商端保護單成交的「回填帳」：空手但 DB 記著保護單 id → 查單補記錄。
+
+    券商端止損觸發時本機不在場，TradeLog / DecisionLog 都沒記——
+    不回填的話績效統計（round-trip 配對）與 tracking error 對帳的資料源就是錯的。
+    :return: True = 這輪確認券商端已出場並補完帳。
+    """
+    order_id = bot.protective_order_id
+    if not order_id:
+        return False
+    try:
+        order = alpaca_client.get_order(order_id)
+        if order is not None and _order_status(order) == "filled":
+            qty = float(getattr(order, "filled_qty", 0) or 0)
+            price = float(getattr(order, "filled_avg_price", 0) or 0)
+            reason = "券商端止損/追蹤止損觸發（託管單成交，本機回填）"
+            _record_and_notify(bot, "sell", qty, price, order, reason)
+            _record_decision(bot, Signal.SELL, reason, price, ACTION_SOLD)
+            _persist_peak(bot, None)
+            _persist_protective_order_id(bot, None)
+            return True
+        # 沒成交卻空手（撤單/過期/人工平倉）：保護單已無意義，撤掉 + 清 id
+        alpaca_client.cancel_order(order_id)
+        _persist_protective_order_id(bot, None)
+    except Exception:
+        pass  # 查不到先不動，下一輪再試（best-effort）
+    return False
+
+
 def _mark_checked(bot: Bot) -> None:
     """記錄這個 Bot「最後一次成功跑完檢查」的時間，給前端顯示排程是否在動。"""
     now = datetime.now()
@@ -88,6 +246,16 @@ def _record_decision(bot, signal: str, reason: str, price, action: str) -> None:
     連「沒成交但有決策」的時點都記（觀望 / 續抱 / 休市 / 購買力不足 / 熔斷），
     讓自動跑真錢的系統可事後查驗每個決定。寫入失敗不可影響交易主流程，故吞例外。
     """
+    # 這裡是所有決策分支的單一漏斗 → 順手發即時事件給前端可視化（fire-and-forget）
+    emit_activity(
+        bot, "decision", reason,
+        decision={
+            "signal": signal,
+            "action": action,
+            "reason": reason,
+            "price": safe_float(price),
+        },
+    )
     db = SessionLocal()
     try:
         db.add(DecisionLog(
@@ -145,16 +313,25 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
         return
 
     try:
+        emit_activity(bot, "cycle_start", "醒來，開始這一輪檢查")
+
         # --- 1. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
         if not ignore_market_hours and not alpaca_client.is_market_open():
             print(f"[{bot.name}] 美股休市中，本次跳過。")
             _record_decision(bot, Signal.HOLD, "美股休市中", None, ACTION_SKIPPED_MARKET_CLOSED)
             _mark_checked(bot)  # 有跑這一輪（只是休市沒動作），仍更新檢查時間
+            _emit_cycle_end(bot, "skipped_market_closed")
             return
 
         # --- 2. 查目前持倉與現價 ---
+        emit_activity(bot, "fetch_data", f"查詢 {bot.symbol} 持倉與現價")
         position = alpaca_client.get_position(bot.symbol)
         current_price = alpaca_client.get_latest_price(bot.symbol)
+
+        # 空手但 DB 記著券商端保護單 id → 多半是託管止損在本機不在場時成交了，
+        # 先回填交易/決策紀錄（維運安全軌 H1），再照常走空手分支。
+        if position is None and bot.protective_order_id:
+            _settle_broker_exit(bot)
 
         if position is not None:
             _handle_holding(bot, position, current_price)
@@ -162,15 +339,36 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
             _handle_flat(bot, current_price)
 
         _mark_checked(bot)  # 這一輪成功跑完，記錄檢查時間
+        _emit_cycle_end(bot, "ok")
 
     except Exception as e:
         # 單一 Bot 出錯不應影響其他 Bot，這裡接住並通知
         notify(f"[{bot.name}] 執行時發生錯誤：{e}")
+        _emit_cycle_end(bot, "error", detail=str(e))
+
+
+def _emit_cycle_end(bot, status: str, detail: str = "") -> None:
+    """發「這一輪結束」事件：帶下一輪間隔秒數，前端據此倒數 + 偵測排程失聯。
+
+    next_run_in_sec：Bot 啟用中才有值（排程會再來）；手動執行（/run）且未啟用
+    時為 None，前端不倒數。getattr 防呆：測試假物件沒這些欄位也不炸。
+    """
+    is_active = bool(getattr(bot, "is_active", False))
+    interval = getattr(bot, "check_interval_sec", None) or 60
+    emit_activity(
+        bot, "cycle_end", detail,
+        status=status,
+        next_run_in_sec=interval if is_active else None,
+        is_active=is_active,
+    )
 
 
 def _handle_holding(bot: Bot, position, current_price: float) -> None:
     """持倉中：先風控出場，再看策略賣出訊號（熔斷不擋出場）。"""
     entry_price = float(position.avg_entry_price)
+
+    # 券商端保護單自癒（維運安全軌 H1）：該掛的沒掛/參數漂移 → 補掛。best-effort 不阻斷。
+    _ensure_protective_order(bot, position)
 
     # 更新「持倉期間最高價」（給追蹤止損用）。
     # 起算基準：資料庫存的 peak_price；若還沒有（剛接手/重啟後第一次）就用進場價起算。
@@ -179,6 +377,7 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         _persist_peak(bot, peak)
 
     # --- 風控出場判斷（止損 → 追蹤止損 → 止盈）---
+    emit_activity(bot, "risk_check", "風控檢查中（止損→追蹤止損→止盈）")
     should_exit, exit_reason = check_exit(
         entry_price=entry_price,
         current_price=current_price,
@@ -188,6 +387,11 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
         trailing_stop_pct=bot.trailing_stop_pct,
     )
     if should_exit:
+        # 本機出場前先撤券商端保護單（掛著的 stop 會保留股數，不撤市價賣會被拒）。
+        # 撤不掉 = 券商端剛好已成交 → 放棄本機賣出，下一輪由 _settle_broker_exit 回填帳。
+        if not _cancel_protective_order(bot):
+            _record_decision(bot, Signal.SELL, "券商端保護單已先成交，待下一輪回填", current_price, ACTION_HOLD)
+            return
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, exit_reason)
@@ -198,6 +402,9 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
     # --- 風控沒觸發 → 看策略要不要賣 ---
     signal, reason = _run_strategy(bot)
     if signal == Signal.SELL:
+        if not _cancel_protective_order(bot):  # 同上：cancel-before-sell
+            _record_decision(bot, Signal.SELL, "券商端保護單已先成交，待下一輪回填", current_price, ACTION_HOLD)
+            return
         qty = float(position.qty)
         order = alpaca_client.submit_market_order(bot.symbol, qty, "sell")
         _record_and_notify(bot, "sell", qty, current_price, order, reason)
@@ -227,8 +434,27 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
         _record_decision(bot, signal, "組合回撤熔斷，暫停新增曝險", current_price, ACTION_SKIPPED_CIRCUIT_BREAKER)
         return
 
-    # 用設定金額換算要買幾股（保留 4 位小數，支援碎股）
-    qty = round(bot.trade_amount / current_price, 4)
+    # 用設定金額換算要買幾股。
+    # 會掛券商端保護單的 Bot 必須買「整股」（Alpaca 的 stop/trailing 單不支援碎股）；
+    # 沒掛保護單需求的維持碎股（保留 4 位小數），行為與舊版一致。
+    needs_protection = settings.BROKER_STOP_ENABLED and plan_protective_order(
+        current_price,
+        stop_loss_pct=bot.stop_loss_pct,
+        trailing_stop_pct=bot.trailing_stop_pct,
+    ) is not None
+    if needs_protection:
+        qty = whole_share_qty(bot.trade_amount, current_price)
+        if qty <= 0:
+            print(f"[{bot.name}] trade_amount ${bot.trade_amount:.2f} 買不起 1 股 {bot.symbol}"
+                  f"（${current_price:.2f}，券商端止損需整股），跳過買進。")
+            _record_decision(
+                bot, signal,
+                f"trade_amount ${bot.trade_amount:.2f} 買不起 1 股（${current_price:.2f}；券商端止損需整股）",
+                current_price, ACTION_SKIPPED_NO_BUYING_POWER,
+            )
+            return
+    else:
+        qty = round(bot.trade_amount / current_price, 4)
 
     # --- 購買力守門（step-05，best-effort；查不到就放行）---
     buying_power = _available_buying_power()
@@ -245,6 +471,9 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
     _record_and_notify(bot, "buy", qty, current_price, order, reason)
     _record_decision(bot, Signal.BUY, reason, current_price, ACTION_BOUGHT)
     _persist_peak(bot, current_price)  # 進場價當作最高價的起點
+    if needs_protection:
+        # 把止損託管到券商端（失敗不擋主流程，下一輪自癒補掛）
+        _place_protective_order(bot, qty, current_price)
 
 
 def _run_strategy(bot: Bot):
@@ -258,16 +487,39 @@ def _run_strategy(bot: Bot):
 
     Phase 7 step-03：bot.adaptive 開啟時走「自適應選策略」——
     先算當下市場狀態，查「狀態→最佳策略對照表」挑策略；無可信策略時保守觀望。
+
+    Phase 7 step-05（層驗證收尾）：固定策略路徑的 BUY 也過 meta 二級過濾。
+    層驗證證明只有 meta-labeling 在樣本外加分（adaptive 反而 −115、已維持關），
+    且驗證的 baseline 正是「固定策略訊號 + should_take」這條路徑，故把它收回線上。
+    閘由 `settings.META_LABEL_ENABLED` 控（關掉 = 純一級訊號，向後相容）。
     """
     if getattr(bot, "adaptive", False):
         return _run_adaptive_strategy(bot)
 
     days = required_lookback_days(bot.strategy, bot.params or {})
+    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
+    emit_activity(bot, "compute_signal", f"計算 {bot.strategy} 策略訊號")
     strategy = get_strategy(bot.strategy, bot.params or {})
-    return strategy.generate_signal(df)
+    signal, reason = strategy.generate_signal(df)
+
+    # meta 二級過濾：只把關進場（BUY）。流程與 layer_validation.MetaFilteredStrategy
+    # 一致，線上行為才等於樣本外驗證量到的那條（+27.8 OOS EV）。SELL/HOLD 不受影響。
+    if signal == Signal.BUY:
+        from backend.services.regime_features import compute_features
+        from backend.services.regime import classify_regime
+        from backend.services.meta_label import should_take
+
+        features = compute_features(df)
+        regime = classify_regime(features)
+        take, conf = should_take(signal, features, regime)
+        if not take:
+            return Signal.HOLD, f"[meta {regime}] 二級過濾否決進場（信心 {conf:.2f} < 門檻）"
+        reason = f"二級信心 {conf:.2f}｜{reason}"
+
+    return signal, reason
 
 
 def _run_adaptive_strategy(bot: Bot):
@@ -284,11 +536,13 @@ def _run_adaptive_strategy(bot: Bot):
     from backend.services.meta_label import should_take
 
     days = settings.REGIME_MAP_DAYS
+    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線（自適應）")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料"
 
     try:
+        emit_activity(bot, "compute_signal", "自適應：辨識市場狀態、挑選策略中")
         regime_map = get_regime_strategy_map(bot.symbol)
     except Exception as e:
         return Signal.HOLD, f"自適應：對照表建立失敗（{e}），保守觀望"
@@ -318,6 +572,12 @@ def _run_adaptive_strategy(bot: Bot):
 
 def _record_and_notify(bot, side, qty, price, order, reason) -> None:
     """把交易記到資料庫並發通知。"""
+    # 這裡是所有成交的單一漏斗 → 順手發即時事件給前端可視化（fire-and-forget）
+    emit_activity(
+        bot, "order_submitted",
+        f"{'買進' if side == 'buy' else '賣出'} {qty} 股",
+        order={"side": side, "qty": safe_float(qty)},
+    )
     db = SessionLocal()
     try:
         log = TradeLog(
@@ -344,7 +604,12 @@ class BotManager:
     """用排程器管理所有 Bot 的定時執行。"""
 
     def __init__(self) -> None:
-        self.scheduler = BackgroundScheduler()
+        # coalesce + misfire_grace_time：電腦睡眠/卡頓錯過觸發時刻時，
+        # 醒來後 1 小時內補觸發一次（coalesce=多次錯過只補一次）。
+        # APScheduler 預設錯過 1 秒就放棄——家用電腦會睡，必須放寬。
+        self.scheduler = BackgroundScheduler(
+            job_defaults={"coalesce": True, "misfire_grace_time": 3600},
+        )
         self.scheduler.start()
 
     def start_bot(self, bot: Bot, interval_seconds: int = 60) -> None:
@@ -390,6 +655,269 @@ class BotManager:
             "cron",
             hour=hour,
             id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_opportunity_scan(self, interval_minutes: int) -> None:
+        """
+        掛上「常駐機會探勘」的週期工作（Phase 10 step-02）。
+
+        每隔 interval_minutes 分鐘跑一次 run_opportunity_scan（內部會先過盤中閘、收盤跳過）。
+        interval_minutes <= 0 代表關閉常駐掃描：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次；之後改 scan_interval_min 規則時即時重掛。
+        延遲 import 避免循環依賴（opportunity_scan 反過來用到 services）。
+        """
+        from backend.services.opportunity_scan import run_opportunity_scan
+
+        job_id = "opportunity_scan"
+        if interval_minutes <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_opportunity_scan,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_heartbeat(self, hour: int) -> None:
+        """
+        掛上「每日心跳日報」的定時工作（維運安全軌 H2）。
+
+        每天 hour 時發一則「我還活著」摘要通知（不依賴開市——休市日也要證明系統活著）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.heartbeat import run_daily_heartbeat
+
+        self.scheduler.add_job(
+            # 同日防重複：開機補跑可能已先發過今天的日報，cron 再觸發會自動跳過
+            make_daily_idempotent("heartbeat_daily", run_daily_heartbeat),
+            "cron",
+            hour=hour,
+            id="heartbeat_daily",
+            replace_existing=True,
+        )
+
+    def schedule_deadman_ping(self, interval_minutes: int) -> None:
+        """
+        掛上「dead-man ping」的週期工作（維運安全軌 H2）。
+
+        每隔 interval_minutes 分鐘對外側監測服務發一個 GET；本機掛掉 → ping 停 →
+        外側（healthchecks.io）主動發警報。interval_minutes <= 0 或 URL 沒設 = 關：
+        移除既有 job（若有）並返回。在 main.py 啟動時呼叫一次即可。
+        """
+        from backend.services.heartbeat import ping_deadman
+
+        job_id = "deadman_ping"
+        if interval_minutes <= 0 or not settings.HEARTBEAT_PING_URL:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            ping_deadman,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_tracking_check(self, hour: int) -> None:
+        """
+        掛上「tracking error 每日對帳」的定時工作（維運安全軌 H3）。
+
+        每天 hour 時（建議美股收盤後）比對各啟用 Bot 的「Paper 實跑 vs 回測 OOS」，
+        連續違規自動降級停 Bot + 通知（不平倉、不撤保護單，人再決定）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴
+        （tracking 反過來會用到 bot_manager.stop_bot）。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.tracking import run_tracking_check
+
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent("tracking_check", run_tracking_check),
+            "cron",
+            hour=hour,
+            id="tracking_check",
+            replace_existing=True,
+        )
+
+    def schedule_discovery(self, hour: int) -> None:
+        """
+        掛上「探勘橋」的每日定時工作（Phase 12 step-02）。
+
+        每天 hour 時跑一次 run_discovery_batch（收件匣素材 → 本機 LLM triage → candidate）。
+        DISCOVERY_ENABLED=false 代表完全不掛：移除既有 job（若有）並返回
+        （run_discovery_batch 內部還有一道開關雙保險）。在 main.py 啟動時呼叫一次即可。
+        延遲 import 避免循環依賴。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.discovery import run_discovery_batch
+
+        job_id = "discovery_bridge"
+        if not settings.DISCOVERY_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_discovery_batch),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_auto_validate(self, hour: int) -> None:
+        """
+        掛上「候選自動批次驗證」的每日定時工作（Phase 12 step-03）。
+
+        每天 hour 時跑一次 run_auto_validate（candidate → 既有 OOS 閘 → validated/rejected，
+        判準零修改；不自動晉升 curated）。AUTO_VALIDATE_ENABLED=false 代表完全不掛：
+        移除既有 job（若有）並返回（run_auto_validate 內部還有一道開關雙保險）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.auto_validate import run_auto_validate
+
+        job_id = "auto_validate"
+        if not settings.AUTO_VALIDATE_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_auto_validate),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_auto_deploy_knowledge(self, hour: int) -> None:
+        """
+        掛上「知識庫策略 → 自動建 Paper Bot」的每日定時工作。
+
+        每天 hour 時跑一次 run_auto_deploy_knowledge（取目標狀態未部署的知識 → 建 Paper Bot
+        掛網跑；★只建 paper、不碰真錢雙閘）。AUTO_DEPLOY_KNOWLEDGE_ENABLED=false 代表完全不掛：
+        移除既有 job（若有）並返回（run_auto_deploy_knowledge 內部還有一道開關雙保險）。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+
+        ★ 與既有 screener 版 schedule_auto_deploy（盤前海選自動部署）不同：本檔走知識庫，
+          job_id 用 "auto_deploy_knowledge" 區隔，互不影響。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.auto_deploy_knowledge import run_auto_deploy_knowledge
+
+        job_id = "auto_deploy_knowledge"
+        if not settings.AUTO_DEPLOY_KNOWLEDGE_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_auto_deploy_knowledge),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_bot_review(self, hour: int) -> None:
+        """
+        掛上「bot 汰弱審查員」的每日定時工作（Phase 13）。
+
+        每天 hour 時跑一次 run_bot_review（考核 paper 艦隊 → upsert fit → 軟汰弱不及格 Bot；
+        ★只碰 paper，不碰真錢相關狀態）。BOT_REVIEW_ENABLED=false 代表完全不掛：移除既有
+        job（若有）並返回（run_bot_review 內部還有一道開關雙保險）。在 main.py 啟動時呼叫一次
+        即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.bot_review import run_bot_review
+
+        job_id = "bot_review"
+        if not settings.BOT_REVIEW_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_bot_review),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_collector_scan(self, interval_minutes: int) -> None:
+        """
+        掛上「市場蒐集員收料」的週期工作（Phase 10 step-04）。
+
+        每隔 interval_minutes 分鐘跑一次 run_collector_scan（抓 RSS → 收件匣 → 有新料提醒）。
+        interval_minutes <= 0 代表關閉常駐收料：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次即可。延遲 import 避免循環依賴。
+        """
+        from backend.services.collector import run_collector_scan
+
+        job_id = "collector_scan"
+        if interval_minutes <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_collector_scan,
+            "interval",
+            minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_leader_backtest(self, hour: int) -> None:
+        """
+        掛上「每日領導股回測紀錄」的定時工作。
+
+        每天 hour 時對 LEADER_BACKTEST_SYMBOLS 各跑一輪全自動掃描（OOS EV 排名），
+        各檔冠軍存一筆 BacktestRun（只落紀錄、不下單、不建 Bot）。
+        LEADER_BACKTEST_ENABLED=false 代表完全不掛：移除既有 job（若有）並返回
+        （run_leader_backtest 內部還有一道開關雙保險）。在 main.py 啟動時呼叫一次即可。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.daily_watch import run_leader_backtest
+
+        job_id = "leader_backtest"
+        if not settings.LEADER_BACKTEST_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            # 同日防重複：與開機補跑共用 job_run_log 判斷，同一天最多實際執行一次
+            make_daily_idempotent(job_id, run_leader_backtest),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_catchup_on_boot(self) -> None:
+        """
+        掛上「開機補跑」的一次性工作（後端啟動時呼叫，立刻在排程器執行緒池跑一次）。
+
+        把「開關有開 + 排定時刻已過 + 今天還沒跑」的每日 job 依管線順序補跑——
+        家用電腦不是 24/7，早上沒開機的日子靠這個救回來。
+        CATCHUP_ON_BOOT=false = 不掛（補跑功能整個關閉，cron 行為照舊）。
+        """
+        from backend.services.catchup import run_catchup
+
+        if not settings.CATCHUP_ON_BOOT:
+            return
+        # "date" 觸發器不給 run_date = 排進去就盡快跑一次；用排程器執行緒池，不擋 FastAPI 啟動
+        self.scheduler.add_job(
+            run_catchup,
+            "date",
+            id="catchup_on_boot",
             replace_existing=True,
         )
 

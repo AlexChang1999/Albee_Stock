@@ -25,12 +25,34 @@
 - profit_factor         ：獲利因子＝總賺 / 總賠（>1 才賺錢；無任何虧損時回 None）
 """
 
+import logging
+
 import pandas as pd
 
 from backend.config import settings
-from backend.services import market_data
+from backend.services import bar_cache
 from backend.services.analytics import extended_metrics
 from backend.strategies import get_strategy, Signal
+
+logger = logging.getLogger(__name__)
+
+# Alpaca 免費版歷史資料可靠範圍上限（天）。超過這個長度（≈5 年）想回測，
+# Alpaca 免費版抓不到，自動改走 yfinance（可回溯 20–50 年）。2000→2026 ≈ 9500 天。
+ALPACA_MAX_DAYS = 1825
+
+
+def _resolve_source(source: str, days: int) -> str:
+    """
+    長區間自動選資料源：用 alpaca 但 days 超過免費版可靠範圍時，自動改 yfinance。
+    顯式想用 yfinance 的呼叫端不受影響；顯式 alpaca 但超長則覆寫並落 log（誠實告知）。
+    """
+    if source == "alpaca" and days > ALPACA_MAX_DAYS:
+        logger.info(
+            "回測區間 %d 天超過 Alpaca 免費版可靠範圍(%d)，自動改用 yfinance 抓長歷史",
+            days, ALPACA_MAX_DAYS,
+        )
+        return "yfinance"
+    return source
 
 
 def _simulate_from_signals(
@@ -71,6 +93,7 @@ def _simulate_from_signals(
     entry_price = 0.0    # 買進「有效成交價」（已含滑價，算單筆盈虧用）
     trades = []          # 交易紀錄
     equity_curve = []    # 每日資產淨值（畫資金曲線用）
+    equity_dates = []    # 與 equity_curve 等長的「真實日期」字串（報表用真年月，非假 2000）
     total_cost = 0.0     # 本次回測累計摩擦成本（手續費 + 滑價）
     pending = None       # 前一根 close 算出、待這一根「以成交價」換手的單：(side, reason)
 
@@ -112,8 +135,9 @@ def _simulate_from_signals(
                 entry_price = 0.0
             pending = None
 
-        # --- 2. 記錄當根收盤後的總資產 ---
+        # --- 2. 記錄當根收盤後的總資產（連同真實日期，供報表用真年月）---
         equity_curve.append(cash + position * price)
+        equity_dates.append(date)
 
         # --- 3. 依當根 close 的訊號，決定「下一根」要不要換手（隔日成交）---
         signal = signals[i]
@@ -198,12 +222,14 @@ def _simulate_from_signals(
         "total_cost": round(total_cost, 2),  # 本次回測累計摩擦成本（手續費 + 滑價）
         "trades": trades,
         "equity_curve": [round(e, 2) for e in equity_curve],
+        "equity_dates": equity_dates,  # 與 equity_curve 等長；報表用真實日期取代假 2000
     }
 
 
 def _run_on_df(
     strategy, df: pd.DataFrame, initial_cash: float,
     commission_bps: float = 0.0, slippage_bps: float = 0.0,
+    features: pd.DataFrame | None = None,
 ) -> dict:
     """
     在一份 K 線資料上跑回測（事件式：逐根呼叫策略 generate_signal，純邏輯、不連線）。
@@ -211,13 +237,30 @@ def _run_on_df(
     逐日往前走：第 i 根只看「到第 i 根為止」的資料產生訊號（不偷看未來），
     再把整串訊號交給共用核心 _simulate_from_signals 做資金模擬與績效計算
     （含成本模型與隔日成交，見該函式說明）。
+
+    環境特徵（Phase 11 step-04，選用）：
+    - features=None（預設）→ 行為與現況**完全相同**（舊策略 / 舊呼叫端零改動）。
+    - features 有值 → 與 df 等長、位置對齊的「額外特徵欄」DataFrame，併進「訊號層」的 df，
+      讓想用 macro / 買賣壓特徵的策略在 generate_signal 裡讀得到（例如 df["vix_level"]）。
+      忽略這些欄的舊策略結果不變（向後相容）。
+    - **features 只進訊號層、不進成交層**：成交永遠走 _simulate_from_signals 的次根開盤含成本，
+      環境特徵不得碰成交價（Phase 11 鐵則 3，「回測=實盤」核心）。
     """
+    # 訊號層用的 df：有 features 才併欄；無則就是原 df（逐位元組相同）
+    if features is not None:
+        sig_df = pd.concat(
+            [df.reset_index(drop=True), features.reset_index(drop=True)], axis=1
+        )
+    else:
+        sig_df = df
+
     signals = []
     reasons = []
-    for i in range(len(df)):
-        sig, reason = strategy.generate_signal(df.iloc[: i + 1])
+    for i in range(len(sig_df)):
+        sig, reason = strategy.generate_signal(sig_df.iloc[: i + 1])
         signals.append(sig)
         reasons.append(reason)
+    # 成交模擬只吃 price-only 的 df（features 不進成交層）
     return _simulate_from_signals(
         signals, df, initial_cash, reasons=reasons,
         commission_bps=commission_bps, slippage_bps=slippage_bps,
@@ -233,9 +276,10 @@ def run_backtest(
     source: str = "alpaca",
     commission_bps: float | None = None,
     slippage_bps: float | None = None,
+    features: pd.DataFrame | None = None,
 ) -> dict:
     """
-    對某檔股票跑回測（會連資料源抓歷史資料）。
+    對某檔股票跑回測（會連資料源抓歷史資料，多年區間走本機快取 bar_cache）。
     :param strategy_name: 策略代號，例如 "ma_crossover"
     :param symbol: 股票代號
     :param params: 策略參數
@@ -244,6 +288,8 @@ def run_backtest(
     :param source: 資料源，"alpaca"（預設）或 "yfinance"
     :param commission_bps: 單邊手續費（bps）；None＝讀 config 預設
     :param slippage_bps: 單邊滑價（bps）；None＝讀 config 預設
+    :param features: 選用環境特徵（與抓回的 df 等長），透傳給 _run_on_df 的訊號層；
+                     None＝純價量回測（行為不變）。
     """
     # 成本預設讀全系統 config，呼叫端可顯式覆寫（含 0 = 關成本對照用）
     if commission_bps is None:
@@ -251,7 +297,12 @@ def run_backtest(
     if slippage_bps is None:
         slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
 
-    df = market_data.get_bars(symbol, days=days, source=source)
+    # 長區間自動選資料源：Alpaca 免費版抓不到 2000 年那麼久，超過門檻自動改 yfinance。
+    source = _resolve_source(source, days)
+
+    # 走本機快取（Phase 11 step-04）：缺區間才補抓、其餘命中快取，多年回測不每次重打 API。
+    # get_bars_cached 包在 market_data.get_bars 外層、簽章相容、嚴格 ⊆ 請求區間（不洩漏未來）。
+    df = bar_cache.get_bars_cached(symbol, days=days, source=source)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
 
@@ -259,6 +310,7 @@ def run_backtest(
     result = _run_on_df(
         strategy, df, initial_cash,
         commission_bps=commission_bps, slippage_bps=slippage_bps,
+        features=features,
     )
 
     # 補上這次回測的基本資訊

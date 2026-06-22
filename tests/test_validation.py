@@ -119,6 +119,27 @@ def test_is_layer_worth_it_needs_enough_folds():
     assert "fold 數不足" in verdict["reason"]
 
 
+def test_production_window_needs_enough_bars_for_min_folds():
+    """守門（Phase 12 修自動驗證窗）：用 production 的 VALIDATION 窗，回看根數要夠湊出
+    ≥VALIDATION_MIN_FOLDS 個 fold，否則 OOS 閘對任何策略都回「樣本太少」＝等於沒在評。
+
+    曾踩的坑：auto_validate 用 days=365（SPY ~250 根）只產 1 fold，30 筆 candidate 全被
+    打回。修法＝把回看窗（AUTO_VALIDATE_DAYS）拉長到湊得出折數。"""
+    from backend.config import settings
+    tw = settings.VALIDATION_TRAIN_WINDOW
+    te = settings.VALIDATION_TEST_WINDOW
+    st = settings.VALIDATION_STEP
+    mf = settings.VALIDATION_MIN_FOLDS
+
+    # 舊 365 天 ~250 根：產不到 MIN_FOLDS（記錄 bug 本體）
+    assert len(walk_forward_splits(250, tw, te, st)) < mf
+    # 湊滿 mf 個 fold 的最少根數公式：tw + (mf-1)*step + test_window
+    need = tw + (mf - 1) * st + te
+    assert len(walk_forward_splits(need, tw, te, st)) >= mf
+    # production AUTO_VALIDATE_DAYS=3650（~10年 ~2500 根），遠超 need → ~30 folds
+    assert len(walk_forward_splits(2500, tw, te, st)) >= mf
+
+
 if __name__ == "__main__":
     test_walk_forward_splits_rolls_forward()
     test_walk_forward_splits_too_short()
@@ -128,4 +149,5 @@ if __name__ == "__main__":
     test_is_layer_worth_it_kills_fake_layer()
     test_is_layer_worth_it_accepts_real_improvement()
     test_is_layer_worth_it_needs_enough_folds()
+    test_production_window_needs_enough_bars_for_min_folds()
     print("\n🎉 全部防過擬合驗證框架測試通過！")

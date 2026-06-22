@@ -56,6 +56,11 @@ class Settings:
     # 兩道閘都開才會下真單，避免手滑或設定錯誤就燒到真錢。
     ALLOW_LIVE_TRADING: bool = os.getenv("ALLOW_LIVE_TRADING", "false").lower() in ("1", "true", "yes")
 
+    # --- Alpaca 資料 API 限流（免費版約 200 req/min）---
+    # 批次化抓取後請求數大降，這是「保險絲」不是常態路徑：額度內直接放行，
+    # 超量才 sleep 等補充，避免標的一多就被 429 打爆。0 = 不限流（測試 / 付費方案用）。
+    ALPACA_RATE_LIMIT_PER_MIN: int = int(os.getenv("ALPACA_RATE_LIMIT_PER_MIN", "200"))
+
     # ========================================================
     # 全系統唯一資料源（Phase 6 step-01）
     # ========================================================
@@ -63,6 +68,34 @@ class Settings:
     # 可選 "alpaca"（預設）或 "yfinance"（免費）。想整套切資料源只改這一個環境變數，
     # 程式一行都不用動——這是「回測 = 實盤」鐵則的第一道（同源）。
     DATA_SOURCE: str = os.getenv("DATA_SOURCE", "alpaca")
+
+    # 並行抓取的執行緒數：給「只能逐筆打」的 I/O 用（FRED 多序列、RSS 多 feed）。
+    # 批次 API（一次請求抓多檔 K 線 / 報價）不需要這個。I/O-bound 用 threads 即夠。
+    FETCH_MAX_WORKERS: int = int(os.getenv("FETCH_MAX_WORKERS", "4"))
+
+    # ========================================================
+    # 多年 OHLCV 本機快取（Phase 11 step-02）
+    # ========================================================
+    # 「整個歷史」回測（如 days=3650）不該每次都向 Alpaca / yfinance 重抓：缺的區間才補抓、
+    # 抓回來寫進本機 parquet 快取，已有的命中快取不重打（services/bar_cache.py 包在 get_bars 外層）。
+    # 快取檔放這個資料夾（按 {source}/{symbol} 分開存，不混存），預設 data/cache/bars/（gitignore，不進版控）。
+    BAR_CACHE_DIR: str = os.getenv("BAR_CACHE_DIR", str(BASE_DIR / "data" / "cache" / "bars"))
+
+    # ========================================================
+    # 總經 / 環境資料（Phase 11 step-01）— FRED 聯準會經濟數據
+    # ========================================================
+    # 讓回測吃得到「環境因子」（非農就業、失業率、聯邦基金利率、CPI、公債殖利率、VIX）。
+    # 資料源是 FRED（聖路易聯準會，免費，需自行申請免費 API key）。沿用「本機優先 / 免費」與
+    # LLM 一樣的「優雅降級」：沒填 key → 整個總經功能靜默跳過，不另設開關、也不影響其他功能。
+    #   - FRED_API_KEY：到 https://fred.stlouisfed.org/docs/api/api_key.html 免費申請。留空＝關閉。
+    #   - MACRO_SERIES：要追蹤的 FRED 序列代號（逗號分隔）。
+    #   - MACRO_DEFAULT_LAG_DAYS：未知序列的「發布落差」天數預設（point-in-time 防偷看未來；
+    #     各序列的精確落差在 services/macro_data.py 的對照表，這裡只當 fallback）。
+    FRED_API_KEY: str = os.getenv("FRED_API_KEY", "")
+    MACRO_SERIES: str = os.getenv(
+        "MACRO_SERIES", "PAYEMS,UNRATE,FEDFUNDS,CPIAUCSL,DGS10,DGS2,VIXCLS"
+    )
+    MACRO_DEFAULT_LAG_DAYS: int = int(os.getenv("MACRO_DEFAULT_LAG_DAYS", "35"))
 
     # ========================================================
     # 資料庫
@@ -109,6 +142,10 @@ class Settings:
     # 第一層最多放幾檔進第二層（控制 LLM 呼叫次數，建議 5~10）。
     SCREENER_TOP_N: int = int(os.getenv("SCREENER_TOP_N", "8"))
 
+    # 因子數值表（Phase 10 step-03）保留天數：常駐掃描每輪順手把 watchlist 各檔因子落表，
+    # 超過此天數的舊快照會被修剪，避免 DB 無上限膨脹。0 = 不修剪（保留全部）。
+    FACTOR_RETENTION_DAYS: int = int(os.getenv("FACTOR_RETENTION_DAYS", "90"))
+
     # ========================================================
     # 全自動護欄 / 模式 B 自動部署（改版 Phase 4）
     # ========================================================
@@ -123,6 +160,211 @@ class Settings:
     AUTO_DEPLOY_CASH_PER_BOT: float = float(os.getenv("AUTO_DEPLOY_CASH_PER_BOT", "1000"))
     # 盤前掃描的本機時刻（24 小時制的「時」）。美股盤前、開盤前跑一次。
     AUTO_DEPLOY_HOUR: int = int(os.getenv("AUTO_DEPLOY_HOUR", "8"))
+    # 常駐機會探勘間隔（分鐘）：盤中每隔幾分鐘跑一次海選、更新機會清單（Phase 10 step-02）。
+    # 0 = 關掉常駐掃描。只當「首次建規則列」的種子預設，之後以 DB 的 scan_interval_min 為準。
+    SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
+
+    # ========================================================
+    # 市場蒐集員 — 爬蟲收料（Phase 10 step-04）
+    # ========================================================
+    # 定時從 RSS / 部落格收「策略描述文字」進收件匣（raw_strategy_finds），當人 /
+    # strategy-builder 寫成策略的素材。**只收料、不驗證、不部署**，收回來一律過既有 OOS 閘。
+    #   - COLLECTOR_RSS_FEEDS：逗號 / 換行分隔的 RSS 網址；留空＝不收料（預設關，要收自己填）。
+    #   - COLLECTOR_INTERVAL_MIN：每隔幾分鐘收一次；0＝關閉常駐收料（預設關，避免無故打外站）。
+    #   - COLLECTOR_USER_AGENT：禮貌的 User-Agent，尊重來源、降低被封 IP 風險。
+    COLLECTOR_RSS_FEEDS: str = os.getenv("COLLECTOR_RSS_FEEDS", "")
+    COLLECTOR_INTERVAL_MIN: int = int(os.getenv("COLLECTOR_INTERVAL_MIN", "0"))
+    COLLECTOR_USER_AGENT: str = os.getenv(
+        "COLLECTOR_USER_AGENT",
+        "AlbeeStockCollector/1.0 (+personal research bot; best-effort, respects robots)",
+    )
+
+    # ========================================================
+    # 探勘橋 — raw find → LLM 產候選（Phase 12 step-02）
+    # ========================================================
+    # 每日定時把收件匣（raw_strategy_finds, status=new）的素材交給本機 Ollama 判讀：
+    # 「這篇在講哪種**既有**策略？建議什麼參數？」有提案 → 建 StrategyKnowledge candidate
+    # （之後仍要過 OOS 閘 + 人工晉升才算數）；不相關 → 標 discarded。
+    # ★ LLM 只提既有策略的參數、不生成程式碼；素材不外送雲端（走 llm.py 同一道外送閘）。
+    #   - DISCOVERY_ENABLED：總開關（預設 false，不掛排程、行為與沒這功能一樣）。
+    #   - DISCOVERY_BATCH_SIZE：一輪最多處理幾筆素材（防 LLM 跑整夜）。
+    #   - DISCOVERY_HOUR：每日幾點跑（24 小時制，預設 7 = 盤前）。
+    DISCOVERY_ENABLED: bool = os.getenv("DISCOVERY_ENABLED", "false").lower() in ("1", "true", "yes")
+    DISCOVERY_BATCH_SIZE: int = int(os.getenv("DISCOVERY_BATCH_SIZE", "5"))
+    DISCOVERY_HOUR: int = int(os.getenv("DISCOVERY_HOUR", "7"))
+
+    # ========================================================
+    # 候選自動批次驗證 — OOS 閘排程化（Phase 12 step-03）
+    # ========================================================
+    # 每日定時把知識庫的 candidate 批次送進**既有** evolution.validate_candidate
+    # （walk-forward OOS 閘，判準零修改）→ 自然流轉 validated / rejected，不等人逐筆按。
+    # ★ 不自動晉升 curated（人在迴路鐵則）；單筆失敗不擋整批、連續 3 次才標 rejected。
+    #   - AUTO_VALIDATE_ENABLED：總開關（預設 false，不掛排程、行為與沒這功能一樣）。
+    #   - AUTO_VALIDATE_BATCH_SIZE：一輪最多驗幾筆（回測吃 CPU，防排程時段跑不完）。
+    #   - AUTO_VALIDATE_HOUR：每日幾點跑（24 小時制，預設 8 = discovery(7) 之後）。
+    #   - AUTO_VALIDATE_SYMBOL：單檔相容用標的（舊欄位保留；籃子留空時退回它）。
+    #   - AUTO_VALIDATE_SYMBOLS：★驗證籃子（逗號分隔，跨產業）。單一標的樣本窄＋過擬合單檔
+    #     個性；改用「大盤+科技/金融/能源/醫療/工業/零售/半導體」一籃子，每檔各跑 walk-forward
+    #     → OOS EV 池化 → 同一支 is_layer_worth_it（judge 零改、只改餵料）。增刪標的＝改一行。
+    #   - AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL：每檔最低交易次數門檻 X。某檔在所有 fold 的總
+    #     num_round_trips < X → 整檔排除（避免靠運氣少數幾筆大賺污染池化結果）。預設 5：
+    #     保守低門檻，先求「該檔真的有出手」即納入，太高會把短窗低頻策略全排除掉。
+    #   - AUTO_VALIDATE_DAYS：回看天數。要夠長湊出 ≥VALIDATION_MIN_FOLDS(3) 個 walk-forward
+    #     fold——365 天只 ~250 根＝1 fold，任何策略都被「樣本太少」打回（OOS 閘等於沒在評）。
+    #     預設 3650 天（~10 年 ~2500 根 ~30 folds）：fold 最多、橫跨多種市況、最難過擬合。
+    #     代價：單筆驗證變慢（N 檔 × ~30 folds × 回測）。實測對照：540=3、750=5、1100=9 folds。
+    #     ★ 資料源前提：market_data.get_bars(source=DATA_SOURCE) 要抓得到 10 年——Alpaca 免費約
+    #       2016 起（~9 年）、yfinance 全史。抓不到只會 fold 變少、不會錯（不影響判準正確性）。
+    AUTO_VALIDATE_ENABLED: bool = os.getenv("AUTO_VALIDATE_ENABLED", "false").lower() in ("1", "true", "yes")
+    AUTO_VALIDATE_BATCH_SIZE: int = int(os.getenv("AUTO_VALIDATE_BATCH_SIZE", "3"))
+    AUTO_VALIDATE_HOUR: int = int(os.getenv("AUTO_VALIDATE_HOUR", "8"))
+    AUTO_VALIDATE_SYMBOL: str = os.getenv("AUTO_VALIDATE_SYMBOL", "SPY")
+    AUTO_VALIDATE_SYMBOLS: str = os.getenv(
+        "AUTO_VALIDATE_SYMBOLS",
+        # 跨產業 38 檔籃子（跳過醫療/零售）：大盤指數 5、半導體 10、能源 3、科技 10、
+        # 金融 5、工業 5。籃子越寬越難過擬合單檔個性；各檔跑 walk-forward → OOS EV 池化
+        # （evolution._validate_basket）。增刪標的＝改這一行（或用 .env 覆寫）。
+        "SPY,QQQ,DIA,IWM,VTI,"                                  # 大盤指數 5
+        "NVDA,AMD,AVGO,TSM,INTC,QCOM,MU,AMAT,LRCX,ASML,"        # 半導體 10
+        "XOM,CVX,COP,"                                          # 能源 3
+        "AAPL,MSFT,GOOGL,AMZN,META,TSLA,NFLX,ADBE,CRM,ORCL,"    # 科技 10
+        "JPM,BAC,WFC,GS,MS,"                                    # 金融 5
+        "CAT,BA,HON,UNP,GE",                                    # 工業 5
+    )
+    AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL: int = int(
+        os.getenv("AUTO_VALIDATE_MIN_TRADES_PER_SYMBOL", "5")
+    )
+    AUTO_VALIDATE_DAYS: int = int(os.getenv("AUTO_VALIDATE_DAYS", "3650"))
+
+    @property
+    def auto_validate_symbols(self) -> list[str]:
+        """
+        驗證籃子（拆 AUTO_VALIDATE_SYMBOLS 逗號字串）→ 去空白、去重、轉大寫的清單。
+        留空或全空白時退回 [AUTO_VALIDATE_SYMBOL]（單檔相容，不破壞舊行為）。
+        """
+        raw = [s.strip().upper() for s in (self.AUTO_VALIDATE_SYMBOLS or "").split(",")]
+        symbols: list[str] = []
+        for s in raw:
+            if s and s not in symbols:  # 去空白、去重、保序
+                symbols.append(s)
+        return symbols or [self.AUTO_VALIDATE_SYMBOL.upper()]
+
+    # ========================================================
+    # 知識庫策略 → 自動建 Paper Bot（curated→bot 自動部署排程）
+    # ========================================================
+    # 把「驗證過的好策略」自動部署成 Paper Bot 掛網跑（補上 curated 知識庫接不到 Bot 的斷層，
+    # 取代手動 deploy）。★只建 paper bot、不碰真錢雙閘；上真錢仍須 ALPACA_BASE_URL 實盤 +
+    # ALLOW_LIVE_TRADING=true，由 alpaca_client.submit_market_order 把關。
+    #   - AUTO_DEPLOY_KNOWLEDGE_ENABLED：總開關（預設 false，不掛排程、與沒這功能一樣）。
+    #   - AUTO_DEPLOY_FROM_STATUS：從哪個狀態觸發。curated（預設，保留「validated→人晉升」人工閘，
+    #     最安全）或 validated（全自動、少一道人把關；paper 不燒真錢）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_SYMBOLS：部署到哪些標的（knowledge 不綁標的，部署時才指定）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_HOUR：每日幾點跑（建議排在 auto_validate 之後，吃到當天剛驗過的）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT：每個 Bot 下單金額（美元）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN：一輪最多部署幾筆知識（防一次建爆 Bot）。
+    #   - AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL：自動建的艦隊每幾秒輪檢一次行情。每筆知識
+    #     部署到全部標的（N 檔各一個 Bot），好策略一多艦隊就大（5 策略 × 38 檔 = 190 Bot）。
+    #     190 Bot × 60 秒 ≈ 3.2 req/s，逼近 Alpaca 免費 200/min；拉長到 300 秒壓到 ~0.6 req/s，
+    #     省 CPU 與 API 額度。手動 deploy（人按）仍用既有 60 秒預設，不受此值影響。
+    AUTO_DEPLOY_KNOWLEDGE_ENABLED: bool = os.getenv("AUTO_DEPLOY_KNOWLEDGE_ENABLED", "false").lower() in ("1", "true", "yes")
+    AUTO_DEPLOY_FROM_STATUS: str = os.getenv("AUTO_DEPLOY_FROM_STATUS", "curated")
+    AUTO_DEPLOY_KNOWLEDGE_SYMBOLS: str = os.getenv("AUTO_DEPLOY_KNOWLEDGE_SYMBOLS", "SPY,QQQ,AAPL")
+    AUTO_DEPLOY_KNOWLEDGE_HOUR: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_HOUR", "9"))
+    AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT: float = float(os.getenv("AUTO_DEPLOY_KNOWLEDGE_TRADE_AMOUNT", "1000"))
+    AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_MAX_PER_RUN", "3"))
+    AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL: int = int(os.getenv("AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL", "300"))
+
+    @property
+    def auto_deploy_knowledge_symbols(self) -> list[str]:
+        """部署標的清單（拆 AUTO_DEPLOY_KNOWLEDGE_SYMBOLS）→ 去空白/去重/大寫。空＝空清單。"""
+        raw = [s.strip().upper() for s in (self.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS or "").split(",")]
+        out: list[str] = []
+        for s in raw:
+            if s and s not in out:
+                out.append(s)
+        return out
+
+    # ========================================================
+    # bot 汰弱審查員（fleet 績效考核 + 軟汰弱 + 哪股票配哪策略 fit 註冊）
+    # ========================================================
+    # 自動部署讓 Bot 數 ＝ 好策略數 × 標的數，會持續長（5 策略 × 38 檔 = 190 Bot）。
+    # 審查員每日定時：①算每支 paper Bot 實跑績效（performance.compute_bot_stats）→
+    # ②把「(策略, 標的) → 績效 + 評等」upsert 進 strategy_symbol_fit 註冊表（哪股票配哪策略）→
+    # ③實跑夠久夠多筆但不及格的 Bot「軟汰弱」（is_active=False + culled_at，不刪資料）。
+    # ★ 只碰 promotion_status="paper"；proposed_live/approved_live（真錢相關）一律不動。
+    #   - BOT_REVIEW_ENABLED：總開關（預設 false，不掛排程、與沒這功能一樣）。
+    #   - BOT_REVIEW_HOUR：每日幾點跑（排在 auto_deploy_knowledge(9) 之後，先建 Bot 再有得審）。
+    #   - BOT_REVIEW_MIN_ROUND_TRIPS：判生死的最低完整買賣次數。低於此＝樣本不足，續觀察不汰。
+    #   - BOT_REVIEW_MIN_AGE_DAYS：建立後給的觀察寬限天數。沒滿這天數不汰（給新 Bot 時間表現）。
+    #   - BOT_REVIEW_CULL_WINRATE / CULL_RETURN_PCT / CULL_MAX_DD：汰弱門檻——夠久夠多筆後，
+    #     勝率 < CULL_WINRATE 或 報酬率 < CULL_RETURN_PCT 或 最大回撤 > CULL_MAX_DD 任一中 → 汰。
+    #   - BOT_REVIEW_GOOD_WINRATE：評「good」的勝率門檻（且報酬率為正）；good/poor 寫進 fit 表。
+    #   - BOT_REVIEW_MAX_CULL_PER_RUN：一輪最多汰幾支（防門檻設錯一次誤殺整片艦隊）。
+    BOT_REVIEW_ENABLED: bool = os.getenv("BOT_REVIEW_ENABLED", "false").lower() in ("1", "true", "yes")
+    BOT_REVIEW_HOUR: int = int(os.getenv("BOT_REVIEW_HOUR", "11"))
+    BOT_REVIEW_MIN_ROUND_TRIPS: int = int(os.getenv("BOT_REVIEW_MIN_ROUND_TRIPS", "10"))
+    BOT_REVIEW_MIN_AGE_DAYS: int = int(os.getenv("BOT_REVIEW_MIN_AGE_DAYS", "14"))
+    BOT_REVIEW_CULL_WINRATE: float = float(os.getenv("BOT_REVIEW_CULL_WINRATE", "40"))
+    BOT_REVIEW_CULL_RETURN_PCT: float = float(os.getenv("BOT_REVIEW_CULL_RETURN_PCT", "0"))
+    BOT_REVIEW_CULL_MAX_DD: float = float(os.getenv("BOT_REVIEW_CULL_MAX_DD", "35"))
+    BOT_REVIEW_GOOD_WINRATE: float = float(os.getenv("BOT_REVIEW_GOOD_WINRATE", "55"))
+    BOT_REVIEW_MAX_CULL_PER_RUN: int = int(os.getenv("BOT_REVIEW_MAX_CULL_PER_RUN", "20"))
+
+    # ========================================================
+    # 開機補跑（catch-up on boot）— 維運安全軌
+    # ========================================================
+    # 家用電腦不是 24/7：每日 cron 時刻沒開機，那天管線整段跳過。
+    # 開機補跑 = 後端啟動時把「開關有開 + 時刻已過 + 今天還沒跑」的每日 job 立刻補跑。
+    # 只解決「時間到沒開機」，不放大權限：各 job 自己的 enable 閘照常生效。
+    CATCHUP_ON_BOOT: bool = os.getenv("CATCHUP_ON_BOOT", "true").lower() in ("1", "true", "yes")
+
+    # ========================================================
+    # 每日領導股回測紀錄（daily leader backtest）
+    # ========================================================
+    # 每天對主要領導股各跑一輪全自動掃描（OOS EV 排名），各檔冠軍存一筆 BacktestRun，
+    # 日積月累成「領導股最佳策略 EV 時間序列」。只落紀錄、不下單、不建 Bot。
+    #   - LEADER_BACKTEST_ENABLED：總開關（預設開——純本機回測紀錄，無對外動作）。
+    #   - LEADER_BACKTEST_SYMBOLS：逗號分隔的上市領導股清單（未上市公司回不了測，
+    #     交給 collector 的 PRIVATE_WATCH_KEYWORDS 監控）。
+    #   - LEADER_BACKTEST_DAYS：每輪回測往前抓幾天。
+    #   - LEADER_BACKTEST_HOUR：每日幾點跑（24 小時制；排在其他每日 job 之後，避免擠 CPU）。
+    LEADER_BACKTEST_ENABLED: bool = os.getenv("LEADER_BACKTEST_ENABLED", "true").lower() in ("1", "true", "yes")
+    LEADER_BACKTEST_SYMBOLS: str = os.getenv(
+        "LEADER_BACKTEST_SYMBOLS",
+        "AAPL,MSFT,NVDA,GOOGL,AMZN,META,TSLA",
+    )
+    LEADER_BACKTEST_DAYS: int = int(os.getenv("LEADER_BACKTEST_DAYS", "365"))
+    LEADER_BACKTEST_HOUR: int = int(os.getenv("LEADER_BACKTEST_HOUR", "10"))
+
+    # ========================================================
+    # 未上市公司關鍵字監控（collector 加掛）
+    # ========================================================
+    # SpaceX 這類未上市公司沒有 K 線、回不了測——只能「監控記錄」：
+    # collector 收料時比對關鍵字，命中的素材打上 watch:<關鍵字> 標籤留檔 + 通知提及。
+    # 逗號分隔、不分大小寫；留空 = 關閉監控。
+    PRIVATE_WATCH_KEYWORDS: str = os.getenv("PRIVATE_WATCH_KEYWORDS", "SpaceX")
+
+    # ========================================================
+    # 政治專討員 — Discord 事件流（Phase 10 step-05）
+    # ========================================================
+    # 從 Discord 頻道偵測政治貼文（例如川普發文鏡像）→ 本機 Ollama 判讀 → 接既有風險煞車。
+    # ★ 定位是「煞車（降風險、不開新倉），不是油門」。預設**完全關閉**，不影響現行下單。
+    #   - POLITICAL_ENABLED：bridge 總開關（預設 false）。false＝political_size_factor 一律放行。
+    #   - POLITICAL_DISCORD_TOKEN / POLITICAL_CHANNEL_ID：Discord runner 用（留空＝不啟動 runner）。
+    #   - POLITICAL_AUTHOR_FILTER：只處理這個作者名的貼文（留空＝該頻道所有貼文）。
+    #   - POLITICAL_EVENT_MAX_AGE_HOURS：政治情緒超過幾小時就退場、不再煞車（預設 24h）。
+    #   - POLITICAL_BACKFILL_LIMIT：runner 啟動時「DB 空表」才用的保底回補筆數。
+    #     正常情況回補走「時間型補齊」（只補比 DB 既有最新貼文更新的），空表時退回
+    #     只補最近 N 筆且不發通知，避免剛搬 DB 瞬間補爆（0＝關閉回補，預設 30）。
+    #   - POLITICAL_ALERT_COOLDOWN_MIN：同一作者的政治風險警報節流分鐘數（防來源倒貨 /
+    #     重判洗版；冷卻期內同作者只發一則，其餘只印 console，預設 10）。
+    POLITICAL_ENABLED: bool = os.getenv("POLITICAL_ENABLED", "false").lower() in ("1", "true", "yes")
+    POLITICAL_DISCORD_TOKEN: str = os.getenv("POLITICAL_DISCORD_TOKEN", "")
+    POLITICAL_CHANNEL_ID: str = os.getenv("POLITICAL_CHANNEL_ID", "")
+    POLITICAL_AUTHOR_FILTER: str = os.getenv("POLITICAL_AUTHOR_FILTER", "")
+    POLITICAL_EVENT_MAX_AGE_HOURS: float = float(os.getenv("POLITICAL_EVENT_MAX_AGE_HOURS", "24"))
+    POLITICAL_BACKFILL_LIMIT: int = int(os.getenv("POLITICAL_BACKFILL_LIMIT", "30"))
+    POLITICAL_ALERT_COOLDOWN_MIN: int = int(os.getenv("POLITICAL_ALERT_COOLDOWN_MIN", "10"))
 
     # ========================================================
     # 回測成本模型（Phase 6 step-02）
@@ -239,17 +481,51 @@ class Settings:
     EVENT_RISK_SIZE_FACTOR: float = float(os.getenv("EVENT_RISK_SIZE_FACTOR", "0.5"))
 
     # ========================================================
+    # 券商端止損託管（維運安全軌 H1）
+    # ========================================================
+    # 開啟時：Bot 進場成交後，把止損「託管」到券商端（Alpaca GTC stop / trailing stop 單），
+    # 電腦當機 / 斷網 / 重開機期間止損照樣執行（本機輪詢保留當備援）。
+    # 代價：Alpaca 的 stop 單只支援整股 → 掛保護單的 Bot 進場股數會取整（floor），
+    # trade_amount 買不起 1 股的高價股會跳過進場（記決策審計）。
+    # 預設開（這是「真錢前必備」的安全軌）；關掉 = 完全退回純本機輪詢（向後相容）。
+    BROKER_STOP_ENABLED: bool = os.getenv("BROKER_STOP_ENABLED", "true").lower() in ("1", "true", "yes")
+
+    # ========================================================
+    # tracking error 對帳 + 自動降級（維運安全軌 H3）
+    # ========================================================
+    # 每日比對「回測 OOS 期望值（% of 本金）vs Paper 實跑每回合報酬率（%）」。
+    # 實跑連續低於「OOS × 折扣」→ 自動停 Bot + 通知（不平倉、不撤券商端保護單，人再決定）。
+    # 這是「有晉升、沒降級」的補完——上線後唯一的品管。
+    #   - TRACKING_MIN_ROUND_TRIPS：Paper 完整回合數低於此值不對帳（樣本太少不冤殺）。
+    #   - TRACKING_WINDOW：取最近幾回合的平均報酬率來比（滾動窗）。
+    #   - TRACKING_DEMOTE_RATIO：門檻 = OOS expectancy × 此折扣（0.5 = 實跑掉到一半就算違規）。
+    #   - TRACKING_DEMOTE_AFTER：連續違規幾次才降級（只在有新回合的日子計數，寧鈍勿敏）。
+    #   - TRACKING_CHECK_HOUR：每日對帳的本機時刻（建議美股收盤後）。
+    TRACKING_MIN_ROUND_TRIPS: int = int(os.getenv("TRACKING_MIN_ROUND_TRIPS", "5"))
+    TRACKING_WINDOW: int = int(os.getenv("TRACKING_WINDOW", "10"))
+    TRACKING_DEMOTE_RATIO: float = float(os.getenv("TRACKING_DEMOTE_RATIO", "0.5"))
+    TRACKING_DEMOTE_AFTER: int = int(os.getenv("TRACKING_DEMOTE_AFTER", "3"))
+    TRACKING_CHECK_HOUR: int = int(os.getenv("TRACKING_CHECK_HOUR", "9"))
+
+    # ========================================================
+    # 心跳 + dead-man switch（維運安全軌 H2）
+    # ========================================================
+    # 一人公司沒有同事盯系統：每日心跳日報（給人看）+ 對外側監測服務 ping（給機器看）。
+    # 警報必須在「系統外側」——本機死了，本機發不出「我死了」的通知。
+    #   - HEARTBEAT_PING_URL：healthchecks.io 的專屬 ping 網址。留空＝dead-man 功能關。
+    #   - HEARTBEAT_HOUR：每日心跳日報的本機時刻（24 小時制的「時」）。
+    #   - HEARTBEAT_PING_INTERVAL_MIN：每隔幾分鐘 ping 外側一次（外側 check 的 period
+    #     建議設 1 小時 + grace 1 小時 → 系統死超過約 2 小時必有警報）。
+    HEARTBEAT_PING_URL: str = os.getenv("HEARTBEAT_PING_URL", "")
+    HEARTBEAT_HOUR: int = int(os.getenv("HEARTBEAT_HOUR", "8"))
+    HEARTBEAT_PING_INTERVAL_MIN: int = int(os.getenv("HEARTBEAT_PING_INTERVAL_MIN", "30"))
+
+    # ========================================================
     # 即時報價推送（改版子軌：AI 終端機改版，非主線 Phase 6）
     # ========================================================
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。
     # 數字越小越即時、但越耗 Alpaca 的 REST 額度；5 秒對學習/觀察很夠用。
     QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
-
-    # ========================================================
-    # LINE 通知（之後再填，現在可留空）
-    # ========================================================
-    LINE_CHANNEL_ACCESS_TOKEN: str = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-    LINE_CHANNEL_SECRET: str = os.getenv("LINE_CHANNEL_SECRET", "")
 
     # ========================================================
     # 探討（檢討）檔案記憶（Phase 5）

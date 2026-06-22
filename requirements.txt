@@ -16,6 +16,9 @@ python-dotenv==1.2.2
 pandas==3.0.3
 numpy==2.4.6
 
+# --- parquet 引擎（Phase 11 step-02 本機 OHLCV 快取：pandas to_parquet/read_parquet 後端） ---
+pyarrow==24.0.0
+
 # --- 第二資料源（免費、無金鑰；OpenBB 底層也是用它） ---
 yfinance==1.4.1
 
@@ -35,17 +38,23 @@ sqlalchemy==2.0.45
 # --- 資料庫遷移（schema 變更版本化，取代手動 ALTER；未來換 Postgres 也通用） ---
 alembic==1.18.4
 
+# --- PostgreSQL 驅動（雲端共用 DB 兩台同步用；SQLite 不需要、留著無害。見 docs/setup-postgres-sync.md） ---
+psycopg2-binary==2.9.12
+
 # --- 任務排程（讓 Bot 定時跑策略） ---
 apscheduler==3.11.0
-
-# --- LINE 通知 ---
-line-bot-sdk==3.23.0
 
 # --- HTTP 請求（通知、備用） ---
 requests==2.34.2
 
 # --- LLM 思考助手（Phase 5；OpenAI 相容介面，預設接本機 Ollama，免費） ---
 openai==2.40.0
+
+# --- HTML 解析（Phase 10 step-04 市場蒐集員爬靜態頁；純 Python、Windows 安全） ---
+beautifulsoup4==4.15.0
+
+# --- Discord bot（Phase 10 step-05 政治專討員 runner；只給獨立 runner 用，後端不依賴） ---
+discord.py==2.7.1
 
 # --- 測試（開發/CI 用） ---
 pytest==9.0.3

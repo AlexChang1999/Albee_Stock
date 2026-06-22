@@ -17,7 +17,7 @@
 from itertools import product
 
 from backend.config import settings
-from backend.services import market_data
+from backend.services import bar_cache
 from backend.services.backtest_engine import _run_on_df
 from backend.services.vectorized_engine import is_vectorized, run_vectorized
 from backend.strategies import get_strategy
@@ -136,8 +136,8 @@ def run_auto_backtest(
     commission_bps = settings.BACKTEST_COMMISSION_BPS
     slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
 
-    # 1) 資料只抓一次，之後所有組合共用（關鍵效能設計）
-    df = market_data.get_bars(symbol, days=days, source=source)
+    # 1) 資料只抓一次，之後所有組合共用（關鍵效能設計）；多年區間走本機快取（Phase 11 step-04）
+    df = bar_cache.get_bars_cached(symbol, days=days, source=source)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
     data_points = len(df)
@@ -171,6 +171,9 @@ def run_auto_backtest(
             # OOS 平均賺 / 賠（Phase 7 step-04 分數凱利的賠率原料；一律用樣本外、含成本的誠實值）
             metrics["oos_avg_win"] = oos_m["avg_win"]
             metrics["oos_avg_loss"] = oos_m["avg_loss"]
+            # OOS 期望值佔本金 %（維運安全軌 H3 tracking error 的右半邊基準：
+            # 回測複利 vs Paper 固定金額，美元 EV 不可直接比，一律用 % 歸一化）
+            metrics["oos_expectancy_pct"] = oos_m["expectancy_pct"]
             results.append({"strategy_key": strategy_key, "params": params, "metrics": metrics})
 
     # 3) ★依「樣本外 EV」由高到低排名（防過擬合的硬約束：不在整段歷史上挑最佳）；

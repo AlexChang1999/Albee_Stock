@@ -26,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 
-from backend.services.backtest_engine import _run_on_df
+from backend.services.backtest_engine import _run_on_df, _resolve_source
+from backend.services.analytics import returns_from_equity
 from backend.strategies.base import BaseStrategy, Signal
 
 
@@ -155,6 +156,125 @@ def test_zero_cost_total_cost_is_zero():
     r = _run_on_df(strat, df, initial_cash=1000)
     assert r["total_cost"] == 0.0, r
     print("✅ 零成本 total_cost=0 測試通過")
+
+
+# ============================================================
+# 環境特徵管線測試（Phase 11 step-04）
+# ============================================================
+class FeatureReadingStrategy(BaseStrategy):
+    """測試用：讀 features 欄 macro_flag——為 1 時 BUY、否則 HOLD。
+
+    若 df 沒有 macro_flag 欄（沒傳 features）→ 一律 HOLD。用來驗「features 確實到得了策略」。
+    """
+
+    def __init__(self):
+        super().__init__({})
+
+    def generate_signal(self, df):
+        row = df.iloc[-1]
+        if "macro_flag" in df.columns and row["macro_flag"] == 1:
+            return Signal.BUY, "macro_flag=1"
+        return Signal.HOLD, "無旗標"
+
+
+def test_features_reach_strategy():
+    """傳合成 features 給 _run_on_df，策略讀得到 → 訊號確實受其影響而進場。"""
+    df = pd.DataFrame({"open": [10, 10, 20, 20], "close": [10, 10, 20, 20]})
+    # macro_flag 在 bar0=1（觸發買，次根 open=10 成交），bar2=0（不賣，無 sell）
+    feats = pd.DataFrame({"macro_flag": [1, 0, 0, 0]})
+    r = _run_on_df(FeatureReadingStrategy(), df, initial_cash=1000, features=feats)
+    buys = [t for t in r["trades"] if t["side"] == "buy"]
+    assert buys and buys[0]["price"] == 10.0, r["trades"]  # features 驅動的進場
+    # 對照：不傳 features → 同策略讀不到旗標 → 全程 HOLD、無交易
+    r0 = _run_on_df(FeatureReadingStrategy(), df, initial_cash=1000)
+    assert r0["num_trades"] == 0, r0
+    print("✅ features 到得了策略測試通過（訊號受 features 影響）")
+
+
+def test_features_do_not_touch_fill_price():
+    """features 只進訊號層，不得碰成交價：成交價仍 = 次根開盤（與不帶 features 一致）。"""
+    # 訊號當根 close 跳空，成交應走次根 open=12（不因 features 改變）
+    df = pd.DataFrame({"open": [10, 12, 12, 20], "close": [10, 18, 18, 20]})
+    feats = pd.DataFrame({"macro_flag": [1, 0, 0, 0]})
+    r = _run_on_df(FeatureReadingStrategy(), df, initial_cash=1200, features=feats)
+    buys = [t for t in r["trades"] if t["side"] == "buy"]
+    assert buys and buys[0]["price"] == 12.0, r["trades"]  # 次根 open，非當根 close=18
+    print("✅ features 不碰成交價測試通過（成交仍走次根開盤）")
+
+
+def test_backward_compat_strategy_ignoring_features():
+    """向後相容硬斷言：忽略 features 的舊策略，帶 / 不帶 features 跑出完全相同結果。"""
+    df = pd.DataFrame({"open": [10, 10, 20, 20], "close": [10, 10, 20, 20]})
+    strat_signals = [Signal.BUY, Signal.SELL, Signal.HOLD, Signal.HOLD]
+    feats = pd.DataFrame({"vix_level": [12.0, 35.0, 20.0, 18.0]})  # 舊策略根本不看
+    r_with = _run_on_df(FakeStrategy(list(strat_signals)), df, initial_cash=1000, features=feats)
+    r_without = _run_on_df(FakeStrategy(list(strat_signals)), df, initial_cash=1000)
+    assert r_with["final_equity"] == r_without["final_equity"], (r_with, r_without)
+    assert r_with["trades"] == r_without["trades"], (r_with, r_without)
+    assert r_with["equity_curve"] == r_without["equity_curve"], (r_with, r_without)
+    print("✅ 向後相容測試通過（舊策略帶/不帶 features 結果完全相同）")
+
+
+# ============================================================
+# 報表真實日期：equity_dates + returns_from_equity dates 參數
+# ============================================================
+def test_equity_dates_align_with_curve_and_use_real_dates():
+    """equity_dates 與 equity_curve 等長；有 timestamp 欄時帶的是真實日期（非 str index）。"""
+    df = pd.DataFrame({
+        "timestamp": ["2000-01-03", "2000-01-04", "2000-01-05", "2000-01-06"],
+        "open":  [10, 10, 30, 30],
+        "close": [10, 10, 30, 30],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.SELL, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000)
+    assert "equity_dates" in r, r
+    assert len(r["equity_dates"]) == len(r["equity_curve"]), r
+    assert r["equity_dates"][0] == "2000-01-03", r["equity_dates"]
+    assert r["equity_dates"][-1] == "2000-01-06", r["equity_dates"]
+    print("✅ equity_dates 對齊且為真實日期測試通過")
+
+
+def test_equity_dates_fallback_to_index_without_timestamp():
+    """沒有 timestamp 欄時 date 退回字串化的索引（不爆，下游解析失敗會退回假 2000）。"""
+    df = pd.DataFrame({"open": [10, 10, 20], "close": [10, 10, 20]})
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000)
+    assert r["equity_dates"] == ["0", "1", "2"], r["equity_dates"]
+    print("✅ 無 timestamp 退回索引測試通過")
+
+
+def test_returns_from_equity_real_vs_fake_dates():
+    """傳合法 dates → 索引變真實年份；不傳 → 退回假 2000（向後相容、可重現）。"""
+    equity = [1000, 1010, 1025, 1005]
+    dates = ["2024-03-01", "2024-03-04", "2024-03-05", "2024-03-06"]
+    rets_real = returns_from_equity(equity, dates=dates)
+    # pct_change drop 第一筆，故索引對齊 dates[1:]
+    assert str(rets_real.index[0].date()) == "2024-03-04", rets_real.index
+    assert rets_real.index[0].year == 2024, rets_real.index
+
+    rets_fake = returns_from_equity(equity)  # 不傳 → 假 2000
+    assert rets_fake.index[0].year == 2000, rets_fake.index
+    print("✅ returns_from_equity 真/假日期測試通過")
+
+
+def test_returns_from_equity_bad_dates_fallback():
+    """dates 含無法解析的值 → 整串退回假 2000（不讓報表爆）。"""
+    equity = [1000, 1010, 1020]
+    rets = returns_from_equity(equity, dates=["x", "y", "z"])
+    assert rets.index[0].year == 2000, rets.index
+    print("✅ 壞日期退回假 2000 測試通過")
+
+
+# ============================================================
+# 長區間自動選資料源（_resolve_source）
+# ============================================================
+def test_resolve_source_switches_to_yfinance_on_long_range():
+    """alpaca + days 超過上限 → 自動改 yfinance；短區間不變；顯式 yfinance 不變。"""
+    from backend.services.backtest_engine import ALPACA_MAX_DAYS
+    assert _resolve_source("alpaca", ALPACA_MAX_DAYS + 1) == "yfinance"
+    assert _resolve_source("alpaca", 365) == "alpaca"
+    assert _resolve_source("yfinance", 9500) == "yfinance"  # 顯式不覆寫
+    print("✅ 長區間自動選 yfinance 測試通過")
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ describe("statRows", () => {
       max_drawdown_pct: 3,
     });
     expect(rows[0][1]).toBe("60%"); // 勝率
-    expect(rows[1][1]).toBe("12.5%"); // 報酬率值
+    expect(rows[1][1]).toBe("+12.5%"); // 報酬率值（正報酬補 + 號，不只靠顏色）
     expect(rows[1][2]).toBe("success.main"); // 報酬率顏色（正 = 綠）
   });
 

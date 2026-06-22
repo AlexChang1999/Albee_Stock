@@ -16,4 +16,20 @@ export const STRATEGIES = [
   { value: "momentum", label: "動量" },
   { value: "williams_r", label: "威廉指標" },
   { value: "adx_trend", label: "ADX 趨勢" },
+  { value: "composite", label: "策略組合" },
+];
+
+// 策略代號 → 中文標籤的單一來源（找不到就回原代號，不會壞畫面）。
+// 取代各元件各自寫一份對照，避免有的頁面顯示中文、有的印出 "ma_crossover"。
+export function strategyLabel(key) {
+  return STRATEGIES.find((s) => s.value === key)?.label || key;
+}
+
+// 回測區間快捷選項（天數）。選「最長」送 ~26 年（2000→2026），後端會自動改用
+// yfinance 抓長歷史（Alpaca 免費版抓不到那麼久）。選了會填進「回測天數」欄。
+export const BACKTEST_RANGES = [
+  { value: 365, label: "近 1 年" },
+  { value: 1825, label: "近 5 年" },
+  { value: 3650, label: "近 10 年" },
+  { value: 9500, label: "最長（2000 起）" },
 ];

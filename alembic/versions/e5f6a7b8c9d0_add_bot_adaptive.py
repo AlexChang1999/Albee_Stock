@@ -26,7 +26,7 @@ def upgrade() -> None:
     # 既有列補預設 0（False），故給 server_default；非空欄位才不會在舊資料上炸。
     with op.batch_alter_table("bots", schema=None) as batch_op:
         batch_op.add_column(
-            sa.Column("adaptive", sa.Boolean(), nullable=False, server_default=sa.text("0"))
+            sa.Column("adaptive", sa.Boolean(), nullable=False, server_default=sa.false())
         )
 
 

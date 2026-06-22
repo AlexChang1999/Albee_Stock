@@ -63,16 +63,25 @@ class MetaFilteredStrategy:
 
 
 class AdaptiveMappedStrategy:
-    """step-03：用「已建好的對照表」逐根挑策略再委派；無可信策略 → HOLD。"""
+    """step-03：用「已建好的對照表」逐根挑策略再委派。
 
-    def __init__(self, regime_map: dict):
+    無可信策略時 **退回 best-fixed（穩健預設）而非 HOLD**：meta-strategy 在沒把握的狀態
+    不該去坐現金、白白丟掉基準的 edge，而該用「整體最佳固定策略」當地板。如此 candidate
+    只在「有把握更好的狀態」才偏離 baseline，驗證的就是純粹的『狀態切換有沒有加分』。
+    fallback_key=None（沒有 best-fixed 可退）時才退回 HOLD（保守觀望）。
+    """
+
+    def __init__(self, regime_map: dict, fallback_key: str | None = None):
         self.regime_map = regime_map
+        self.fallback_key = fallback_key
 
     def generate_signal(self, df):
         feats = compute_features(df)
         pick = select_strategy(feats, self.regime_map)
         if pick["fallback"] or not pick["strategy"]:
-            return Signal.HOLD, f"自適應 {pick['regime']} 無可信策略"
+            if self.fallback_key is None:
+                return Signal.HOLD, f"自適應 {pick['regime']} 無可信策略且無預設"
+            return get_strategy(self.fallback_key, {}).generate_signal(df)
         strat = get_strategy(pick["strategy"], pick["params"])
         return strat.generate_signal(df)
 
@@ -153,35 +162,61 @@ def validate_adaptive_layer(df) -> dict:
             continue
         regime_map = build_map_from_df(train, initial_cash=_INITIAL_CASH)
         base_oos.append(_ev_on(get_strategy(best_key, {}), test))
-        cand_oos.append(_ev_on(AdaptiveMappedStrategy(regime_map), test))
+        # 無可信狀態時退回 best_key（同 baseline 的地板），驗純粹狀態切換的增益
+        cand_oos.append(_ev_on(AdaptiveMappedStrategy(regime_map, fallback_key=best_key), test))
     return {"layer": "step-03 adaptive-selection", "baseline_oos": base_oos, "candidate_oos": cand_oos,
             "verdict": is_layer_worth_it(base_oos, cand_oos)}
 
 
+def _kelly_fraction_from_returns(rs: list[float]) -> float | None:
+    """從一串 round-trip 報酬估 W/R → 分數凱利比例。樣本不足 → None（不可信）。"""
+    if len(rs) < settings.KELLY_MIN_ROUND_TRIPS:
+        return None
+    wins = [r for r in rs if r > 0]
+    losses = [-r for r in rs if r < 0]
+    w = len(wins) / len(rs)
+    avg_win = (sum(wins) / len(wins)) if wins else 0.0
+    avg_loss = (sum(losses) / len(losses)) if losses else 0.0
+    return kelly_fraction(w, avg_win, avg_loss)
+
+
 def validate_kelly_layer(df) -> dict:
-    """step-04：每 fold 用測試段已實現報酬，比「固定比例」與「凱利比例」的終值報酬。"""
+    """step-04：OOS-honest 凱利驗證。
+
+    舊版在「同一段測試窗」上同時估 W/R 又複利 → 既看未來（in-sample 凱利）又因 60 根測試窗
+    湊不到 KELLY_MIN_ROUND_TRIPS 而每 fold 全 skip（folds=0，根本沒驗到）。
+
+    新版分離訓練/測試：
+      - 在**訓練段**估凱利比例（180 根較易湊到 ≥KELLY_MIN_ROUND_TRIPS，且不偷看測試）。
+      - 把「固定比例」與「凱利比例」套到**測試段**的已實現報酬流複利，比終值報酬。
+      - 測試段只需 ≥1 筆 round-trip（有報酬可複利即可）。
+    如此凱利比例是樣本外套用，且測試不再保證 skip。
+    """
     comm, slip = _cost()
     f_fixed = settings.KELLY_MAX_FRACTION  # 樸素的固定下注比例當 baseline
     base_oos, cand_oos = [], []
     for fold in walk_forward_splits(len(df)):
+        # 凱利估 W/R 需足量 round-trip；固定 180 根 train 常湊不到 → 用「測試前全段」
+        # 的擴張窗（anchored walk-forward）估比例。仍嚴格 OOS（只用 test 之前的資料）。
+        train = df.iloc[0: fold["test_start"]].reset_index(drop=True)
         test = df.iloc[fold["test_start"]: fold["test_end"]].reset_index(drop=True)
-        best_key = _best_fixed_key(df.iloc[fold["train_start"]: fold["train_end"]].reset_index(drop=True))
+        best_key = _best_fixed_key(train)
         if best_key is None:
             continue
-        trades = _run_on_df(get_strategy(best_key, {}), test, _INITIAL_CASH,
-                            commission_bps=comm, slippage_bps=slip)["trades"]
-        rs = _roundtrip_returns(trades)
-        # 樣本不足 → W/R 不可信，跳過該 fold（與 sizing 的保守一致）
-        if len(rs) < settings.KELLY_MIN_ROUND_TRIPS:
+        # 訓練段估凱利比例（OOS：比例來自 train，不偷看 test）
+        train_trades = _run_on_df(get_strategy(best_key, {}), train, _INITIAL_CASH,
+                                  commission_bps=comm, slippage_bps=slip)["trades"]
+        f_kelly = _kelly_fraction_from_returns(_roundtrip_returns(train_trades))
+        if f_kelly is None:  # 訓練段樣本不足 → W/R 不可信，跳過該 fold
             continue
-        wins = [r for r in rs if r > 0]
-        losses = [-r for r in rs if r < 0]
-        w = len(wins) / len(rs)
-        avg_win = (sum(wins) / len(wins)) if wins else 0.0
-        avg_loss = (sum(losses) / len(losses)) if losses else 0.0
-        f_kelly = kelly_fraction(w, avg_win, avg_loss)
-        base_oos.append(_terminal_return(rs, f_fixed))
-        cand_oos.append(_terminal_return(rs, f_kelly))
+        # 測試段已實現報酬流，套兩種比例複利比終值
+        test_trades = _run_on_df(get_strategy(best_key, {}), test, _INITIAL_CASH,
+                                 commission_bps=comm, slippage_bps=slip)["trades"]
+        rs_test = _roundtrip_returns(test_trades)
+        if not rs_test:  # 測試段沒交易 → 沒東西可複利，跳過
+            continue
+        base_oos.append(_terminal_return(rs_test, f_fixed))
+        cand_oos.append(_terminal_return(rs_test, f_kelly))
     return {"layer": "step-04 kelly-sizing", "metric": "terminal_return",
             "baseline_oos": base_oos, "candidate_oos": cand_oos,
             "verdict": is_layer_worth_it(base_oos, cand_oos)}

@@ -2,3 +2,11 @@
 
 > 思考助手的長期記憶路標。每次事後檢討會在這裡新增一行，並把完整內容寫成同名 md 檔。
 > 寫新檢討前，助手會先讀這份清單、挑相關的過去探討來參考。
+
+- [2026-06-12-neon-postgres-setup.md](2026-06-12-neon-postgres-setup.md) — SQLite → Neon 雲端 PG 搬遷實錄：選型決策、實際步驟、踩坑（遷移種子列撞 PK、空 SQLite、PS 引號逃逸）與文件落地。
+
+- [knowledge#11 · 2026-06-22 · ma_crossover · deploy](knowledge-0011-ma_crossover.md) — 由知識庫（status=curated）自動排程部署成 38 個 Paper Bot：SPY, QQQ, DIA, IW…
+
+- [knowledge#16 · 2026-06-22 · momentum · deploy](knowledge-0016-momentum.md) — 由知識庫（status=curated）自動排程部署成 38 個 Paper Bot：SPY, QQQ, DIA, IW…
+
+- [knowledge#19 · 2026-06-22 · adx_trend · deploy](knowledge-0019-adx_trend.md) — 由知識庫（status=curated）自動排程部署成 38 個 Paper Bot：SPY, QQQ, DIA, IW…

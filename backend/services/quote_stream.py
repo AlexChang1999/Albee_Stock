@@ -16,7 +16,9 @@
 4. 沒有任何前端在看時，背景任務自動停止（不浪費 Alpaca 額度）
 
 注意：這是「輪詢 + 推送」版本（穩、收盤也不會像壞掉）。
-未來要升級成 Alpaca 真 tick 串流，只要換掉 `_fetch_price` 的來源，前端完全不用動。
+拉價走「批次」：一輪所有訂閱股票只打 1 次 Alpaca（multi-symbol latest-trade），
+N 檔 N 次往返 → 1 次。未來要升級成 Alpaca 真 tick 串流，
+只要換掉 `_fetch_prices` 的來源，前端完全不用動。
 """
 
 import asyncio
@@ -35,8 +37,9 @@ class QuoteHub:
         self._clients: dict[object, set[str]] = {}
         # 背景輪詢任務的把手（None = 沒在跑）
         self._task: asyncio.Task | None = None
-        # 拉價函式：抽出來是為了「測試時可替換成假資料」，不必真的連 Alpaca。
-        self._fetch_price = alpaca_client.get_latest_price
+        # 拉價函式（批次：吃 symbol list、回 {symbol: price}）。
+        # 抽出來是為了「測試時可替換成假資料」，不必真的連 Alpaca。
+        self._fetch_prices = alpaca_client.get_latest_prices
         # 輪詢間隔（秒），讀設定檔
         self.poll_interval: float = settings.QUOTE_POLL_INTERVAL_SEC
 
@@ -99,19 +102,29 @@ class QuoteHub:
         第一圈會「立刻」執行一次，所以前端訂閱後很快就會看到第一筆價格。
         """
         while True:
-            for symbol in self.subscribed_symbols():
+            symbols = sorted(self.subscribed_symbols())
+            if symbols:
                 try:
-                    # get_latest_price 是「同步」的網路請求，直接 await 會卡住事件迴圈。
-                    # 用 to_thread 丟到別的執行緒跑，不阻塞其他前端的推送。
-                    price = await asyncio.to_thread(self._fetch_price, symbol)
+                    # 批次拉價：所有訂閱股票 1 次請求。同步網路請求直接 await 會卡住
+                    # 事件迴圈，用 to_thread 丟到別的執行緒跑，不阻塞前端推送。
+                    prices = await asyncio.to_thread(self._fetch_prices, symbols)
                 except Exception:
-                    # 單一股票抓失敗（代號錯、暫時斷線等）不該拖垮整個迴圈，跳過。
-                    continue
-                await self._broadcast(symbol, {
-                    "symbol": symbol,
-                    "price": float(price),
-                    "ts": time.time(),
-                })
+                    # 整輪抓失敗（暫時斷線等）不該讓迴圈死掉，下一輪再試。
+                    prices = {}
+                ts = time.time()
+                for symbol in symbols:
+                    # 用「訂閱時的原字串」推送（前端用 === 比對 symbol）；
+                    # 批次回應的 key 是大寫，兩種都查。抓不到的檔這輪自然不推送。
+                    price = prices.get(symbol)
+                    if price is None:
+                        price = prices.get(symbol.upper())
+                    if price is None:
+                        continue
+                    await self._broadcast(symbol, {
+                        "symbol": symbol,
+                        "price": float(price),
+                        "ts": ts,
+                    })
             await asyncio.sleep(self.poll_interval)
 
     async def _broadcast(self, symbol: str, message: dict) -> None:

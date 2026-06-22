@@ -76,8 +76,12 @@ def _create_bot(TestSession, **risk) -> int:
     return bot_id
 
 
-def _patch_common(monkeypatch, position, price, orders):
-    """把下單、查持倉、查價、DB 紀錄、開市判斷、組合層守門都換成假的。"""
+def _patch_common(monkeypatch, position, price, orders, protective=None):
+    """把下單、查持倉、查價、DB 紀錄、開市判斷、組合層守門都換成假的。
+
+    :param protective: 若給一個 list，券商端保護單的掛單動作會記進來
+        （("stop", symbol, qty, stop_price) / ("trailing_stop", symbol, qty, trail_percent)）。
+    """
     monkeypatch.setattr(bm.alpaca_client, "is_market_open", lambda: True)
     monkeypatch.setattr(bm.alpaca_client, "get_position", lambda s: position)
     monkeypatch.setattr(bm.alpaca_client, "get_latest_price", lambda s: price)
@@ -85,6 +89,20 @@ def _patch_common(monkeypatch, position, price, orders):
         bm.alpaca_client, "submit_market_order",
         lambda symbol, qty, side: orders.append((symbol, qty, side)) or "fake_order",
     )
+    # 券商端保護單相關（維運安全軌 H1）：預設掛單成功、撤單成功、查無訂單
+    protective = protective if protective is not None else []
+    monkeypatch.setattr(
+        bm.alpaca_client, "submit_stop_order",
+        lambda symbol, qty, stop_price, side="sell", time_in_force="gtc":
+            protective.append(("stop", symbol, qty, stop_price)) or SimpleNamespace(id="fake-stop-id"),
+    )
+    monkeypatch.setattr(
+        bm.alpaca_client, "submit_trailing_stop_order",
+        lambda symbol, qty, trail_percent, side="sell", time_in_force="gtc":
+            protective.append(("trailing_stop", symbol, qty, trail_percent)) or SimpleNamespace(id="fake-trail-id"),
+    )
+    monkeypatch.setattr(bm.alpaca_client, "cancel_order", lambda order_id: True)
+    monkeypatch.setattr(bm.alpaca_client, "get_order", lambda order_id: None)
     # 避免寫真資料庫 / 真通知 / 真審計
     monkeypatch.setattr(bm, "_record_and_notify", lambda *a, **k: None)
     monkeypatch.setattr(bm, "_record_decision", lambda *a, **k: None)
@@ -278,6 +296,186 @@ def test_run_strategy_uses_unified_data_path(monkeypatch):
     assert captured["days"] == required_lookback_days("ma_crossover", bot.params), captured
     assert captured["days"] != 60, "不該再寫死 60"
     print("✅ 實盤資料路徑統一（market_data + DATA_SOURCE + 推算天數）測試通過")
+
+
+# ====================================================================
+# 券商端止損託管（維運安全軌 H1 Step 3）
+# ====================================================================
+
+def test_buy_places_broker_stop_with_whole_shares(tmp_path, monkeypatch):
+    """空手買進（有設止損）→ 整股買 + 掛券商端 stop 單 + 訂單 id 落 DB。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders, protective = [], []
+    _patch_common(monkeypatch, position=None, price=333.0, orders=orders, protective=protective)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+
+    bot_id = _create_bot(TestSession, stop_loss_pct=0.05)
+    bm.run_bot_once(bot_id)
+
+    # 整股：1000/333 = 3.003 → 3 股（不是碎股 3.003）
+    assert orders == [("TEST", 3, "buy")], orders
+    # 掛了 stop 保護單：觸發價 = 333 ×0.95（round 2 位）
+    assert protective == [("stop", "TEST", 3, round(333.0 * 0.95, 2))], protective
+    # 訂單 id 持久化到 DB（重啟後才知道券商端掛著哪張單）
+    s = TestSession()
+    assert s.query(Bot).filter(Bot.id == bot_id).first().protective_order_id == "fake-stop-id"
+    s.close()
+    print("✅ 買進掛券商端 stop 單（整股 + id 落 DB）測試通過")
+
+
+def test_buy_skipped_when_cannot_afford_whole_share(tmp_path, monkeypatch):
+    """trade_amount 買不起 1 股（高價股）→ 跳過買進、不送任何單。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders, protective = [], []
+    _patch_common(monkeypatch, position=None, price=2000.0, orders=orders, protective=protective)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
+
+    assert orders == [] and protective == [], (orders, protective)
+    print("✅ 買不起 1 股跳過進場測試通過")
+
+
+def test_trailing_setting_uses_native_trailing_stop(tmp_path, monkeypatch):
+    """trailing_stop_pct 有設 → 掛原生 trailing stop（優先於固定 stop），單位轉百分比數字。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders, protective = [], []
+    _patch_common(monkeypatch, position=None, price=50.0, orders=orders, protective=protective)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "突破"))
+
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05, trailing_stop_pct=0.03))
+
+    assert protective == [("trailing_stop", "TEST", 20, 3.0)], protective  # 0.03 → 3.0
+    print("✅ trailing 優先掛原生追蹤止損單測試通過")
+
+
+def test_ensure_replaces_missing_protective_order(tmp_path, monkeypatch):
+    """持倉 + 有止損設定，但券商端保護單失蹤（沒 id）→ 每輪自癒補掛。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders, protective = [], []
+    # 進場 100、現價 101：不觸發止損、策略觀望 → 唯一動作應是補掛保護單
+    _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=101,
+                  orders=orders, protective=protective)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
+
+    assert orders == [], orders
+    assert protective == [("stop", "TEST", 10, 95.0)], protective  # 100 ×0.95、整股 10
+    print("✅ 保護單失蹤自癒補掛測試通過")
+
+
+def test_local_exit_cancels_protective_order_first(tmp_path, monkeypatch):
+    """本機風控出場 → 先撤券商端保護單、再送市價賣（順序不可反）。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    sequence = []
+    orders = []
+    _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    # 自癒這輪不動作（單視為活著且正確），聚焦撤單順序
+    monkeypatch.setattr(bm, "_ensure_protective_order", lambda bot, position: None)
+    monkeypatch.setattr(
+        bm.alpaca_client, "cancel_order",
+        lambda order_id: sequence.append(("cancel", order_id)) or True,
+    )
+    monkeypatch.setattr(
+        bm.alpaca_client, "submit_market_order",
+        lambda symbol, qty, side: sequence.append(("sell", symbol)) or "fake_order",
+    )
+
+    bot_id = _create_bot(TestSession, stop_loss_pct=0.05)
+    s = TestSession()
+    s.query(Bot).filter(Bot.id == bot_id).first().protective_order_id = "ord-9"
+    s.commit()
+    s.close()
+
+    bm.run_bot_once(bot_id)
+
+    assert sequence == [("cancel", "ord-9"), ("sell", "TEST")], sequence
+    # 撤掉後 id 應清空
+    s = TestSession()
+    assert s.query(Bot).filter(Bot.id == bot_id).first().protective_order_id is None
+    s.close()
+    print("✅ 本機出場先撤保護單再賣測試通過")
+
+
+def test_local_exit_aborts_when_cancel_fails(tmp_path, monkeypatch):
+    """撤單失敗（= 券商端已先成交）→ 放棄本機賣出，等下一輪回填，不能雙重賣。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders = []
+    _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_ensure_protective_order", lambda bot, position: None)
+    monkeypatch.setattr(bm.alpaca_client, "cancel_order", lambda order_id: False)  # 撤不掉
+
+    bot_id = _create_bot(TestSession, stop_loss_pct=0.05)
+    s = TestSession()
+    s.query(Bot).filter(Bot.id == bot_id).first().protective_order_id = "ord-9"
+    s.commit()
+    s.close()
+
+    bm.run_bot_once(bot_id)
+
+    assert orders == [], orders  # 沒送本機賣單
+    s = TestSession()
+    assert s.query(Bot).filter(Bot.id == bot_id).first().protective_order_id == "ord-9"  # id 保留給回填
+    s.close()
+    print("✅ 撤單失敗放棄本機賣出測試通過")
+
+
+def test_settle_broker_exit_backfills_trade(tmp_path, monkeypatch):
+    """空手 + DB 記著保護單 id + 券商端已成交 → 回填交易/決策紀錄、清 id 與 peak。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders = []
+    _patch_common(monkeypatch, position=None, price=96.0, orders=orders)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+
+    filled = SimpleNamespace(id="ord-5", status="filled", filled_qty="10", filled_avg_price="95.5")
+    monkeypatch.setattr(bm.alpaca_client, "get_order", lambda order_id: filled)
+
+    trades, decisions = [], []
+    monkeypatch.setattr(bm, "_record_and_notify",
+                        lambda bot, side, qty, price, order, reason: trades.append((side, qty, price)))
+    monkeypatch.setattr(bm, "_record_decision",
+                        lambda bot, signal, reason, price, action: decisions.append((signal, action)))
+
+    bot_id = _create_bot(TestSession, stop_loss_pct=0.05, peak_price=120.0)
+    s = TestSession()
+    s.query(Bot).filter(Bot.id == bot_id).first().protective_order_id = "ord-5"
+    s.commit()
+    s.close()
+
+    bm.run_bot_once(bot_id)
+
+    assert ("sell", 10.0, 95.5) in trades, trades  # 用券商端「實際成交價」回填，不是現價
+    assert (Signal.SELL, bm.ACTION_SOLD) in decisions, decisions
+    s = TestSession()
+    row = s.query(Bot).filter(Bot.id == bot_id).first()
+    assert row.protective_order_id is None, row.protective_order_id
+    s.close()
+    print("✅ 券商端成交回填帳測試通過")
+
+
+def test_broker_stop_disabled_keeps_legacy_behavior(tmp_path, monkeypatch):
+    """BROKER_STOP_ENABLED=False → 行為與舊版完全一致：碎股買進、不掛任何保護單。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    orders, protective = [], []
+    _patch_common(monkeypatch, position=None, price=333.0, orders=orders, protective=protective)
+    monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", False)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+
+    bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
+
+    assert orders == [("TEST", round(1000.0 / 333.0, 4), "buy")], orders  # 碎股維持舊版
+    assert protective == [], protective  # 不掛券商端保護單
+    print("✅ 開關關閉退回舊版行為（回歸）測試通過")
 
 
 if __name__ == "__main__":

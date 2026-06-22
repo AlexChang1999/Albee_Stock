@@ -24,6 +24,10 @@ import {
 } from "@mui/material";
 
 import { api } from "../api";
+import { NEON } from "../theme";
+import { strategyLabel } from "../constants";
+import { signOf, signedMoney } from "../utils/number";
+import ConfirmDialog from "./ConfirmDialog";
 
 // 情緒分數 → 顯示用的顏色與標籤（None = 沒跑情緒分析）
 function sentimentChip(sentiment) {
@@ -34,11 +38,12 @@ function sentimentChip(sentiment) {
   return { label: `中性 ${score}`, color: "default" };
 }
 
-export default function RecommendationsPanel({ onDeploy }) {
+export default function RecommendationsPanel({ onDeploy, liveArmed = false }) {
   const [data, setData] = useState(null); // 後端回傳的整包結果
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [deployingId, setDeployingId] = useState(null); // 正在部署哪一檔（避免連點）
+  const [confirmRec, setConfirmRec] = useState(null); // 實盤模式下待二次確認的推薦
 
   async function scan(refresh = false) {
     setLoading(true);
@@ -53,13 +58,29 @@ export default function RecommendationsPanel({ onDeploy }) {
     }
   }
 
-  async function handleDeploy(rec) {
+  // 實際部署（建立 Bot + 掛排程，走父層 onDeploy）
+  async function doDeploy(rec) {
     setDeployingId(rec.symbol);
     try {
       await onDeploy(rec);
     } finally {
       setDeployingId(null);
     }
+  }
+
+  // 點「一鍵部署」：實盤模式先二次確認（會動真錢），否則直接部署
+  function handleDeploy(rec) {
+    if (liveArmed) {
+      setConfirmRec(rec);
+      return;
+    }
+    doDeploy(rec);
+  }
+
+  async function confirmDeploy() {
+    const rec = confirmRec;
+    setConfirmRec(null);
+    if (rec) await doDeploy(rec);
   }
 
   const recs = data?.recommendations || [];
@@ -104,6 +125,14 @@ export default function RecommendationsPanel({ onDeploy }) {
         {recs.map((rec) => {
           const m = rec.metrics || {};
           const chip = sentimentChip(rec.sentiment);
+          // EV：防 undefined（避免印 NaN）、帶正負號 + 漲跌上色（不只靠顏色）
+          const evNum = Number(m.expected_value);
+          const evValid = Number.isFinite(evNum);
+          const evColor = !evValid
+            ? "text.primary"
+            : evNum >= 0
+            ? NEON.green
+            : NEON.red;
           return (
             <Card key={rec.symbol} variant="outlined">
               <CardContent>
@@ -112,16 +141,19 @@ export default function RecommendationsPanel({ onDeploy }) {
                   <Chip size="small" label={chip.label} color={chip.color} />
                 </Box>
                 <Typography variant="body2" color="text.secondary">
-                  最佳策略：{rec.strategy_key}
+                  最佳策略：{strategyLabel(rec.strategy_key)}
                 </Typography>
 
                 {/* EV 當頭條（大字） */}
-                <Typography variant="h4" sx={{ my: 1 }}>
-                  EV {Number(m.expected_value).toFixed(2)}
+                <Typography variant="h4" sx={{ my: 1, color: evColor }}>
+                  EV {signedMoney(evValid ? evNum.toFixed(2) : null)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  勝率 {m.win_rate_pct ?? "-"}%｜報酬 {m.total_return_pct ?? "-"}%｜
-                  回撤 {m.max_drawdown_pct ?? "-"}%｜量比 {rec.volume_ratio}
+                  勝率 {m.win_rate_pct ?? "-"}%｜報酬{" "}
+                  {m.total_return_pct != null
+                    ? `${signOf(m.total_return_pct)}${m.total_return_pct}`
+                    : "-"}
+                  %｜回撤 {m.max_drawdown_pct ?? "-"}%｜量比 {rec.volume_ratio}
                 </Typography>
 
                 <Button
@@ -144,6 +176,20 @@ export default function RecommendationsPanel({ onDeploy }) {
           這次沒有 EV 為正的推薦。可換時間範圍或稍後再掃。
         </Typography>
       )}
+
+      {/* 實盤模式下部署的二次確認（會動真錢） */}
+      <ConfirmDialog
+        open={!!confirmRec}
+        title="實盤部署確認"
+        message={
+          confirmRec
+            ? `目前是實盤模式：部署「${confirmRec.symbol}」會建立一個會用真實資金下單的 Bot。確定要部署嗎？`
+            : ""
+        }
+        confirmText="部署"
+        onConfirm={confirmDeploy}
+        onClose={() => setConfirmRec(null)}
+      />
     </Box>
   );
 }

@@ -25,7 +25,8 @@ import {
   TableContainer,
   Paper,
 } from "@mui/material";
-import { STRATEGIES } from "../constants";
+import { STRATEGIES, BACKTEST_RANGES } from "../constants";
+import { signedMoney } from "../utils/number";
 import Stat from "./Stat";
 
 export default function BacktestPanel({
@@ -35,6 +36,16 @@ export default function BacktestPanel({
   btLoading,
   onRun,
 }) {
+  // ----- 即時驗證：股票代號必填、天數/初始資金需為正數，有錯就停用「開始回測」-----
+  const symbolErr = !String(btForm.symbol ?? "").trim();
+  const daysNum = Number(btForm.days);
+  const daysErr =
+    btForm.days === "" || !Number.isFinite(daysNum) || daysNum <= 0;
+  const cashNum = Number(btForm.initial_cash);
+  const cashErr =
+    btForm.initial_cash === "" || !Number.isFinite(cashNum) || cashNum <= 0;
+  const formErr = symbolErr || daysErr || cashErr;
+
   return (
     <Card sx={{ mb: 3 }}>
       <CardContent>
@@ -47,7 +58,7 @@ export default function BacktestPanel({
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" },
+            gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(5, 1fr)" },
             gap: 2,
             mb: 2,
           }}
@@ -66,25 +77,58 @@ export default function BacktestPanel({
           </TextField>
           <TextField
             label="股票代號"
+            required
             value={btForm.symbol}
+            error={symbolErr}
+            helperText={symbolErr ? "請填股票代號" : " "}
             onChange={(e) => setBtForm({ ...btForm, symbol: e.target.value })}
           />
+          {/* 快捷區間：選一個就把對應天數填進「回測天數」。選「最長」≈26 年，
+              後端自動改用 yfinance 抓長歷史。空字串＝自訂（不覆寫手填的天數）。 */}
+          <TextField
+            select
+            label="快捷區間"
+            value={
+              BACKTEST_RANGES.some((r) => r.value === Number(btForm.days))
+                ? Number(btForm.days)
+                : ""
+            }
+            onChange={(e) => setBtForm({ ...btForm, days: e.target.value })}
+            helperText=" "
+          >
+            <MenuItem value="">自訂…</MenuItem>
+            {BACKTEST_RANGES.map((r) => (
+              <MenuItem key={r.value} value={r.value}>
+                {r.label}
+              </MenuItem>
+            ))}
+          </TextField>
           <TextField
             label="回測天數"
             type="number"
+            required
             value={btForm.days}
+            error={daysErr}
+            helperText={daysErr ? "請填大於 0 的天數" : " "}
             onChange={(e) => setBtForm({ ...btForm, days: e.target.value })}
           />
           <TextField
             label="初始資金 (USD)"
             type="number"
+            required
             value={btForm.initial_cash}
+            error={cashErr}
+            helperText={cashErr ? "請填大於 0 的金額" : " "}
             onChange={(e) =>
               setBtForm({ ...btForm, initial_cash: e.target.value })
             }
           />
         </Box>
-        <Button variant="contained" onClick={onRun} disabled={btLoading}>
+        <Button
+          variant="contained"
+          onClick={onRun}
+          disabled={btLoading || formErr}
+        >
           {btLoading ? "回測中…" : "開始回測"}
         </Button>
 
@@ -156,7 +200,9 @@ export default function BacktestPanel({
                         </TableCell>
                         <TableCell>${t.price}</TableCell>
                         <TableCell
+                          align="right"
                           sx={{
+                            fontVariantNumeric: "tabular-nums",
                             color:
                               t.profit > 0
                                 ? "success.main"
@@ -165,7 +211,8 @@ export default function BacktestPanel({
                                 : "text.secondary",
                           }}
                         >
-                          {t.profit !== undefined ? `$${t.profit}` : "-"}
+                          {/* signedMoney：盈虧帶 +/- 號（"+$12"/"-$5"），不只靠紅綠顏色表達 */}
+                          {t.profit !== undefined ? signedMoney(t.profit) : "-"}
                         </TableCell>
                         <TableCell>{t.reason}</TableCell>
                       </TableRow>

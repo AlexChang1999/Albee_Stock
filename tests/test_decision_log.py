@@ -193,6 +193,51 @@ def test_decisions_endpoint_roundtrip(tmp_path, monkeypatch):
     print("✅ GET /bots/{id}/decisions 往返測試通過")
 
 
+def test_recent_decisions_endpoint_cross_bot(tmp_path, monkeypatch):
+    """GET /bots/decisions/recent：跨 Bot 倒序合流 + 帶 bot_name +
+    路由不被 /{bot_id} 吃掉（"decisions" 不是合法 bot_id）。"""
+    from fastapi.testclient import TestClient
+    from backend.database import get_db
+    from backend.main import app
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'recent.db'}")
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+
+    def _override_get_db():
+        db = TestSession()
+        try:
+            yield db
+        finally:
+            db.close()
+    app.dependency_overrides[get_db] = _override_get_db
+
+    s = TestSession()
+    a = Bot(name="甲", strategy="rsi", symbol="AAPL")
+    b = Bot(name="乙", strategy="macd", symbol="TSLA")
+    s.add_all([a, b])
+    s.commit()
+    s.add(DecisionLog(bot_id=a.id, symbol="AAPL", signal="hold",
+                      reason="甲的觀望", price=10.0, action=ACTION_HOLD))
+    s.add(DecisionLog(bot_id=b.id, symbol="TSLA", signal="buy",
+                      reason="乙的買進", price=20.0, action=ACTION_BOUGHT))
+    s.commit()
+    s.close()
+
+    try:
+        with TestClient(app) as client:
+            resp = client.get("/bots/decisions/recent?limit=10")
+            assert resp.status_code == 200, resp.text  # 沒被 /{bot_id} 路由吃掉而 422
+            body = resp.json()
+            assert len(body) == 2, body
+            names = {row["bot_name"] for row in body}
+            assert names == {"甲", "乙"}, names          # 跨 Bot 合流 + 帶名字
+            assert body[0]["reason"] == "乙的買進", body  # 倒序：最新在前
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    print("✅ GET /bots/decisions/recent 跨 Bot 合流測試通過")
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))

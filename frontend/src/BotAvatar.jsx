@@ -1,9 +1,10 @@
 // ============================================================
-// BotAvatar — 精緻淺色「徽章機器人」頭像（多部件隨機組合）
+// BotAvatar — 深藍發光「徽章機器人」頭像（多部件隨機組合）
 // ============================================================
-// 概念：像一枚壓印在米白紙上的銀行印章 / 紀念幣——
-//   圓形徽章底（暖白紙感 + 髮絲線外環），上面用「墨線 + 單一典雅點綴色」
-//   勾勒一隻幾何小機器人。安靜、有質感，跟整站淺色金融風一致。
+// 概念：像一枚壓印在深海軍藍金屬上的紀念章——
+//   圓形徽章底（深藍漸層 + 冷色髮絲外環），上面用「冷光線 + 單一發光點綴色」
+//   勾勒一隻幾何小機器人。沉穩、有科技感，跟整站深藍沉浸金融風一致
+//   （配合 theme.js 改版 Phase 3 的深底，避免淺色徽章貼在深藍面板上突兀）。
 //
 // 「隨機但固定」= 同一個 seed 每次都長一樣（用雜湊決定各部件），
 // 但不同 Bot 幾乎不會撞臉。部件種類相乘 → 上千種組合。
@@ -23,27 +24,28 @@ function hashString(str) {
   return Math.abs(h);
 }
 
-// 墨色（線稿主色）：近墨藍黑，與全站文字色呼應
-const INK = "#2b3142";
+// 線稿主色：近白冷光，與全站深底文字色（theme.js INK #e7edf7）呼應，深底上才看得見
+const INK = "#e7edf7";
 
-// 典雅點綴色盤（收斂、低彩度，不刺眼；每個 Bot 抽一個當識別色）
+// 發光點綴色盤（契合深藍主題，提亮、夠跳；每個 Bot 抽一個當識別色）
+// 前四色吸收 theme.js 的 NEON（亮藍 / 黃金 / 青綠 / 洋紅），後四色為和諧延伸
 const ACCENTS = [
-  "#1f6f54", // 森林綠
-  "#b0883a", // 黃銅金
-  "#3a6ea5", // 板岩藍
-  "#a8553f", // 赤陶
-  "#6d5a8c", // 暗紫
-  "#2f8f86", // 青瓷綠
-  "#9a7b2e", // 赭黃
-  "#4a7a52", // 鼠尾草綠
+  "#4da3ff", // 亮藍（主色）
+  "#f5c451", // 黃金
+  "#1fd6a0", // 青綠
+  "#ff5d7a", // 洋紅
+  "#8a7bff", // 靛紫
+  "#3fd0e0", // 青瓷
+  "#ffa14d", // 琥珀橙
+  "#7ee08a", // 萊姆綠
 ];
 
-// 徽章底色（暖白紙感漸層，多款細微差異）
+// 徽章底色（深海軍藍漸層，多款細微差異；對齊 theme.js PANEL #0f1f3a 一帶）
 const MEDALLIONS = [
-  ["#ffffff", "#f2ece1"],
-  ["#fdfbf7", "#ede7da"],
-  ["#fbfaf6", "#ece5d7"],
-  ["#fffdf9", "#efe8db"],
+  ["#14294a", "#0c1a33"],
+  ["#16315a", "#0d1d38"],
+  ["#1a2c4e", "#0f1f3a"],
+  ["#102746", "#0a162d"],
 ];
 
 // ---------- 各部件畫法（回傳 SVG 片段）----------
@@ -183,10 +185,10 @@ export default function BotAvatar({ seed = "bot", size = 56, active = false }) {
       viewBox="0 0 100 100"
       style={{
         borderRadius: "50%",
-        // 啟用中：點綴色細環 + 柔和外暈；停用：極淡髮絲外環
+        // 啟用中：點綴色細環 + 發光外暈；停用：深處陰影壓出浮起感
         boxShadow: active
-          ? `0 0 0 2px #fff, 0 0 0 3.5px ${accent}, 0 4px 12px -2px ${accent}55`
-          : "0 1px 3px rgba(28,34,48,0.12)",
+          ? `0 0 0 2px #0b1830, 0 0 0 3.5px ${accent}, 0 4px 14px -2px ${accent}66`
+          : "0 2px 6px rgba(0,0,0,0.45)",
         transition: "box-shadow 0.25s",
       }}
     >
@@ -198,10 +200,10 @@ export default function BotAvatar({ seed = "bot", size = 56, active = false }) {
         </radialGradient>
       </defs>
 
-      {/* 徽章底 + 髮絲線外環 + 內細環（壓印幣感） */}
+      {/* 徽章底 + 冷色髮絲外環 + 內細環（深底壓印章感） */}
       <circle cx="50" cy="50" r="49" fill={`url(#${medId})`} />
-      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(28,34,48,0.16)" strokeWidth="1.2" />
-      <circle cx="50" cy="50" r="43" fill="none" stroke="rgba(28,34,48,0.08)" strokeWidth="1" />
+      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.2" />
+      <circle cx="50" cy="50" r="43" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
 
       {/* 依 seed 組合各部件（墨線 + 點綴色） */}
       {antenna(antV, accent)}
