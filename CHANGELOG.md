@@ -51,6 +51,7 @@
 
 ### 變更
 
+- **側邊欄改為依操作流程的 5 階段分組導覽（可折疊收納）**：原本一條扁平 20 項導覽清單（`SidebarLayout.jsx` 的 `NAV_ITEMS`）順序混亂、核心頁被 Phase 10~14 的戰情／實驗頁夾在中間，整理成依「操作流程」由上而下的 5 個階段——① 監控看盤 → ② 找題材 → ③ 研究‧驗證 → ④ 策展‧演進 → ⑤ 部署。每組標題可點展開/收合，次要的「④ 策展‧演進」「⑤ 部署」**預設收合**讓畫面更短；展開狀態記進 `localStorage`（`albee-nav-open`，照 colorMode 範式），直接走訪收合階段內的頁會自動展開該組、不會把目前頁的導覽藏起來。**純前端呈現層改動：路由、頁面、Outlet context 全部不動，20 頁一頁不刪、皆可達**（`frontend/src/components/SidebarLayout.jsx` + 同層測試）。
 - **移除 LINE 通知**：LINE Notify 2025 停服後遺留的 Messaging API 推播已全數移除（`notifier.py` / `config.py` / `requirements.txt` 砍 `line-bot-sdk`）；通知管道統一走 Discord Webhook（`DISCORD_WEBHOOK_URL`）。
 - **Discord Webhook 429 重試**：`_send_discord` 遇到 rate limit 時依 `retry_after` 等完再重試，最多 3 次，不再印 ⚠️ 警告。
 - **政治專討員看門狗修正**：沒設 `POLITICAL_DISCORD_TOKEN` 或未裝 `discord.py` 時改以 `sys.exit(2)` 退出；`.bat` 看門狗偵測到 exit code 2 即停止（不再無窮重啟）。
