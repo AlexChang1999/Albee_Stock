@@ -57,6 +57,13 @@
 
 ### 新增
 
+- **結構化交易日誌（買入假設 → 賣出失效回填）**：把每筆買賣的決策脈絡補到可回溯整個假設生命週期，讓週報/月報自我檢討真的有料可讀（延續 Phase 15「決策 Log 加深」）。
+  - **`DecisionLog` 加 8 欄**（Alembic `26c1a3a4aef1`，全 nullable 向後相容，既有 ~30 處寫入點不傳也不壞）：`strategy`（冗存策略代號，自適應記實際挑中的）、`total_amount`（成交總額）、`target_price`/`stop_price`（買進依風控門檻算出的停利/停損價）、`market_snapshot`（均線 5/20/60 排列+位置、量能倍數）、`position_after`（交易後庫存 best-effort）、`exit_kind`（把粗粒度 `sold` 細分成止損/停利/追蹤/策略反轉/券商）、`thesis_breach`（賣出回填「哪個買入假設失效」）。
+  - **新 `services/decision_context.py`（純函式，不碰 DB）**：`compute_market_snapshot`（收盤均線/均量**複用圖表同公式**）、`classify_exit_kind`（從 reason 判出場類型，處理「追蹤止損」含「止損」的判斷順序與券商端優先）、`build_thesis_breach`（撈最近一筆買進的 target/stop 跟出場價對照，產「跌破預設停損 $X（進場 $Y，−Z%）；當初預期漲抵 $T 未達；持有 N 天」）。
+  - **`bot_manager` 全分支接線**：`_run_strategy`/`_run_adaptive` 的 ctx 多帶 `market_snapshot`+`strategy`；買進算 target/stop/total/position_after；賣出三路（風控/策略/券商回填）算 `exit_kind` + 撈最近買進回填 `thesis_breach`。`get_bot_decisions`/`get_recent_decisions` API 補新鍵。
+  - **閉環到「讀教訓」**：`chat._format_decision_history` 把 `exit_kind`/停利停損/行情/`thesis_breach` 一併餵 LLM，覆盤教練 system prompt 加引導善用「假設失效」歸納反覆犯的錯。DecisionsPage 表格加 exit chip（吃 NEON 色票）、🎯停利/⛔停損、「行情」tooltip、假設失效小字。
+  - 測試：新 `tests/test_decision_context.py`（15 條：快照各分支／出場分類關鍵字順序／假設失效回填）+ 擴 `test_decision_log`（買進記 target/stop/total、止損回填假設失效、策略反轉分類）。
+  - **本批未做（範圍外，標記待後續）**：`STRONG_BUY` 信心分級需策略介面輸出信心分數；「預期持有時間」需 Bot 新增參數 + 前端編輯——兩者皆動既有介面，未納本批。
 - **每股多策略艦隊落地 + 決策教訓 Log（Phase 15）**：把「每股只有一個 bot」真正變成「每股多策略並存虛擬交易」，並讓每筆決策記下夠深的脈絡供回頭學。
   - **個股擂台一鍵建艦隊**：`StockArenaPage` 加批次「🚀 部署前 N 名為 paper bots」（N 預設 5）+ 可設每單金額／輪詢秒數；去重（先查 `getBots` 比對同 `symbol+strategy` 已存在就跳過），一次把排行榜前段策略各建一個 paper bot 對該股虛擬交易，最佳由汰弱審查員浮現。全程 paper、複用既有 `createBot`/`startBot`，零新後端。
   - **決策 Log 加深（量／股數／指標快照）**：`DecisionLog` 加 `volume`（決策當下那根 K 的成交量）、`qty`（實際下單股數）、`indicators`（該策略當下指標快照，如 `{"rsi":28.1}`）三欄（Alembic `4810c1ec25d9`）。`bot_manager._run_strategy`/`_run_adaptive_strategy` 改回 `(signal, reason, ctx)`，ctx 的指標快照**複用 `indicator_overlays.compute_overlays`** 取各序列末根（零策略改寫）；各決策分支補傳，`get_bot_decisions` API 補三鍵。

@@ -245,6 +245,8 @@ def get_recent_decisions(limit: int = 30, db: Session = Depends(get_db)):
             "reason": r.reason,
             "price": r.price,
             "action": r.action,
+            "exit_kind": r.exit_kind,          # 賣出細分（止損/停利/追蹤/反轉/券商）
+            "thesis_breach": r.thesis_breach,  # 賣出時哪個買入假設失效（給即時流呈現）
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r, bot_name in rows
@@ -278,6 +280,15 @@ def get_bot_decisions(bot_id: int, limit: int = 50, db: Session = Depends(get_db
             "qty": r.qty,                # 實際下單股數（觀望/跳過為 None）
             "indicators": r.indicators,  # 該策略當下指標快照（dict 或 None）
             "action": r.action,
+            # ----- 結構化交易日誌擴充欄位 -----
+            "strategy": r.strategy,              # 觸發策略代號（自適應記實際挑中的）
+            "total_amount": r.total_amount,      # 成交總額 = 價 × 股數
+            "target_price": r.target_price,      # 預期獲利點
+            "stop_price": r.stop_price,          # 預計停損點
+            "market_snapshot": r.market_snapshot,  # 均線位置 + 量能快照（dict 或 None）
+            "position_after": r.position_after,    # 交易後庫存（dict 或 None）
+            "exit_kind": r.exit_kind,            # 賣出細分（止損/停利/追蹤/反轉/券商）
+            "thesis_breach": r.thesis_breach,    # 賣出時哪個買入假設失效
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in rows

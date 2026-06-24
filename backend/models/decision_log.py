@@ -29,6 +29,16 @@ ACTION_DEMOTED = "demoted"                            # tracking error 自動降
 ACTION_BOT_CULLED = "bot_culled"                      # 審查員汰弱停 Bot（Phase 13，績效不及格軟汰弱）
 
 
+# exit_kind 列舉值（只在「賣出」時填，把 ACTION_SOLD 細分成可統計的出場類型）。
+# action 仍是粗粒度的 sold（不破壞既有查詢/測試）；exit_kind 補上「為什麼賣」的機器可讀分類，
+# 讓週報/月報能算「止損 vs 停利 vs 策略反轉各佔多少、各自的平均盈虧」。
+EXIT_KIND_STOP_LOSS = "stop_loss"            # 固定止損觸發（跌破進場價×(1−門檻)）
+EXIT_KIND_TAKE_PROFIT = "take_profit"        # 固定止盈觸發（漲到進場價×(1+門檻)）
+EXIT_KIND_TRAILING = "trailing"              # 追蹤止損觸發（從持倉最高價回落門檻）
+EXIT_KIND_SIGNAL_REVERSAL = "signal_reversal"  # 策略訊號反轉出場（非風控，純策略翻空）
+EXIT_KIND_BROKER_SETTLED = "broker_settled"  # 券商端保護單成交、本機回填（出場原因以託管單為準）
+
+
 class DecisionLog(Base):
     __tablename__ = "decision_logs"
 
@@ -64,6 +74,38 @@ class DecisionLog(Base):
 
     # 實際採取的動作（見上方 ACTION_* 常數）
     action = Column(String, nullable=False)
+
+    # ===== 結構化交易日誌擴充（讓週報/月報能回溯「買入假設→賣出失效」）=====
+    # 全部 nullable：既有寫入點不傳也不壞，只有「有意義」的時點才填（多半是買進/賣出）。
+
+    # 觸發決策的策略代號（冗存 Bot.strategy，免事後 join；自適應模式記「這輪實際挑中的」）。
+    strategy = Column(String, nullable=True)
+
+    # 交易總額 = price × qty（買進/賣出才有；觀望/跳過為 None）。
+    total_amount = Column(Float, nullable=True)
+
+    # 預期獲利點 / 預計停損點（決策當下算出的價位，非比例）：
+    #   買進：target=進場價×(1+take_profit_pct)、stop=進場價×(1−stop_loss_pct)，未設門檻則 None。
+    #   風控出場：填觸發的那條門檻價（止盈填 target、止損填 stop），方便和實際成交價對照。
+    target_price = Column(Float, nullable=True)
+    stop_price = Column(Float, nullable=True)
+
+    # 決策當下的市場快照（JSON）：{"ma5","ma20","ma60","price_vs_ma20_pct","vol_ratio","vol_state",...}。
+    # 來源：services.decision_context.compute_market_snapshot(df)，與圖表/指標同一套 pandas 公式。
+    # 風控出場/休市等無 df 的時點為 None。回答「進出場時站在均線上方還是下方、放量還是縮量」。
+    market_snapshot = Column(JSON, nullable=True)
+
+    # 交易後庫存狀態（JSON，best-effort）：{"shares":交易後持股, "buying_power":剩餘購買力}。
+    # 查不到帳戶（離線/無金鑰）時為 None；不阻斷交易主流程。
+    position_after = Column(JSON, nullable=True)
+
+    # 賣出時的出場類型（見上方 EXIT_KIND_* 常數；買進/觀望/跳過為 None）。
+    exit_kind = Column(String, nullable=True)
+
+    # 賣出時回填「哪個買入假設失效」（一句結構化說明，給人 + LLM 檢討看）：
+    # 撈該 Bot 最近一筆 bought 的本表紀錄，把當初的 target/stop/進場價 跟這次出場價/原因對照，
+    # 例如「跌破預設停損 $228.0（進場 $240.0，−5.0%）；持有 3 天」。無對應買入紀錄時為 None。
+    thesis_breach = Column(String, nullable=True)
 
     # 決策時間
     created_at = Column(DateTime, default=datetime.now)
