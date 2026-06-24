@@ -47,6 +47,7 @@
 ### 修正
 
 - **`POST /discovery/validate-batch` 改為非同步（202）**：原同步呼叫跑 38 籃子 walk-forward 回測需數分鐘以上，HTTP 請求必逾時。改用 FastAPI `BackgroundTasks` 立刻回 202；前端 CompanyPage「驗證」鈕按下後改為每 10 秒輪詢 `/company/overview`，偵測到 `candidate/validated/rejected` 數字變動時自動解鎖，最多等 10 分鐘（`backend/routers/discovery.py` + `frontend/src/pages/CompanyPage.jsx`）。
+- **`test_discovery_api` 不再連 Neon + 補修非同步後遺漏的斷言（根治 flaky）**：`tests/conftest.py` 在 import `backend.config` 之前把 `DATABASE_URL` 指到暫存 SQLite，讓全域 engine（lifespan 的 `init_db`/resume/排程、`validate-batch` 背景任務 `run_auto_validate(None)` 自建的 `SessionLocal`——這些都不經 `get_db` 覆寫）改走本機檔案，整個測試程序與 Neon 脫鉤（全套件受惠，逐測試仍各自用 `tmp_path` SQLite 隔離）。同時把上一筆 validate-batch 改 202 時漏改的測試斷言（仍期待 `200 + "validated"`）更新為 `202 + status=="started"`。
 
 ### 變更
 
