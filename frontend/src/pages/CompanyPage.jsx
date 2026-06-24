@@ -6,7 +6,7 @@
 //   - 每張「部門卡」對應一個公司角色，連到對應的既有頁去實際操作。
 // 顏色一律吃 theme / NEON（深藍主題下寫死 hex 會在深底上隱形）。
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Box,
@@ -110,22 +110,67 @@ export default function CompanyPage() {
     }
   }, [load]);
 
+  // 驗證鈕輪詢計時器（背景任務完成前持續 poll，免阻塞 UI）
+  const validatePollRef = useRef(null);
+
+  // 停輪詢並解鎖 UI
+  const stopValidatePoll = useCallback((msg) => {
+    if (validatePollRef.current) {
+      clearInterval(validatePollRef.current);
+      validatePollRef.current = null;
+    }
+    if (msg !== undefined) setActionMsg(msg);
+    setBusyAction("");
+  }, []);
+
+  // 元件卸載時清計時器
+  useEffect(() => () => { if (validatePollRef.current) clearInterval(validatePollRef.current); }, []);
+
   // 探勘流水線逐關手動推進：跑完重抓 overview，漏斗數字當場跳動（擬人操作）。
+  // 「驗證」端點回 202（背景跑），改為輪詢 overview 直到 candidate 數字變動。
   const runAction = useCallback(
     async (key, label, fn) => {
       setBusyAction(key);
       setActionMsg("");
       try {
         const r = await fn();
-        setActionMsg(`${label}：${summarizeResult(r)}`);
-        await load();
+        if (key === "validate" && r?.status === "started") {
+          // 後端已接受，背景跑；記下啟動前的 candidate 數，輪詢到有變化才算完成
+          const snapshotCandidate = data?.discovery_funnel?.knowledge?.candidate ?? null;
+          const startedAt = Date.now();
+          const POLL_INTERVAL = 10_000;  // 10 秒
+          const MAX_WAIT = 10 * 60_000;  // 最多等 10 分鐘
+          setActionMsg("驗證中（背景執行）…每 10 秒自動重整，完成後數字會更新。");
+          validatePollRef.current = setInterval(async () => {
+            if (Date.now() - startedAt > MAX_WAIT) {
+              stopValidatePoll("驗證等待超時（10 分鐘），請稍後手動重整頁面確認結果。");
+              return;
+            }
+            try {
+              const o = await api.getCompanyOverview();
+              const nowCandidate = o?.discovery_funnel?.knowledge?.candidate ?? snapshotCandidate;
+              const nowValidated = o?.discovery_funnel?.knowledge?.validated ?? 0;
+              const nowRejected  = o?.discovery_funnel?.knowledge?.rejected ?? 0;
+              // 數字有異動（candidate 減少、或 validated/rejected 增加）視為完成
+              if (snapshotCandidate !== null && (nowCandidate < snapshotCandidate || nowValidated > 0 || nowRejected > (data?.discovery_funnel?.knowledge?.rejected ?? 0))) {
+                setData(o);
+                stopValidatePoll(`驗證完成：candidate → ${nowCandidate}，validated ${nowValidated}，rejected ${nowRejected}`);
+              } else {
+                setData(o);  // 畫面仍更新，讓使用者看到正在活著
+              }
+            } catch (_) { /* 忽略輪詢期間的網路抖動 */ }
+          }, POLL_INTERVAL);
+        } else {
+          setActionMsg(`${label}：${summarizeResult(r)}`);
+          await load();
+          setBusyAction("");
+        }
       } catch (e) {
         setActionMsg(`${label}失敗：${e.message}`);
-      } finally {
         setBusyAction("");
       }
     },
-    [load]
+    [load, data, stopValidatePoll]
   );
 
   useEffect(() => {
