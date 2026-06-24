@@ -311,6 +311,26 @@ class Settings:
     BOT_REVIEW_MAX_CULL_PER_RUN: int = int(os.getenv("BOT_REVIEW_MAX_CULL_PER_RUN", "20"))
 
     # ========================================================
+    # AI 每日交易事後檢討（trade_review）
+    # ========================================================
+    # 每天美股收盤後（UTC 20:00 = ET 16:00）自動觸發，讀取當日決策 → LLM 分析 → 寫 explorations/ → 推播。
+    #   - TRADE_REVIEW_ENABLED：總開關（預設開）。
+    #   - TRADE_REVIEW_HOUR：每日幾點跑（UTC；預設 20 = ET 16:00 收盤後）。
+    TRADE_REVIEW_ENABLED: bool = os.getenv("TRADE_REVIEW_ENABLED", "true").lower() in ("1", "true", "yes")
+    TRADE_REVIEW_HOUR: int = int(os.getenv("TRADE_REVIEW_HOUR", "20"))
+
+    # ========================================================
+    # 策略進化反饋迴圈（strategy_feedback）
+    # ========================================================
+    # Bot 被汰弱或降級後，自動分析失敗原因、由 LLM 提案新參數候選寫入知識庫。
+    #   - FEEDBACK_MIN_RATIO：實跑均值 / OOS 期望值 < 此比值才觸發（預設 0.6 = 低於 OOS 的 60%）。
+    #   - FEEDBACK_MIN_ROUND_TRIPS：觸發所需的最低完整買賣回合數（預設 5）。
+    #   - FEEDBACK_THESIS_LIMIT：傳給 LLM 分析的最近失敗案例數（預設 10）。
+    FEEDBACK_MIN_RATIO: float = float(os.getenv("FEEDBACK_MIN_RATIO", "0.6"))
+    FEEDBACK_MIN_ROUND_TRIPS: int = int(os.getenv("FEEDBACK_MIN_ROUND_TRIPS", "5"))
+    FEEDBACK_THESIS_LIMIT: int = int(os.getenv("FEEDBACK_THESIS_LIMIT", "10"))
+
+    # ========================================================
     # 開機補跑（catch-up on boot）— 維運安全軌
     # ========================================================
     # 家用電腦不是 24/7：每日 cron 時刻沒開機，那天管線整段跳過。

@@ -15,6 +15,22 @@
 
 ## [未發布]
 
+### 新增 (Added) — AI 交易日誌分析 + 策略進化反饋迴圈
+
+- **`GET /bots/daily-digest`**：每日交易摘要端點，按 Bot 分組顯示 P&L、exit_kind 分佈、thesis_breach 清單，快速查「昨天到底發生什麼」
+- **`POST /review/daily`**：手動觸發 AI 每日交易事後檢討，讀 DecisionLog + TradeLog → LLM 分析虧損模式 → 寫 `explorations/review-YYYY-MM-DD.md` → 推播摘要
+- **`GET /review/daily`**：確認指定日期 review 檔案是否存在
+- **`backend/services/trade_review.py`**：AI 每日交易分析服務（自動在 UTC 20:00 觸發，LLM 不可用時仍回傳統計）
+- **`backend/services/strategy_feedback.py`**：策略進化反饋迴圈——Bot 被汰弱/降級後 LLM 自動分析失效原因、提案新參數候選，寫入 StrategyKnowledge（status=candidate, origin=paper_feedback）
+- **`StrategyKnowledge` 新增三欄位**（Alembic 遷移 c5040cf68986）：`origin`（來源：manual/paper_feedback/discovery）、`parent_id`（前版本血緣）、`evolution_note`（AI 分析文字）
+- **前端 KnowledgeCard**：`paper_feedback` 候選顯示「從實跑學習」Chip + AI 分析展開
+- **前端 EvolutionPage**：新增「來源」篩選 toggle（全部/從實跑學習/人工建立/探勘橋）
+- **汰弱/降級後自動觸發反饋**：`bot_review._cull_bot` 和 `tracking._demote_bot` 停 Bot 後自動呼叫 `generate_candidate_from_paper`（LLM 不可用優雅跳過）
+- **APScheduler 排程**：`schedule_trade_review()`，每日 UTC 20:00 自動跑 AI 檢討
+- **catchup.py**：開機補跑管線加入 `trade_review`（美股收盤後才排）
+
+
+
 ### 接下來要做（我跟你，下個 session 接手）
 
 > 本批程式已落地（全套件 547 passed / 0 failed），但**有幾件要人觸發 / 要拍板的事還沒做**：

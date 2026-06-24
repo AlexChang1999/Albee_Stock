@@ -385,3 +385,106 @@ def stop_bot(bot_id: int, db: Session = Depends(get_db)):
     db.commit()
     bot_manager.stop_bot(bot_id)
     return {"message": f"Bot {bot.name} 已停止"}
+
+
+@router.get("/daily-digest")
+def daily_digest(date: str | None = None, db: Session = Depends(get_db)):
+    """
+    每日交易摘要（快速查詢「昨天到底發生什麼」）。
+
+    讀取 DecisionLog + TradeLog，按 Bot 分組計算 round-trip P&L 與出場分析。
+    date 格式 YYYY-MM-DD，省略 = 昨天。不觸發 LLM（純資料查詢）。
+    需要 AI 分析版本請用 POST /review/daily。
+    """
+    from datetime import date as _date, timedelta, datetime as _dt
+    from collections import defaultdict
+    from backend.services.performance import compute_round_trip_returns
+
+    target_str = date or (_date.today() - timedelta(days=1)).isoformat()
+    try:
+        target_dt = _dt.strptime(target_str, "%Y-%m-%d")
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"日期格式錯誤：{target_str}，應為 YYYY-MM-DD")
+
+    day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = target_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # 抓當日所有決策
+    all_decisions = (
+        db.query(DecisionLog)
+        .filter(
+            DecisionLog.created_at >= day_start,
+            DecisionLog.created_at <= day_end,
+        )
+        .order_by(DecisionLog.bot_id, DecisionLog.created_at.asc())
+        .all()
+    )
+
+    # 抓當日成交
+    all_trades = (
+        db.query(TradeLog)
+        .filter(
+            TradeLog.created_at >= day_start,
+            TradeLog.created_at <= day_end,
+        )
+        .order_by(TradeLog.bot_id, TradeLog.created_at.asc())
+        .all()
+    )
+
+    # 按 bot_id 分組
+    by_bot_dec: dict = defaultdict(list)
+    for d in all_decisions:
+        by_bot_dec[d.bot_id].append(d)
+
+    by_bot_trade: dict = defaultdict(list)
+    for t in all_trades:
+        by_bot_trade[t.bot_id].append(t)
+
+    all_bot_ids = set(by_bot_dec.keys()) | set(by_bot_trade.keys())
+    bots_map = {b.id: b for b in db.query(Bot).filter(Bot.id.in_(all_bot_ids)).all()} if all_bot_ids else {}
+
+    result_bots = []
+    total_pnl = 0.0
+    for bot_id in sorted(all_bot_ids):
+        b = bots_map.get(bot_id)
+        decisions = by_bot_dec[bot_id]
+        trades = by_bot_trade[bot_id]
+
+        trade_dicts = [{"side": t.side, "qty": t.qty, "price": t.price,
+                        "created_at": t.created_at} for t in trades]
+        rts = compute_round_trip_returns(trade_dicts)
+        pnl = sum(r["profit"] for r in rts)
+        total_pnl += pnl
+
+        exit_kinds: dict = defaultdict(int)
+        thesis_breaches = []
+        for d in decisions:
+            if d.action == "sold":
+                if d.exit_kind:
+                    exit_kinds[d.exit_kind] += 1
+                if d.thesis_breach:
+                    thesis_breaches.append({
+                        "breach": d.thesis_breach,
+                        "price": d.price,
+                        "time": d.created_at.isoformat() if d.created_at else None,
+                    })
+
+        result_bots.append({
+            "bot_id": bot_id,
+            "bot_name": b.name if b else f"Bot#{bot_id}",
+            "strategy": b.strategy if b else "unknown",
+            "symbol": b.symbol if b else "unknown",
+            "decisions_count": len(decisions),
+            "round_trips": len(rts),
+            "pnl": round(pnl, 2),
+            "exit_kinds": dict(exit_kinds),
+            "thesis_breaches": thesis_breaches,
+        })
+
+    return {
+        "date": target_str,
+        "total_pnl": round(total_pnl, 2),
+        "bots_count": len(result_bots),
+        "bots": result_bots,
+    }

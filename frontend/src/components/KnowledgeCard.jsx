@@ -56,7 +56,12 @@ export default function KnowledgeCard({ item, actions }) {
         <Typography variant="subtitle2" noWrap sx={{ minWidth: 0 }}>
           {item.name}
         </Typography>
-        <Chip size="small" color={status.color} label={status.label} />
+        <Stack direction="row" gap={0.5} alignItems="center">
+          {item.origin === "paper_feedback" && (
+            <Chip size="small" label="從實跑學習" color="info" variant="outlined" />
+          )}
+          <Chip size="small" color={status.color} label={status.label} />
+        </Stack>
       </Stack>
       <Typography variant="caption" color="text.secondary">
         {item.strategy_key}
@@ -101,6 +106,18 @@ export default function KnowledgeCard({ item, actions }) {
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
           出處：{provenance}
         </Typography>
+      )}
+
+      {/* AI 分析文字（來自 paper_feedback 反饋迴圈） */}
+      {item.evolution_note && (
+        <Box sx={{ mt: 1, p: 1, bgcolor: "action.hover", borderRadius: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+            <strong>AI 進化分析：</strong>
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "pre-wrap", fontSize: "0.7rem" }}>
+            {item.evolution_note.slice(0, 400)}{item.evolution_note.length > 400 ? "…" : ""}
+          </Typography>
+        </Box>
       )}
 
       {actions && <Box sx={{ mt: 1 }}>{actions}</Box>}

@@ -1083,6 +1083,31 @@ class BotManager:
             replace_existing=True,
         )
 
+    def schedule_trade_review(self, hour: int) -> None:
+        """
+        掛上「AI 每日交易事後檢討」的定時工作。
+
+        每天 hour 時（UTC）自動讀取當日 DecisionLog + TradeLog → LLM 分析虧損模式
+        → 寫 explorations/review-YYYY-MM-DD.md → 推播摘要通知。
+        TRADE_REVIEW_ENABLED=false 代表完全不掛：移除既有 job（若有）並返回。
+        在 main.py 啟動時呼叫一次即可。
+        """
+        from backend.services.catchup import make_daily_idempotent
+        from backend.services.trade_review import run_daily_review_scheduled
+
+        job_id = "trade_review"
+        if not settings.TRADE_REVIEW_ENABLED:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            make_daily_idempotent(job_id, run_daily_review_scheduled),
+            "cron",
+            hour=hour,
+            id=job_id,
+            replace_existing=True,
+        )
+
     def schedule_catchup_on_boot(self) -> None:
         """
         掛上「開機補跑」的一次性工作（後端啟動時呼叫，立刻在排程器執行緒池跑一次）。

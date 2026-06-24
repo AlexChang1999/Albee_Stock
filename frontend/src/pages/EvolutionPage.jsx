@@ -22,6 +22,7 @@ import KnowledgeCard from "../components/KnowledgeCard";
 
 export default function EvolutionPage() {
   const [status, setStatus] = useState("candidate");
+  const [originFilter, setOriginFilter] = useState("all"); // "all" | "paper_feedback" | "manual" | "discovery"
   const [items, setItems] = useState([]);
   const [symbol, setSymbol] = useState("AAPL"); // 單檔驗證用標的（籃子模式忽略）
   const [useBasket, setUseBasket] = useState(true); // 預設完整籃子（與自動驗證路徑同嚴謹度）
@@ -99,7 +100,7 @@ export default function EvolutionPage() {
         進化實驗室
       </Typography>
 
-      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }} flexWrap="wrap">
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -109,6 +110,17 @@ export default function EvolutionPage() {
           <ToggleButton value="candidate">候選</ToggleButton>
           <ToggleButton value="validated">已驗證</ToggleButton>
           <ToggleButton value="rejected">已退回</ToggleButton>
+        </ToggleButtonGroup>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={originFilter}
+          onChange={(e, v) => v && setOriginFilter(v)}
+        >
+          <ToggleButton value="all">全部來源</ToggleButton>
+          <ToggleButton value="paper_feedback">從實跑學習</ToggleButton>
+          <ToggleButton value="manual">人工建立</ToggleButton>
+          <ToggleButton value="discovery">探勘橋</ToggleButton>
         </ToggleButtonGroup>
         <ToggleButtonGroup
           size="small"
@@ -141,14 +153,14 @@ export default function EvolutionPage() {
       )}
 
       <Grid container spacing={2}>
-        {items.length === 0 && (
+        {(originFilter === "all" ? items : items.filter((i) => i.origin === originFilter)).length === 0 && (
           <Grid item xs={12}>
             <Typography variant="caption" color="text.secondary">
               這一層沒有策略。
             </Typography>
           </Grid>
         )}
-        {items.map((item) => (
+        {(originFilter === "all" ? items : items.filter((i) => i.origin === originFilter)).map((item) => (
           <Grid item xs={12} sm={6} md={4} key={item.id}>
             <KnowledgeCard
               item={item}
