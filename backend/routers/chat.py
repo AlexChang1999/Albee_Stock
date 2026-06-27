@@ -354,21 +354,41 @@ class BotLessonsRequest(BaseModel):
     bot_id: int
 
 
+def _snapshot_brief(s) -> str:
+    """市場快照 → 精簡片段（給決策史一行用）：均線排列 / 量能狀態。無則回空字串。"""
+    if not isinstance(s, dict):
+        return ""
+    bits = [s[k] for k in ("ma_stack", "vol_state") if s.get(k)]
+    return f"｜行情{'/'.join(bits)}" if bits else ""
+
+
 def _format_decision_history(decisions: list) -> str:
     """把決策史（時間倒序撈來）排成「時間正序、一行一筆」的可讀表，注入 LLM。
 
-    每行：時間｜動作/訊號｜價｜量｜股數｜指標快照｜原因。
+    每行：時間｜動作(出場類型)/訊號｜價(🎯停利 ⛔停損)｜量 行情｜股數｜指標｜原因｜假設失效。
     含「沒成交但有決策」的觀望/跳過——教訓常藏在「沒進場」與「為何沒進」裡。
+    結構化日誌欄位（exit_kind / target/stop / market_snapshot / thesis_breach）一併餵入，
+    讓覆盤教練能看出「賣出時哪個買入假設破了、在放量還是縮量時進出場」。缺值自動略過。
     """
     lines = []
     for d in reversed(decisions):  # 撈的是 desc，反轉成正序讀起來才順
         t = d.created_at.strftime("%m-%d %H:%M") if d.created_at else "—"
+        act = d.action + (f"({d.exit_kind})" if d.exit_kind else "")
         price = f"${d.price:.2f}" if d.price is not None else "—"
+        # 買進附上當初設定的停利/停損目標——賣出回填「假設失效」的對照基準
+        tgt = []
+        if d.target_price is not None:
+            tgt.append(f"🎯${d.target_price:.2f}")
+        if d.stop_price is not None:
+            tgt.append(f"⛔${d.stop_price:.2f}")
+        price_cell = price + (f"（{' '.join(tgt)}）" if tgt else "")
         vol = f"{int(d.volume):,}" if d.volume is not None else "—"
         qty = f"{d.qty:g}股" if d.qty is not None else "—"
+        snap = _snapshot_brief(d.market_snapshot)
         inds = json.dumps(d.indicators, ensure_ascii=False) if d.indicators else "—"
+        tail = f"｜假設失效:{d.thesis_breach}" if d.thesis_breach else ""
         lines.append(
-            f"{t}｜{d.action}/{d.signal}｜價{price}｜量{vol}｜{qty}｜指標{inds}｜{d.reason or ''}"
+            f"{t}｜{act}/{d.signal}｜價{price_cell}｜量{vol}{snap}｜{qty}｜指標{inds}｜{d.reason or ''}{tail}"
         )
     return "\n".join(lines)
 
@@ -410,6 +430,8 @@ def bot_lessons(payload: BotLessonsRequest):
         sys_text = (
             "你是交易 Bot 的覆盤教練。看一支 Bot 的決策史，找出可學的教訓。"
             "判斷以『期望值 EV』為主、不是只看勝率（高勝率但一次大賠＝負 EV，要點出）。"
+            "賣出紀錄附『假設失效』欄（當初買入預期哪個破了）與『行情』（均線排列/量能），"
+            "請善用它們歸納反覆犯的錯（例：總在量縮、空頭排列追高後被停損）。"
             "回答用繁體中文，簡潔具體、可執行。"
         )
         prompt = (

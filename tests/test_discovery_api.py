@@ -58,11 +58,14 @@ def _isolated_client(tmp_path):
 
 def test_pipeline_triggers_empty_db(tmp_path):
     with _isolated_client(tmp_path) as (client, _):
-        # 空庫 + force：三個批次觸發都回 200 + 統計 dict（不早退、不連網、無候選可處理）
+        # 空庫 + force：run/auto-deploy 同步回 200 + 統計 dict；validate-batch 非同步回 202
+        # （都不早退、不連網、無候選可處理）。
         r1 = client.post("/discovery/run")
         assert r1.status_code == 200 and "built" in r1.json()
+        # validate-batch 是 BackgroundTasks（38 籃子 walk-forward 太久，避免 HTTP 逾時），
+        # 立刻回 202 + {"status": "started"}；驗證在背景跑，進度靠輪詢 /company/overview。
         r2 = client.post("/discovery/validate-batch")
-        assert r2.status_code == 200 and "validated" in r2.json()
+        assert r2.status_code == 202 and r2.json().get("status") == "started"
         r3 = client.post("/discovery/auto-deploy")
         assert r3.status_code == 200 and "bots_created" in r3.json()
 

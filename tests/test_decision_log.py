@@ -54,7 +54,8 @@ def _create_bot(TestSession, **risk) -> int:
     s = TestSession()
     bot = Bot(name="決策Bot", strategy="ma_crossover", symbol="TEST", params={},
               trade_amount=1000.0,
-              stop_loss_pct=risk.get("stop_loss_pct"))
+              stop_loss_pct=risk.get("stop_loss_pct"),
+              take_profit_pct=risk.get("take_profit_pct"))
     s.add(bot)
     s.commit()
     bot_id = bot.id
@@ -148,6 +149,61 @@ def test_risk_sold_decision(tmp_path, monkeypatch):
     d = _last_decision(TestSession, bid)
     assert d.action == ACTION_SOLD and d.signal == "sell", d
     print("✅ 各分支決策審計寫入測試通過")
+
+
+def test_bought_decision_records_target_stop_total(tmp_path, monkeypatch):
+    """結構化日誌：買進要落 target/stop（依風控門檻算）、total_amount、strategy。"""
+    import pytest
+
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    _patch(monkeypatch, position=None, price=50)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_place_protective_order", lambda *a, **k: None)  # 消券商保護單噪音
+    bid = _create_bot(TestSession, take_profit_pct=0.10, stop_loss_pct=0.05)
+    bm.run_bot_once(bid)
+    d = _last_decision(TestSession, bid)
+    assert d.action == ACTION_BOUGHT
+    assert d.target_price == pytest.approx(55.0)    # 50 × (1+0.10)
+    assert d.stop_price == pytest.approx(47.5)      # 50 × (1−0.05)
+    assert d.total_amount == pytest.approx(1000.0)  # 20 股 × 50
+    assert d.strategy == "ma_crossover"
+
+
+def test_risk_sold_records_exit_kind_and_thesis(tmp_path, monkeypatch):
+    """結構化日誌：止損賣出要落 exit_kind=stop_loss，並回填『哪個買入假設失效』。"""
+    from datetime import datetime
+
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    _patch(monkeypatch, position=FakePosition(avg_entry_price=100, qty=10), price=94)
+    monkeypatch.setattr(bm, "_run_strategy",
+                        lambda bot: (_ for _ in ()).throw(AssertionError("止損時不該問策略")))
+    bid = _create_bot(TestSession, stop_loss_pct=0.05)
+    # 先種一筆買進紀錄（含當初的 target/stop），供賣出回填假設失效對照
+    s = TestSession()
+    s.add(DecisionLog(bot_id=bid, symbol="TEST", signal="buy", reason="進場",
+                      price=100.0, target_price=110.0, stop_price=95.0,
+                      action=ACTION_BOUGHT, created_at=datetime(2026, 6, 1)))
+    s.commit()
+    s.close()
+    bm.run_bot_once(bid)
+    d = _last_decision(TestSession, bid)
+    assert d.action == ACTION_SOLD
+    assert d.exit_kind == "stop_loss", d.exit_kind
+    assert d.thesis_breach and "跌破預設停損" in d.thesis_breach, d.thesis_breach
+    assert "未達" in d.thesis_breach          # 點出當初預期目標 $110 未達
+    assert d.total_amount == 940.0           # 10 股 × 94
+
+
+def test_strategy_sold_records_signal_reversal(tmp_path, monkeypatch):
+    """結構化日誌：純策略訊號反轉出場（風控未觸發）→ exit_kind=signal_reversal。"""
+    TestSession = _setup_db(tmp_path, monkeypatch)
+    _patch(monkeypatch, position=FakePosition(avg_entry_price=100, qty=10), price=105)
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.SELL, "死亡交叉", {}))
+    bid = _create_bot(TestSession)  # 無風控門檻 → check_exit 不觸發，走策略賣出
+    bm.run_bot_once(bid)
+    d = _last_decision(TestSession, bid)
+    assert d.action == ACTION_SOLD
+    assert d.exit_kind == "signal_reversal", d.exit_kind
 
 
 def test_decision_records_volume_qty_indicators(tmp_path, monkeypatch):

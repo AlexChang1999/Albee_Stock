@@ -30,12 +30,17 @@ import {
 } from "@mui/material";
 import { useOutletContext } from "react-router-dom";
 import { api } from "../api";
-// action → 標籤/配色映射抽到 utils 共用（卡片動畫、決策流也用同一套）
-import { actionMeta } from "../utils/decisionMeta";
+// action / exit_kind → 標籤/配色映射抽到 utils 共用（卡片動畫、決策流也用同一套）
+import { actionMeta, exitKindMeta } from "../utils/decisionMeta";
 
 // 數字格式：量帶千分位、缺值 "—"
 function fmtVolume(v) {
   return v === null || v === undefined ? "—" : Number(v).toLocaleString();
+}
+
+// 金額格式：兩位小數帶 $；缺值回 null（呼叫端據此決定是否顯示）
+function fmtMoney(v) {
+  return v === null || v === undefined ? null : `$${Number(v).toFixed(2)}`;
 }
 
 // 指標快照 dict → 一行可讀字串（給 tooltip）
@@ -44,6 +49,20 @@ function fmtIndicators(inds) {
   return Object.entries(inds)
     .map(([k, v]) => `${k}: ${typeof v === "number" ? v.toFixed(2) : v}`)
     .join(" · ");
+}
+
+// 市場快照 dict → 一行可讀字串（給「行情」tooltip）：均線排列 / 現價相對 MA20 / 量能狀態
+function fmtSnapshot(s) {
+  if (!s || typeof s !== "object") return "";
+  const parts = [];
+  if (s.ma_stack) parts.push(`均線：${s.ma_stack}`);
+  if (s.price_vs_ma20_pct !== null && s.price_vs_ma20_pct !== undefined) {
+    parts.push(`現價 vs MA20：${s.price_vs_ma20_pct > 0 ? "+" : ""}${s.price_vs_ma20_pct}%`);
+  }
+  if (s.vol_state) {
+    parts.push(`量能：${s.vol_state}${s.vol_ratio != null ? `（${s.vol_ratio}×）` : ""}`);
+  }
+  return parts.join(" · ");
 }
 
 export default function DecisionsPage() {
@@ -161,23 +180,46 @@ export default function DecisionsPage() {
               )}
               {decisions.map((d) => {
                 const meta = actionMeta(d.action);
+                const exit = exitKindMeta(d.exit_kind);
                 const indText = fmtIndicators(d.indicators);
+                const snapText = fmtSnapshot(d.market_snapshot);
+                const target = fmtMoney(d.target_price);
+                const stop = fmtMoney(d.stop_price);
                 return (
                   <TableRow key={d.id}>
                     <TableCell>
                       {d.created_at ? new Date(d.created_at).toLocaleString() : "—"}
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        size="small"
-                        label={meta.label}
-                        sx={{ color: meta.color, borderColor: meta.color }}
-                        variant="outlined"
-                      />
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        <Chip
+                          size="small"
+                          label={meta.label}
+                          sx={{ color: meta.color, borderColor: meta.color }}
+                          variant="outlined"
+                        />
+                        {exit && (
+                          <Chip
+                            size="small"
+                            label={exit.label}
+                            sx={{ color: exit.color, borderColor: exit.color }}
+                            variant="outlined"
+                          />
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>{d.signal}</TableCell>
                     <TableCell>{d.symbol}</TableCell>
-                    <TableCell align="right">{d.price == null ? "—" : `$${d.price}`}</TableCell>
+                    <TableCell align="right">
+                      {d.price == null ? "—" : `$${d.price}`}
+                      {(target || stop) && (
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {target && `🎯 ${target}`}
+                          {target && stop && " "}
+                          {stop && `⛔ ${stop}`}
+                        </Typography>
+                      )}
+                    </TableCell>
                     <TableCell align="right">{fmtVolume(d.volume)}</TableCell>
                     <TableCell align="right">{d.qty == null ? "—" : d.qty}</TableCell>
                     <TableCell>
@@ -191,7 +233,27 @@ export default function DecisionsPage() {
                           />
                         </Tooltip>
                       )}
+                      {snapText && (
+                        <Tooltip title={`當下行情 → ${snapText}`} arrow>
+                          <Chip
+                            size="small"
+                            label="行情"
+                            variant="outlined"
+                            sx={{ mr: 1, color: "text.secondary", cursor: "help" }}
+                          />
+                        </Tooltip>
+                      )}
                       {d.reason}
+                      {d.thesis_breach && (
+                        <Typography
+                          variant="caption"
+                          display="block"
+                          color="text.secondary"
+                          sx={{ mt: 0.5 }}
+                        >
+                          📋 {d.thesis_breach}
+                        </Typography>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

@@ -125,6 +125,12 @@ def _demote_bot(db, bot: Bot, reason: str) -> None:
         f"已停排程（持倉與券商端保護單**不動**）。確認後可砍倉/調參，"
         f"或用 POST /bots/{bot.id}/start 重新啟用。"
     )
+    # 降級後嘗試觸發策略反饋迴圈：LLM 分析失效原因、提案新參數候選
+    try:
+        from backend.services.strategy_feedback import generate_candidate_from_paper
+        generate_candidate_from_paper(bot.id, db)
+    except Exception as _e:
+        print(f"⚠️ strategy_feedback 鉤子失敗（隔離，不影響降級）：{_e}")
 
 
 def run_tracking_check() -> None:

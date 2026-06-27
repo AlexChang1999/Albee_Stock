@@ -143,6 +143,12 @@ def _cull_bot(db, bot: Bot, reason: str) -> None:
         f"已停用（持倉與券商端保護單**不動**、資料保留可查）。"
         f"要真刪走人工；想復用 POST /bots/{bot.id}/start。"
     )
+    # 汰弱後嘗試觸發策略反饋迴圈：LLM 分析失效原因、提案新參數候選
+    try:
+        from backend.services.strategy_feedback import generate_candidate_from_paper
+        generate_candidate_from_paper(bot.id, db)
+    except Exception as _e:
+        logger.warning("strategy_feedback 鉤子失敗（隔離，不影響汰弱）：%s", _e)
 
 
 def run_bot_review(db=None) -> dict:
