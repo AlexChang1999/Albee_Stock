@@ -26,6 +26,7 @@ Phase 6 設計重點：
 import math
 from datetime import datetime
 
+from apscheduler.executors.pool import ThreadPoolExecutor as APSThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from backend.config import settings
@@ -687,7 +688,10 @@ class BotManager:
         # coalesce + misfire_grace_time：電腦睡眠/卡頓錯過觸發時刻時，
         # 醒來後 1 小時內補觸發一次（coalesce=多次錯過只補一次）。
         # APScheduler 預設錯過 1 秒就放棄——家用電腦會睡，必須放寬。
+        # 預設 ThreadPoolExecutor max_workers=10，Bot 多時 pool 滿會丟 "Error submitting job"
+        # 調到 50：每個 Bot run 約佔 1 worker，50 Bot 同時跑不滿池
         self.scheduler = BackgroundScheduler(
+            executors={"default": APSThreadPoolExecutor(max_workers=50)},
             job_defaults={"coalesce": True, "misfire_grace_time": 3600},
         )
         self.scheduler.start()
