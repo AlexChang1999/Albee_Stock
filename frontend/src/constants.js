@@ -17,6 +17,7 @@ export const STRATEGIES = [
   { value: "williams_r", label: "威廉指標" },
   { value: "adx_trend", label: "ADX 趨勢" },
   { value: "composite", label: "策略組合" },
+  { value: "script_breakout", label: "突破續抱（事件式）" },
 ];
 
 // 策略代號 → 中文標籤的單一來源（找不到就回原代號，不會壞畫面）。

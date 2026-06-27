@@ -548,6 +548,19 @@ class Settings:
     QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
 
     # ========================================================
+    # Agent Gateway — 外部 AI agent 受限存取（採納自 QuantDinger）
+    # ========================================================
+    # 讓 Claude / Cursor 等外部 AI 透過 /api/agent/v1/* 驅動我們的回測 / 策略 / 知識庫查詢，
+    # 並可下「預設 paper」的單。沿用實盤雙閘的精神，再加一道 agent 專屬閘：
+    #   - AGENT_API_TOKEN：bearer 驗證用的密鑰。留空＝整個 Gateway 關閉（端點一律回 503）。
+    #     ★ 絕不 commit，只放 .env；自己用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 產一把。
+    #   - AGENT_LIVE_TRADING_ENABLED：agent 下單能否碰真錢的「第三道閘」（鏡像 ALLOW_LIVE_TRADING）。
+    #     預設 false＝agent 只能下 paper 單。要 agent 動真錢須三者齊開：實盤網址 + ALLOW_LIVE_TRADING
+    #     + 本閘，且仍由 alpaca_client.submit_market_order 的雙閘把關（本閘只是再多一層拒絕）。
+    AGENT_API_TOKEN: str = os.getenv("AGENT_API_TOKEN", "")
+    AGENT_LIVE_TRADING_ENABLED: bool = os.getenv("AGENT_LIVE_TRADING_ENABLED", "false").lower() in ("1", "true", "yes")
+
+    # ========================================================
     # 探討（檢討）檔案記憶（Phase 5）
     # ========================================================
     # 思考助手把每次事後檢討寫成 markdown 檔放這個資料夾，並用 INDEX.md 當「路標」，

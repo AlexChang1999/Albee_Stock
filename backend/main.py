@@ -27,7 +27,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity, bot_review, discovery, review
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity, bot_review, discovery, review, agent
 from backend.services.bot_activity import hub as activity_hub
 from backend.services.scheduler_lock import acquire_scheduler_lock, release_scheduler_lock
 
@@ -195,3 +195,4 @@ app.include_router(macro.router)
 app.include_router(positions.router)
 app.include_router(bot_review.router)
 app.include_router(review.router)
+app.include_router(agent.router)

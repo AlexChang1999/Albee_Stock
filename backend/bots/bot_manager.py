@@ -669,7 +669,9 @@ def _run_strategy(bot: Bot):
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
     emit_activity(bot, "compute_signal", f"計算 {bot.strategy} 策略訊號")
     strategy = get_strategy(bot.strategy, bot.params or {})
-    signal, reason = strategy.generate_signal(df)
+    # 統一入口 evaluate_last：向量化策略＝generate_signal(df)（行為不變）；
+    # 事件式 ScriptStrategy＝重播到最後一根、回該根動作（冷啟重播，部位真相來自 Alpaca 持倉）。
+    signal, reason = strategy.evaluate_last(df)
 
     # 決策上下文（量 + 指標快照 + 市場快照 + 策略名）：抓到 df 就算一次，沿 3-tuple
     # 帶回給 _record_decision，讓觀望/買賣各分支都記得下「當時站在均線哪邊、放量縮量」。

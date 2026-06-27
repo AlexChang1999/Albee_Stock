@@ -15,6 +15,31 @@
 
 ## [未發布]
 
+### 新增 (Added) — 採納 QuantDinger 兩項能力：ScriptStrategy 引擎 + Agent Gateway/MCP
+
+> 分析外部專案 [QuantDinger](https://github.com/brokermr810/QuantDinger) 後採納兩項架構能力，
+> 簡單版優先。守住既有「回測=實盤同路徑」與實盤雙閘鐵則。
+
+- **事件驅動 ScriptStrategy 引擎**（`backend/strategies/base.py` 新增 `ScriptStrategy` +
+  `backend/strategies/context.py` 新增 `BacktestContext`）：用 `on_bar(ctx, bar)` +
+  `ctx.buy()/sell()/close()` 寫有狀態的進出場邏輯（讀得到 `ctx.in_position`/`bars_held`/`history`）。
+  - 統一入口 `produce_signals(df)` / `evaluate_last(df)`：向量化策略走預設實作（行為逐位元組不變）、
+    事件式策略覆寫成 on_bar 驅動，但**壓出的訊號仍走同一個 `_simulate_from_signals` 成交核心**
+    （次根開盤 + 含成本），零分岔。`backtest_engine._run_on_df` 與 `bot_manager._run_strategy` 改吃統一入口。
+  - 範例策略 `script_breakout`（突破進場 + 有狀態續抱）：已註冊 + 前端 `constants.js` + 參數 schema。
+  - 等價性測試證明「同一規則的向量化 vs 事件式」回測結果（EV/報酬/交易/資金曲線）完全一致。
+- **Agent Gateway**（`backend/routers/agent.py`，`/api/agent/v1/*`）：讓 Claude/Cursor 等外部 AI
+  透過 bearer token 驅動我們的回測/策略/帳戶/機會/知識庫查詢，並可下「預設 paper」的單。
+  - 三道安全閘：① `AGENT_API_TOKEN`（未設＝整組回 503）；② 唯讀為主；③ 下單預設 paper，
+    碰真錢須 `AGENT_LIVE_TRADING_ENABLED=true` 第三道閘 + 既有 Alpaca 實盤雙閘把關。
+  - 每筆呼叫落 `agent_audits` append-only 審計表（`backend/models/agent_audit.py` + Alembic 遷移 `f7a8b9c0d1e2`）。
+- **自家 MCP server**（`mcp_server/server.py` + `README.md`）：stdio MCP 薄包 Agent Gateway，
+  工具一對一映射（list_strategies / run_backtest / get_account / list_bots / submit_order 等）。
+  `requirements.txt` 加 `mcp>=1.0`（僅跑 MCP 時需要，後端本體不依賴）。
+- **設定**：`config.py` + `.env.example` 加 `AGENT_API_TOKEN`、`AGENT_LIVE_TRADING_ENABLED`（預設關）。
+- **測試**：`tests/test_agent_gateway.py`（503/401/200 + 審計 + 實盤下單 403）、
+  `tests/test_backtest.py` 等價性測試、`tests/test_strategies.py` ScriptStrategy 註冊測試。
+
 ### 新增 (Added) — AI 交易日誌分析 + 策略進化反饋迴圈
 
 - **`GET /bots/daily-digest`**：每日交易摘要端點，按 Bot 分組顯示 P&L、exit_kind 分佈、thesis_breach 清單，快速查「昨天到底發生什麼」

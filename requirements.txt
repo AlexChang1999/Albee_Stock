@@ -56,6 +56,10 @@ beautifulsoup4==4.15.0
 # --- Discord bot（Phase 10 step-05 政治專討員 runner；只給獨立 runner 用，後端不依賴） ---
 discord.py==2.7.1
 
+# --- 自家 MCP server（mcp_server/；採納自 QuantDinger 的 Agent Gateway + MCP）---
+# 只有「跑 mcp_server/server.py 把系統暴露給 Claude/Cursor」時才需要；後端本體不依賴它。
+mcp>=1.0
+
 # --- 測試（開發/CI 用） ---
 pytest==9.0.3
 httpx==0.28.1

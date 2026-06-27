@@ -277,6 +277,58 @@ def test_resolve_source_switches_to_yfinance_on_long_range():
     print("✅ 長區間自動選 yfinance 測試通過")
 
 
+from backend.strategies.base import ScriptStrategy
+
+
+class _ThreshVec(BaseStrategy):
+    """向量化版：今天收盤 > 昨天 → buy，否則 sell（無狀態，每根都表態）。"""
+
+    def generate_signal(self, df):
+        if len(df) < 2:
+            return Signal.HOLD, "資料不足"
+        if float(df["close"].iloc[-1]) > float(df["close"].iloc[-2]):
+            return Signal.BUY, "漲"
+        return Signal.SELL, "跌"
+
+
+class _ThreshScript(ScriptStrategy):
+    """事件式版：邏輯與 _ThreshVec 完全相同，但用 on_bar + ctx 寫。"""
+
+    def on_bar(self, ctx, bar):
+        closes = ctx.history["close"]
+        if len(closes) < 2:
+            return
+        if float(closes.iloc[-1]) > float(closes.iloc[-2]):
+            ctx.buy("漲")
+        else:
+            ctx.sell("跌")
+
+
+def test_script_strategy_equivalent_to_vectorized():
+    """
+    等價性鐵則：同一條決策規則，向量化 vs 事件式 ScriptStrategy 走同一成交核心，
+    回測結果（EV / 報酬 / 交易筆數 / 資金曲線）必須完全一致 → 證明無第二條成交路徑分岔。
+    """
+    import numpy as np
+    rng = np.random.default_rng(42)
+    prices = (100 + np.cumsum(rng.standard_normal(200))).round(2)
+    df = pd.DataFrame({
+        "open": prices, "high": prices + 0.5, "low": prices - 0.5,
+        "close": prices, "volume": 1000,
+        "timestamp": pd.date_range("2020-01-01", periods=200),
+    })
+
+    vec = _run_on_df(_ThreshVec({}), df, 10000.0, commission_bps=2, slippage_bps=5)
+    scr = _run_on_df(_ThreshScript({}), df, 10000.0, commission_bps=2, slippage_bps=5)
+
+    assert vec["expected_value"] == scr["expected_value"], (vec["expected_value"], scr["expected_value"])
+    assert vec["total_return_pct"] == scr["total_return_pct"]
+    assert vec["num_trades"] == scr["num_trades"]
+    assert vec["equity_curve"] == scr["equity_curve"]
+    assert vec["trades"] == scr["trades"]
+    print(f"✅ ScriptStrategy 等價性測試通過：兩路徑 EV={scr['expected_value']}、{scr['num_trades']} 筆交易完全一致")
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))
