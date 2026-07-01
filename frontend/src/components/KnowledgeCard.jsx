@@ -20,9 +20,33 @@ const STATUS_META = {
   rejected: { label: "已退回", color: "error" },
 };
 
+// 從 oos_metrics 還原「這筆是怎麼驗來的」出處（防止只看一個 EV 數字、不知怎麼來）。
+// 單檔 → {symbol, walk_forward[], single_split}；籃子 → {symbols[], per_symbol[]}；
+// 零交易 → {noop}。欄位缺就略過，空字串代表沒有可顯示的出處。
+function describeProvenance(oos) {
+  if (!oos || typeof oos !== "object") return "";
+  let scope = "";
+  if (Array.isArray(oos.symbols)) scope = `籃子 ${oos.symbols.length} 檔`;
+  else if (oos.symbol) scope = `單檔 ${oos.symbol}`;
+
+  if (oos.noop) return [scope, `no-op：${oos.noop.reason}`].filter(Boolean).join("｜");
+
+  let folds = "";
+  if (Array.isArray(oos.walk_forward)) folds = `${oos.walk_forward.length} 個 walk-forward fold`;
+  else if (Array.isArray(oos.per_symbol)) {
+    const q = oos.per_symbol.filter((s) => s.qualified).length;
+    folds = `${q}/${oos.per_symbol.length} 檔達標池化`;
+  }
+  const days = oos.days ? `回看 ${oos.days} 天` : "";
+  return [scope, folds, days].filter(Boolean).join("｜");
+}
+
 export default function KnowledgeCard({ item, actions }) {
   const oos = item.oos_metrics || {};
   const ev = oos.expected_value;
+  // 勝率在 oos_metrics 裡藏在 single_split（單檔驗證才有）；籃子驗證沒有單一勝率。
+  const winRate = oos.single_split?.win_rate_pct ?? oos.win_rate_pct;
+  const provenance = describeProvenance(oos);
   const bestRegime = item.regime_affinity?.best_regime;
   const status = STATUS_META[item.status] || { label: item.status, color: "default" };
 
@@ -32,7 +56,12 @@ export default function KnowledgeCard({ item, actions }) {
         <Typography variant="subtitle2" noWrap sx={{ minWidth: 0 }}>
           {item.name}
         </Typography>
-        <Chip size="small" color={status.color} label={status.label} />
+        <Stack direction="row" gap={0.5} alignItems="center">
+          {item.origin === "paper_feedback" && (
+            <Chip size="small" label="從實跑學習" color="info" variant="outlined" />
+          )}
+          <Chip size="small" color={status.color} label={status.label} />
+        </Stack>
       </Stack>
       <Typography variant="caption" color="text.secondary">
         {item.strategy_key}
@@ -66,11 +95,30 @@ export default function KnowledgeCard({ item, actions }) {
           label={`OOS EV ${ev ?? "—"}`}
           sx={{ color: (ev ?? 0) >= 0 ? NEON.green : NEON.red }}
         />
-        {oos.win_rate_pct != null && (
-          <Chip size="small" label={`勝率 ${oos.win_rate_pct}%`} />
+        {winRate != null && (
+          <Chip size="small" label={`勝率 ${winRate}%`} />
         )}
         {bestRegime && <Chip size="small" label={`最適狀態：${bestRegime}`} />}
       </Stack>
+
+      {/* 出處：這筆是怎麼驗來的（驗證標的範圍 / 折數 / 回看天數），不是只有一個 EV 數字 */}
+      {provenance && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+          出處：{provenance}
+        </Typography>
+      )}
+
+      {/* AI 分析文字（來自 paper_feedback 反饋迴圈） */}
+      {item.evolution_note && (
+        <Box sx={{ mt: 1, p: 1, bgcolor: "action.hover", borderRadius: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+            <strong>AI 進化分析：</strong>
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "pre-wrap", fontSize: "0.7rem" }}>
+            {item.evolution_note.slice(0, 400)}{item.evolution_note.length > 400 ? "…" : ""}
+          </Typography>
+        </Box>
+      )}
 
       {actions && <Box sx={{ mt: 1 }}>{actions}</Box>}
     </Paper>

@@ -254,12 +254,10 @@ def _run_on_df(
     else:
         sig_df = df
 
-    signals = []
-    reasons = []
-    for i in range(len(sig_df)):
-        sig, reason = strategy.generate_signal(sig_df.iloc[: i + 1])
-        signals.append(sig)
-        reasons.append(reason)
+    # 逐根訊號交給策略的統一入口 produce_signals：
+    # - 向量化策略（BaseStrategy）：預設實作＝逐根 generate_signal（行為與舊版逐位元組相同）。
+    # - 事件式策略（ScriptStrategy）：覆寫成 on_bar 驅動，但壓出的訊號序列仍走同一成交核心。
+    signals, reasons = strategy.produce_signals(sig_df)
     # 成交模擬只吃 price-only 的 df（features 不進成交層）
     return _simulate_from_signals(
         signals, df, initial_cash, reasons=reasons,

@@ -32,6 +32,8 @@ import ExplorationsPage from "./pages/ExplorationsPage";
 import DecisionsPage from "./pages/DecisionsPage";
 import LibraryPage from "./pages/LibraryPage";
 import EvolutionPage from "./pages/EvolutionPage";
+import FunnelPage from "./pages/FunnelPage";
+import StockArenaPage from "./pages/StockArenaPage";
 import CompanyPage from "./pages/CompanyPage";
 import PromotionPage from "./pages/PromotionPage";
 import FactorsPage from "./pages/FactorsPage";
@@ -331,6 +333,8 @@ function App() {
             <Route path="decisions" element={<DecisionsPage />} />
             <Route path="evolution" element={<EvolutionPage />} />
             <Route path="library" element={<LibraryPage />} />
+            <Route path="funnel" element={<FunnelPage />} />
+            <Route path="stock-arena" element={<StockArenaPage />} />
             <Route path="ai-explore" element={<AiExplorePage />} />
             <Route path="charts" element={<ChartsPage />} />
             <Route path="fundamentals" element={<FundamentalsPage />} />

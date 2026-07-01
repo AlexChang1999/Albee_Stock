@@ -64,6 +64,8 @@ class ValidateIn(BaseModel):
     symbol: str = "AAPL"           # 單檔（向後相容；symbols 沒傳時用它）
     symbols: list[str] | None = None  # 籃子（跨產業池化）；傳了就蓋過 symbol
     days: int = 365
+    use_basket: bool = False       # True = 用 AUTO_VALIDATE_SYMBOLS 完整籃子 + AUTO_VALIDATE_DAYS
+    #                                （與自動驗證路徑同嚴謹度；此時忽略 symbol/symbols/days）
 
 
 class UsageNoteIn(BaseModel):
@@ -107,6 +109,9 @@ def _dict(k: StrategyKnowledge) -> dict:
         "status": k.status,
         "oos_metrics": k.oos_metrics,
         "regime_affinity": k.regime_affinity,
+        "origin": k.origin,
+        "parent_id": k.parent_id,
+        "evolution_note": k.evolution_note,
         "created_at": k.created_at.isoformat() if k.created_at else None,
         "updated_at": k.updated_at.isoformat() if k.updated_at else None,
     }
@@ -286,10 +291,21 @@ def validate_knowledge(kid: int, payload: ValidateIn, db: Session = Depends(get_
     只有「樣本外真加分」判 validated，否則 rejected。判定鍵讀 OOS / walk-forward，非 in-sample。
     """
     k = _get_or_404(db, kid)
-    # 傳了 symbols（籃子）就用籃子池化；否則退回單檔 symbol（向後相容）
-    targets = payload.symbols if payload.symbols else payload.symbol
+    # use_basket：用設定的完整籃子 + AUTO_VALIDATE_DAYS，與自動驗證路徑同嚴謹度
+    # （補上「人工驗證偷懶用單檔、自動驗證用 38 籃子」的嚴謹度落差）。
+    if payload.use_basket:
+        targets = settings.auto_validate_symbols
+        days = settings.AUTO_VALIDATE_DAYS
+        if not targets:
+            raise HTTPException(
+                status_code=400, detail="AUTO_VALIDATE_SYMBOLS 未設定，無法用完整籃子驗證"
+            )
+    else:
+        # 傳了 symbols（籃子）就用籃子池化；否則退回單檔 symbol（向後相容）
+        targets = payload.symbols if payload.symbols else payload.symbol
+        days = payload.days
     try:
-        summary = validate_candidate(k, targets, payload.days)
+        summary = validate_candidate(k, targets, days)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()

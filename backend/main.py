@@ -27,7 +27,7 @@ from backend.database import init_db, SessionLocal
 from backend.models import Bot
 from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
-from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity, bot_review
+from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity, bot_review, discovery, review, agent
 from backend.services.bot_activity import hub as activity_hub
 from backend.services.scheduler_lock import acquire_scheduler_lock, release_scheduler_lock
 
@@ -101,6 +101,8 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_tracking_check(settings.TRACKING_CHECK_HOUR)
         # 每日領導股回測紀錄（只落 BacktestRun、不下單；LEADER_BACKTEST_ENABLED=false = 不掛）
         bot_manager.schedule_leader_backtest(settings.LEADER_BACKTEST_HOUR)
+        # AI 每日交易事後檢討（收盤後 LLM 分析決策 → explorations/ + 推播；TRADE_REVIEW_ENABLED=false = 不掛）
+        bot_manager.schedule_trade_review(settings.TRADE_REVIEW_HOUR)
         # 開機補跑：家用電腦不是 24/7——啟動時把「時刻已過 + 今天還沒跑」的每日 job
         # 依管線順序立刻補跑（必須排在所有 schedule_* 之後，設定才齊）。
         bot_manager.schedule_catchup_on_boot()
@@ -187,7 +189,10 @@ app.include_router(opportunities.router)
 app.include_router(promotion.router)
 app.include_router(factors.router)
 app.include_router(collector.router)
+app.include_router(discovery.router)
 app.include_router(political.router)
 app.include_router(macro.router)
 app.include_router(positions.router)
 app.include_router(bot_review.router)
+app.include_router(review.router)
+app.include_router(agent.router)

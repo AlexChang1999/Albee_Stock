@@ -204,5 +204,16 @@ def test_auto_deploy_empty_symbols_noop(tmp_path, monkeypatch):
     assert stats["bots_created"] == 0 and db.query(Bot).count() == 0
 
 
+def test_force_bypasses_disabled(tmp_path, monkeypatch):
+    """ENABLED=false 但 force=True（手動「跑一次」端點）仍部署；★仍只建 paper bot。"""
+    db = _session(tmp_path)
+    _seed(db, status="curated", n=1)
+    _enable(monkeypatch, symbols="SPY")
+    monkeypatch.setattr(auto_deploy_knowledge.settings, "AUTO_DEPLOY_KNOWLEDGE_ENABLED", False)
+    stats = run_auto_deploy_knowledge(db, force=True)
+    assert stats["deployed_knowledge"] == 1 and stats["bots_created"] == 1
+    assert all(b.promotion_status == "paper" for b in db.query(Bot).all())
+
+
 if __name__ == "__main__":
     print("（需 pytest 的 tmp_path / monkeypatch，請用 pytest 執行）")

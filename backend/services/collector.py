@@ -259,21 +259,27 @@ def collect_from_feeds(feeds: list[str]) -> list[dict]:
     return dedup_rows(rows)
 
 
-def run_collector_scan() -> None:
+def run_collector_scan() -> dict:
     """
-    排程週期入口：抓設定的 RSS feeds、把新素材 upsert 進收件匣，有新料就提醒一次。
+    排程週期入口（也是手動「跑一次」端點入口）：抓設定的 RSS feeds、把新素材 upsert
+    進收件匣，有新料就提醒一次。
 
-    - 沒設定任何 feed（COLLECTOR_RSS_FEEDS 留空）→ 直接 return，不空轉。
+    - 沒設定任何 feed（COLLECTOR_RSS_FEEDS 留空）→ 不空轉，回 note 提示（手動端點才看得到）。
     - best-effort：抓不到 / 解析失敗都不讓排程崩（單篇失敗已在下層吞掉）。
-    - **只收料、不建策略、不部署**：後續由人 / strategy-builder + OOS 閘接手。
+    - **只收料、不建策略、不部署**：後續由探勘橋（discovery）/ 人接手。
+
+    :return: {"feeds", "fetched", "inserted", "skipped", "watch_hits", "note"} 統計
+             （手動端點用來回報；排程呼叫忽略回傳即可）。
     """
     feeds = _parse_feeds(settings.COLLECTOR_RSS_FEEDS)
     if not feeds:
-        return
+        return {"feeds": 0, "fetched": 0, "inserted": 0, "skipped": 0,
+                "watch_hits": 0, "note": "未設定 COLLECTOR_RSS_FEEDS，未收料"}
 
     rows = collect_from_feeds(feeds)
     if not rows:
-        return
+        return {"feeds": len(feeds), "fetched": 0, "inserted": 0, "skipped": 0,
+                "watch_hits": 0, "note": "feed 抓不到新內容"}
 
     # 未上市公司關鍵字監控：收料順手比對（SpaceX 等回不了測的公司，留檔追蹤）
     tag_watch_rows(rows, parse_keywords(settings.PRIVATE_WATCH_KEYWORDS))
@@ -293,6 +299,9 @@ def run_collector_scan() -> None:
             if result.get("watch_hits"):
                 msg += f"\n🛰️ 其中 {result['watch_hits']} 篇命中監控關鍵字（{settings.PRIVATE_WATCH_KEYWORDS}）。"
             notifier.notify(msg)
+        return {"feeds": len(feeds), "fetched": len(rows), "inserted": result["inserted"],
+                "skipped": result["skipped"], "watch_hits": result.get("watch_hits", 0),
+                "note": "收料完成"}
     finally:
         db.close()
 

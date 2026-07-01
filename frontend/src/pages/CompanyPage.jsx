@@ -6,7 +6,7 @@
 //   - 每張「部門卡」對應一個公司角色，連到對應的既有頁去實際操作。
 // 顏色一律吃 theme / NEON（深藍主題下寫死 hex 會在深底上隱形）。
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Box,
@@ -28,6 +28,23 @@ function fmtMoney(v) {
   if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
   return Number.isNaN(n) ? "—" : `$${n.toLocaleString()}`;
+}
+
+// 把後端各「跑一次」端點回的統計 dict 壓成一句中文摘要（只挑有值的鍵）。
+function summarizeResult(r) {
+  if (!r || typeof r !== "object") return "完成";
+  const labels = {
+    inserted: "新收", built: "建候選", discarded: "丟棄", processed: "處理",
+    validated: "通過", rejected: "退回", deployed_knowledge: "部署策略",
+    bots_created: "建Bot", reviewed: "考核", culled: "汰弱", skipped: "跳過",
+    fits_updated: "更新fit", failed: "失敗",
+  };
+  const parts = [];
+  for (const [k, label] of Object.entries(labels)) {
+    if (r[k] != null && r[k] !== 0) parts.push(`${label} ${r[k]}`);
+  }
+  if (parts.length === 0) return r.note || r.message || "完成（無新增）";
+  return parts.join("、") + (r.note ? `（${r.note}）` : "");
 }
 
 // 部門卡外殼：標題 + 狀態 chip + 內容 + 「前往」連結。
@@ -66,6 +83,9 @@ export default function CompanyPage() {
   const [err, setErr] = useState("");
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
+  // 探勘流水線「跑一次」：哪顆鈕正在跑（互斥）+ 結果摘要訊息
+  const [busyAction, setBusyAction] = useState("");
+  const [actionMsg, setActionMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +109,69 @@ export default function CompanyPage() {
       setScanning(false);
     }
   }, [load]);
+
+  // 驗證鈕輪詢計時器（背景任務完成前持續 poll，免阻塞 UI）
+  const validatePollRef = useRef(null);
+
+  // 停輪詢並解鎖 UI
+  const stopValidatePoll = useCallback((msg) => {
+    if (validatePollRef.current) {
+      clearInterval(validatePollRef.current);
+      validatePollRef.current = null;
+    }
+    if (msg !== undefined) setActionMsg(msg);
+    setBusyAction("");
+  }, []);
+
+  // 元件卸載時清計時器
+  useEffect(() => () => { if (validatePollRef.current) clearInterval(validatePollRef.current); }, []);
+
+  // 探勘流水線逐關手動推進：跑完重抓 overview，漏斗數字當場跳動（擬人操作）。
+  // 「驗證」端點回 202（背景跑），改為輪詢 overview 直到 candidate 數字變動。
+  const runAction = useCallback(
+    async (key, label, fn) => {
+      setBusyAction(key);
+      setActionMsg("");
+      try {
+        const r = await fn();
+        if (key === "validate" && r?.status === "started") {
+          // 後端已接受，背景跑；記下啟動前的 candidate 數，輪詢到有變化才算完成
+          const snapshotCandidate = data?.discovery_funnel?.knowledge?.candidate ?? null;
+          const startedAt = Date.now();
+          const POLL_INTERVAL = 10_000;  // 10 秒
+          const MAX_WAIT = 10 * 60_000;  // 最多等 10 分鐘
+          setActionMsg("驗證中（背景執行）…每 10 秒自動重整，完成後數字會更新。");
+          validatePollRef.current = setInterval(async () => {
+            if (Date.now() - startedAt > MAX_WAIT) {
+              stopValidatePoll("驗證等待超時（10 分鐘），請稍後手動重整頁面確認結果。");
+              return;
+            }
+            try {
+              const o = await api.getCompanyOverview();
+              const nowCandidate = o?.discovery_funnel?.knowledge?.candidate ?? snapshotCandidate;
+              const nowValidated = o?.discovery_funnel?.knowledge?.validated ?? 0;
+              const nowRejected  = o?.discovery_funnel?.knowledge?.rejected ?? 0;
+              // 數字有異動（candidate 減少、或 validated/rejected 增加）視為完成
+              if (snapshotCandidate !== null && (nowCandidate < snapshotCandidate || nowValidated > 0 || nowRejected > (data?.discovery_funnel?.knowledge?.rejected ?? 0))) {
+                setData(o);
+                stopValidatePoll(`驗證完成：candidate → ${nowCandidate}，validated ${nowValidated}，rejected ${nowRejected}`);
+              } else {
+                setData(o);  // 畫面仍更新，讓使用者看到正在活著
+              }
+            } catch (_) { /* 忽略輪詢期間的網路抖動 */ }
+          }, POLL_INTERVAL);
+        } else {
+          setActionMsg(`${label}：${summarizeResult(r)}`);
+          await load();
+          setBusyAction("");
+        }
+      } catch (e) {
+        setActionMsg(`${label}失敗：${e.message}`);
+        setBusyAction("");
+      }
+    },
+    [load, data, stopValidatePoll]
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -302,10 +385,10 @@ export default function CompanyPage() {
         {funnel && (
           <Grid item xs={12} sm={6} md={4}>
             <DeptCard
-              title="探勘漏斗"
-              role="收料 → 候選 → 驗證 → 入庫 · 人只審最後一道閘"
-              to="/library"
-              linkLabel="知識庫策展 →"
+              title="探勘漏斗 · 操作台"
+              role="收料 → 候選 → 驗證 → 入庫 · 人逐關手動推進"
+              to="/funnel"
+              linkLabel="看漏斗全貌 →"
               chip={
                 <Chip
                   size="small"
@@ -324,6 +407,36 @@ export default function CompanyPage() {
                 淘汰率 {funnel.rejection_rate_pct ?? "—"}
                 {funnel.rejection_rate_pct != null && "%"}（高是健康的：大部分點子過不了 OOS 閘是預期）
               </Typography>
+
+              {/* 排程關閉中：每個 AI 角色一顆「跑一次」鈕，逐關推進，數字當場跳動 */}
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                人工逐關推進（排程關閉中）：
+              </Typography>
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                {[
+                  ["collect", "收料", () => api.runCollectorScan()],
+                  ["discover", "探勘", () => api.runDiscovery()],
+                  ["validate", "驗證", () => api.runValidateBatch()],
+                  ["deploy", "部署", () => api.runAutoDeployKnowledge()],
+                  ["review", "審查", () => api.runBotReview()],
+                ].map(([key, label, fn]) => (
+                  <Button
+                    key={key}
+                    size="small"
+                    variant="outlined"
+                    disabled={!!busyAction}
+                    onClick={() => runAction(key, label, fn)}
+                  >
+                    {busyAction === key ? "…" : `▶ ${label}`}
+                  </Button>
+                ))}
+              </Stack>
+              {actionMsg && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+                  {actionMsg}
+                </Typography>
+              )}
             </DeptCard>
           </Grid>
         )}

@@ -18,6 +18,7 @@ discord 套件採延遲 import，沒裝 / 不跑 runner 時，不影響其餘後
 """
 
 import re
+import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -145,13 +146,13 @@ def main() -> None:
             "   再到 .env 設 POLITICAL_DISCORD_TOKEN 與 POLITICAL_CHANNEL_ID。\n"
             "   （判讀仍走本機 Ollama；POLITICAL_ENABLED 才會把分數接進風險煞車。）"
         )
-        return
+        sys.exit(2)  # exit 2 = 設定缺失，看門狗應停止而非重啟
 
     try:
         import discord
     except Exception:
         print("⚠️ 未安裝 discord 套件。請先 `pip install discord.py` 再啟動 runner。")
-        return
+        sys.exit(2)  # exit 2 = 設定缺失，看門狗應停止而非重啟
 
     intents = discord.Intents.default()
     intents.message_content = True  # 需要在 Discord 開發者後台開啟 Message Content Intent

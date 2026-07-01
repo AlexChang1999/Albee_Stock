@@ -8,7 +8,7 @@ STRATEGY_REGISTRY 是「策略註冊表」：
 就能找到對應的策略。新增策略時，只要在這裡登記一行即可（鬆耦合）。
 """
 
-from backend.strategies.base import BaseStrategy, Signal
+from backend.strategies.base import BaseStrategy, ScriptStrategy, Signal
 from backend.strategies.ma_crossover import MACrossoverStrategy
 from backend.strategies.rsi import RSIStrategy
 from backend.strategies.macd import MACDStrategy
@@ -19,6 +19,7 @@ from backend.strategies.momentum import MomentumStrategy
 from backend.strategies.williams_r import WilliamsRStrategy
 from backend.strategies.adx_trend import ADXTrendStrategy
 from backend.strategies.composite import CompositeStrategy
+from backend.strategies.script_breakout import ScriptBreakoutStrategy
 
 # 策略註冊表：代號 -> 類別
 # 之後新增策略，就在這裡多加一行對應即可。
@@ -34,6 +35,8 @@ STRATEGY_REGISTRY = {
     "adx_trend": ADXTrendStrategy,
     # Phase 8 step-03：策略組合（子策略訊號投票 / 加權 / 狀態切換）
     "composite": CompositeStrategy,
+    # 事件驅動 ScriptStrategy 範例（採納自 QuantDinger）：突破進場 + 有狀態續抱
+    "script_breakout": ScriptBreakoutStrategy,
 }
 
 # 策略顯示名（中文）：代號 -> 給人看的名稱。
@@ -50,6 +53,7 @@ STRATEGY_LABELS = {
     "williams_r": "威廉指標",
     "adx_trend": "ADX 趨勢",
     "composite": "策略組合",
+    "script_breakout": "突破續抱（事件式）",
 }
 
 # 策略「合法參數 schema」：代號 -> {參數名: {default, min, max}}。
@@ -100,6 +104,11 @@ STRATEGY_PARAM_SPECS: dict[str, dict[str, dict]] = {
         "period": {"default": 14, "min": 2, "max": 50},
         "adx_threshold": {"default": 25, "min": 10, "max": 50},
     },
+    "script_breakout": {
+        "lookback": {"default": 20, "min": 5, "max": 200},        # 突破進場回看根數
+        "exit_lookback": {"default": 10, "min": 3, "max": 100},   # 跌破出場回看根數
+        "hold_bars": {"default": 0, "min": 0, "max": 250},        # 0=不靠時間出場
+    },
 }
 
 
@@ -132,6 +141,7 @@ def list_strategies() -> list[dict]:
 
 __all__ = [
     "BaseStrategy",
+    "ScriptStrategy",
     "Signal",
     "STRATEGY_REGISTRY",
     "STRATEGY_LABELS",

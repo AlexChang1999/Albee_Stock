@@ -215,3 +215,65 @@ def test_disabled_is_noop(monkeypatch, tmp_path):
     assert stats == {"processed": 0, "built": 0, "discarded": 0, "skipped": 0}
     assert called["llm"] == 0  # 連 LLM client 都不該建
     assert db.query(RawStrategyFind).filter_by(status="new").count() == 2
+
+
+# ---------- 3. triage_one（單筆，給逐篇 triage 端點用，Phase 14） ----------
+def _fake_complete(reply):
+    return lambda client, messages, max_tokens=512: reply
+
+
+def test_triage_one_builds(monkeypatch, tmp_path):
+    db = _session(tmp_path)
+    _seed_finds(db, 1)
+    monkeypatch.setattr(
+        discovery.llm, "complete",
+        _fake_complete('{"strategy_key": "rsi", "params": {"period": 14}, "confidence": 0.8, "reason": "ok"}'),
+    )
+    find = db.query(RawStrategyFind).first()
+    out = discovery.triage_one(db, find, object())
+    db.commit()
+    assert out["status"] == "built" and out["knowledge_id"]
+    assert out["proposal"]["strategy_key"] == "rsi"
+    k = db.query(StrategyKnowledge).first()
+    assert k.status == "candidate" and find.status == "built" and find.knowledge_id == k.id
+
+
+def test_triage_one_discards(monkeypatch, tmp_path):
+    db = _session(tmp_path)
+    _seed_finds(db, 1)
+    monkeypatch.setattr(discovery.llm, "complete", _fake_complete("null"))
+    find = db.query(RawStrategyFind).first()
+    out = discovery.triage_one(db, find, object())
+    assert out["status"] == "discarded" and out["knowledge_id"] is None
+    assert find.status == "discarded" and find.triage_note
+    assert db.query(StrategyKnowledge).count() == 0
+
+
+def test_triage_one_skipped_on_llm_error(monkeypatch, tmp_path):
+    db = _session(tmp_path)
+    _seed_finds(db, 1)
+
+    def _boom(client, messages, max_tokens=512):
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(discovery.llm, "complete", _boom)
+    find = db.query(RawStrategyFind).first()
+    out = discovery.triage_one(db, find, object())
+    # 連不上：不標記 find（不誤殺素材），呼叫端決定要不要中止
+    assert out["status"] == "skipped" and find.status == "new"
+
+
+def test_force_runs_when_disabled(monkeypatch, tmp_path):
+    db = _session(tmp_path)
+    _seed_finds(db, 1)
+    # ENABLED=false，但 force=True 仍跑（手動「跑一次」端點用）；LLM 閘照舊保留
+    monkeypatch.setattr(discovery.settings, "DISCOVERY_ENABLED", False)
+    monkeypatch.setattr(discovery.settings, "DISCOVERY_BATCH_SIZE", 5)
+    monkeypatch.setattr(discovery.llm, "cloud_blocked", lambda: False)
+    monkeypatch.setattr(discovery.llm, "get_client", lambda: object())
+    monkeypatch.setattr(
+        discovery.llm, "complete",
+        _fake_complete('{"strategy_key": "rsi", "params": {"period": 14}, "confidence": 0.8, "reason": "ok"}'),
+    )
+    stats = run_discovery_batch(db, force=True)
+    assert stats["built"] == 1

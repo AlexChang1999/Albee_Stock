@@ -44,7 +44,19 @@ _connect_args = (
 # 兩道防護（只對非 SQLite 的雲端 DB 加；SQLite 是本機檔案不需要）：
 #   - pool_pre_ping=True：每次從池子借連線前先送一個輕量 ping，發現連線死掉就丟掉重建。
 #   - pool_recycle=300：超過 300 秒的連線主動回收，不等它被伺服器端悄悄掐死。
-_pool_kwargs = {} if _is_sqlite else {"pool_pre_ping": True, "pool_recycle": 300}
+_pool_kwargs = (
+    {}
+    if _is_sqlite
+    else {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        # 多 Bot 並發時預設 pool_size=5 會被吃爆（e3q8 timeout）
+        # 20+40=60 條，Neon 免費版上限 100，留餘裕給 FastAPI HTTP 路由
+        "pool_size": 20,
+        "max_overflow": 40,
+        "pool_timeout": 10,  # 等不到連線 10 秒就報錯，避免排程堆積
+    }
+)
 
 engine = create_engine(
     settings.DATABASE_URL,

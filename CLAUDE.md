@@ -116,6 +116,7 @@ Albee_Stock/
 │   │   ├── capital.py         # 組合層資金/購買力守門（Phase 6 step-05，純函式 plan_capital）
 │   │   ├── circuit_breaker.py # 組合回撤熔斷（Phase 6 step-09，只擋進不擋出）
 │   │   ├── risk_manager.py    # Bot 層止盈/止損/追蹤止損出場（Phase 4）
+│   │   ├── decision_context.py # 決策脈絡：市場快照/出場分類/買入假設失效回填（結構化交易日誌）
 │   │   ├── protective_orders.py # 券商端 GTC 保護單規劃（backlog H1）
 │   │   ├── heartbeat.py       # 每日心跳日報 + dead-man ping（backlog H2）
 │   │   ├── tracking.py        # tracking error 對帳 + 自動降級（backlog H3）

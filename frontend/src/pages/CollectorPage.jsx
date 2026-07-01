@@ -27,6 +27,7 @@ import {
   Chip,
   Link,
 } from "@mui/material";
+import { Link as RouterLink } from "react-router-dom";
 import { api } from "../api";
 
 // status 的中文標籤 + 配色（吃 MUI 語意色，不寫死 hex）
@@ -49,6 +50,8 @@ export default function CollectorPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busyId, setBusyId] = useState(null); // 哪一筆正在試轉策略
 
   const load = useCallback(async () => {
     setErr("");
@@ -76,14 +79,38 @@ export default function CollectorPage() {
     }
   }
 
+  // 對單筆素材即時試轉策略（探勘橋）：成功→建候選並翻 built；不相關→discarded。
+  async function triage(id) {
+    setErr("");
+    setMsg("");
+    setBusyId(id);
+    try {
+      const r = await api.triageFind(id);
+      if (r.status === "built") {
+        setMsg(`#${id} 已轉成策略候選（knowledge #${r.knowledge_id}）：${r.note}`);
+      } else if (r.status === "discarded") {
+        setMsg(`#${id} 探勘橋判定與既有策略無關，已丟棄：${r.note}`);
+      } else {
+        setMsg(`#${id} 暫時無法轉換（${r.note}）。確認本機 Ollama 已啟動再試。`);
+      }
+      load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <Box>
       <Typography variant="h4" sx={{ mb: 1 }}>
         市場蒐集員
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        爬蟲定時從 RSS / 部落格收「策略描述文字」進收件匣。這裡只負責<strong>策展</strong>——
-        看過後標記狀態。寫成策略要走 strategy-builder + OOS 閘 + 人工核准，這頁不下單、不上線。
+        爬蟲收「策略描述文字」進收件匣。按 <strong>🔬 試轉策略</strong> 讓<strong>探勘橋</strong>用本機 LLM
+        把文字判讀成<strong>既有</strong>策略＋參數候選——防唬爛：只能從現有策略清單挑、參數名鎖 schema、
+        值夾回合法範圍、信心不足直接丟棄、<strong>不生成新程式碼</strong>。轉出的候選仍要過 OOS 驗證＋人工晉升
+        才算數，這頁不下單、不上線。
       </Typography>
 
       <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
@@ -112,6 +139,11 @@ export default function CollectorPage() {
           {err}
         </Alert>
       )}
+      {msg && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMsg("")}>
+          {msg}
+        </Alert>
+      )}
 
       <Card variant="outlined">
         <CardContent>
@@ -128,6 +160,7 @@ export default function CollectorPage() {
                     <TableCell>摘要</TableCell>
                     <TableCell>收到時間</TableCell>
                     <TableCell>狀態</TableCell>
+                    <TableCell>探勘橋</TableCell>
                     <TableCell align="right">策展</TableCell>
                   </TableRow>
                 </TableHead>
@@ -151,8 +184,33 @@ export default function CollectorPage() {
                         <TableCell>
                           <Chip size="small" label={meta.label} color={meta.color} />
                         </TableCell>
+                        <TableCell sx={{ maxWidth: 260, color: "text.secondary" }}>
+                          <Typography variant="caption" display="block">
+                            {r.triage_note || "—"}
+                          </Typography>
+                          {r.knowledge_id && (
+                            <Link
+                              component={RouterLink}
+                              to="/evolution"
+                              underline="hover"
+                              variant="caption"
+                            >
+                              → 候選 #{r.knowledge_id}
+                            </Link>
+                          )}
+                        </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                            {["new", "triaged"].includes(r.status) && (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                disabled={busyId === r.id}
+                                onClick={() => triage(r.id)}
+                              >
+                                {busyId === r.id ? "轉換中…" : "🔬 試轉策略"}
+                              </Button>
+                            )}
                             {(NEXT_ACTIONS[r.status] || []).map((next) => (
                               <Button
                                 key={next}

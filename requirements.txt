@@ -44,9 +44,6 @@ psycopg2-binary==2.9.12
 # --- 任務排程（讓 Bot 定時跑策略） ---
 apscheduler==3.11.0
 
-# --- LINE 通知 ---
-line-bot-sdk==3.23.0
-
 # --- HTTP 請求（通知、備用） ---
 requests==2.34.2
 
@@ -58,6 +55,10 @@ beautifulsoup4==4.15.0
 
 # --- Discord bot（Phase 10 step-05 政治專討員 runner；只給獨立 runner 用，後端不依賴） ---
 discord.py==2.7.1
+
+# --- 自家 MCP server（mcp_server/；採納自 QuantDinger 的 Agent Gateway + MCP）---
+# 只有「跑 mcp_server/server.py 把系統暴露給 Claude/Cursor」時才需要；後端本體不依賴它。
+mcp>=1.0
 
 # --- 測試（開發/CI 用） ---
 pytest==9.0.3

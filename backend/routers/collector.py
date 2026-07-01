@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import get_db
 from backend.models import RawStrategyFind
+from backend.services import collector
 
 router = APIRouter(prefix="/collector", tags=["Collector"])
 
@@ -37,6 +38,9 @@ def _serialize(f: RawStrategyFind) -> dict:
         "status": f.status,
         "tags": f.tags,
         "fetched_at": f.fetched_at.isoformat() if f.fetched_at else None,
+        # 探勘橋決策軌跡（Phase 14）：這篇被判成什麼策略 / 為什麼丟棄、對應哪筆候選。
+        "triage_note": f.triage_note,
+        "knowledge_id": f.knowledge_id,
     }
 
 
@@ -83,3 +87,15 @@ def update_find_status(find_id: int, body: StatusUpdate, db: Session = Depends(g
     db.commit()
     db.refresh(find)
     return _serialize(find)
+
+
+@router.post("/scan")
+def trigger_scan():
+    """
+    手動收料一次（不等排程）：抓設定的 RSS feeds、把新素材 upsert 進收件匣。
+
+    回 collector.run_collector_scan 的統計（feeds/fetched/inserted/skipped/watch_hits/note）。
+    未設定 COLLECTOR_RSS_FEEDS 時回 note 提示、不報錯（與排程行為一致）。
+    **只收料**，不建策略 / 不部署——文字轉策略走探勘橋（POST /discovery/run 或逐篇 triage）。
+    """
+    return collector.run_collector_scan()

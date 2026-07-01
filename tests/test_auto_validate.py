@@ -208,3 +208,21 @@ def test_disabled_is_noop(monkeypatch, tmp_path):
     assert calls["n"] == 0
     assert stats == {"processed": 0, "validated": 0, "rejected": 0, "failed": 0}
     assert db.query(StrategyKnowledge).filter_by(status="candidate").count() == 2
+
+
+def test_force_bypasses_disabled(monkeypatch, tmp_path):
+    db = _session(tmp_path)
+    _seed(db)
+    # ENABLED=false，但 force=True（手動「跑一次」端點）仍驗；判準不變
+    monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_ENABLED", False)
+    monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_BATCH_SIZE", 3)
+    monkeypatch.setattr(auto_validate.settings, "AUTO_VALIDATE_SYMBOLS", "SPY,AAPL")
+
+    def _fake(row, symbols, days=365, **kw):
+        row.status = "validated"
+        row.oos_metrics = {"expected_value": 1.0, "verdict": {}}
+        return {"id": row.id, "status": "validated", "oos_metrics": row.oos_metrics}
+
+    monkeypatch.setattr(auto_validate.evolution, "validate_candidate", _fake)
+    stats = run_auto_validate(db, force=True)
+    assert stats["processed"] == 1 and stats["validated"] == 1

@@ -143,21 +143,74 @@ def triage_find(find, llm_reply: str) -> dict | None:
     }
 
 
-def run_discovery_batch(db=None) -> dict:
+def triage_one(db, find, client) -> dict:
+    """
+    對單筆 find 跑 triage：LLM 判讀 → 建 candidate（find 標 built）或標 discarded。
+    從 run_discovery_batch 抽出共用，也給「對單篇即時試轉策略」端點用。呼叫端負責 commit。
+
+    防幻覺約束全在 build_triage_prompt / triage_find（只准既有策略 + 參數鎖 schema +
+    值夾範圍 + 信心門檻），本函式不放寬任何一條。
+
+    :return: {
+        "status": "built" | "discarded" | "skipped",  # skipped = LLM 連不上，未標記 find
+        "knowledge_id": int | None,                    # built 時的新候選 id
+        "note": str,                                   # 寫進 find.triage_note 的決策理由
+        "proposal": dict | None,                       # built 時的提案（策略/參數/信心）
+    }
+    """
+    try:
+        reply = llm.complete(client, build_triage_prompt(find), max_tokens=_MAX_TOKENS)
+    except Exception as e:
+        # 連不上 / 逾時：不標記 find（別誤殺素材），呼叫端決定要不要中止整批
+        return {"status": "skipped", "knowledge_id": None,
+                "note": f"LLM 呼叫失敗：{llm.friendly_err(e)}", "proposal": None}
+
+    proposal = triage_find(find, reply)
+    if proposal is None:
+        find.status = "discarded"
+        find.triage_note = "探勘橋：LLM 判定與既有策略無關或回覆無法解析"
+        return {"status": "discarded", "knowledge_id": None,
+                "note": find.triage_note, "proposal": None}
+
+    # 與 POST /knowledge/propose 同欄位合約建 candidate（scenario = 素材摘要，
+    # 之後 OOS 驗證 / 人工策展都看得到出處脈絡）
+    k = StrategyKnowledge(
+        name=f"{proposal['strategy_key']} 探勘候選（{(find.title or '')[:40]}）",
+        strategy_key=proposal["strategy_key"],
+        scenario=f"來源：{find.source_url}\n{find.summary}"[:1000],
+        params=proposal["params"],
+        status="candidate",
+    )
+    db.add(k)
+    db.flush()  # 先拿到 k.id 才能回填 knowledge_id
+    find.status = "built"
+    find.knowledge_id = k.id
+    find.triage_note = (
+        f"探勘橋：提案 {proposal['strategy_key']} "
+        f"params={proposal['params']} 信心={proposal['confidence']:.2f}"
+        f"｜{proposal['reason']}"
+    )
+    return {"status": "built", "knowledge_id": k.id,
+            "note": find.triage_note, "proposal": proposal}
+
+
+def run_discovery_batch(db=None, force: bool = False) -> dict:
     """
     跑一輪探勘橋：取 status=new 的素材至多 DISCOVERY_BATCH_SIZE 筆，逐筆 LLM triage。
 
-    - DISCOVERY_ENABLED=false → 直接 return（排程掛載處也有閘，這裡是雙保險）。
+    - DISCOVERY_ENABLED=false 且 force=False → 直接 return（排程掛載處也有閘，雙保險）。
+      手動「跑一次」端點傳 force=True 略過此旗標，但**保留 LLM 外送閘**（素材不外洩）。
     - LLM 沒設定 / 連不上 → 整批跳過、**不標記任何 find**，下一輪再來。
     - 有提案 → 建 StrategyKnowledge(status=candidate)，find 標 built + 回填 knowledge_id。
     - 無提案 → find 標 discarded，原因落 triage_note。
     - 冪等：只取 status=new，重跑不會二次 triage 已處理的素材。
 
     :param db: 測試可注入 session；None = 自建（排程入口用）。
+    :param force: True = 略過 DISCOVERY_ENABLED 旗標（人工手動觸發用），其餘閘照舊。
     :return: {"processed", "built", "discarded", "skipped"} 統計。
     """
     stats = {"processed": 0, "built": 0, "discarded": 0, "skipped": 0}
-    if not settings.DISCOVERY_ENABLED:
+    if not settings.DISCOVERY_ENABLED and not force:
         return stats
 
     # 外送閘 + 客戶端檢查：非本機且未允許外送、或沒設 LLM → 整批跳過（素材不外洩）
@@ -181,43 +234,14 @@ def run_discovery_batch(db=None) -> dict:
             .all()
         )
         for find in finds:
-            try:
-                reply = llm.complete(
-                    client, build_triage_prompt(find), max_tokens=_MAX_TOKENS
-                )
-            except Exception as e:
-                # 連不上 / 逾時：別標記、別繼續打（多半整批都會失敗），下一輪再來
-                logger.warning("探勘橋：LLM 呼叫失敗，本輪中止：%s", llm.friendly_err(e))
+            result = triage_one(db, find, client)
+            if result["status"] == "skipped":
+                # LLM 連不上 / 逾時：整批中止（多半都會失敗），不標記、下一輪再來
+                logger.warning("探勘橋：%s，本輪中止", result["note"])
                 stats["skipped"] += 1
                 break
-
             stats["processed"] += 1
-            proposal = triage_find(find, reply)
-            if proposal is None:
-                find.status = "discarded"
-                find.triage_note = "探勘橋：LLM 判定與既有策略無關或回覆無法解析"
-                stats["discarded"] += 1
-                continue
-
-            # 與 POST /knowledge/propose 同欄位合約建 candidate（scenario = 素材摘要，
-            # 之後 OOS 驗證 / 人工策展都看得到出處脈絡）
-            k = StrategyKnowledge(
-                name=f"{proposal['strategy_key']} 探勘候選（{(find.title or '')[:40]}）",
-                strategy_key=proposal["strategy_key"],
-                scenario=f"來源：{find.source_url}\n{find.summary}"[:1000],
-                params=proposal["params"],
-                status="candidate",
-            )
-            db.add(k)
-            db.flush()  # 先拿到 k.id 才能回填 knowledge_id
-            find.status = "built"
-            find.knowledge_id = k.id
-            find.triage_note = (
-                f"探勘橋：提案 {proposal['strategy_key']} "
-                f"params={proposal['params']} 信心={proposal['confidence']:.2f}"
-                f"｜{proposal['reason']}"
-            )
-            stats["built"] += 1
+            stats[result["status"]] += 1  # "built" 或 "discarded"
 
         db.commit()
     finally:

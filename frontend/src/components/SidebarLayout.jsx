@@ -15,33 +15,75 @@
 //   context  — 傳給各路由頁的共享資料/動作（頁面用 useOutletContext() 取）
 //   workbench — 右側策略工作台元件（暫時保留，step-08 才移除）
 
+import { useState, useEffect } from "react";
 import { Box, Container, Alert, LinearProgress, Typography, Snackbar } from "@mui/material";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import Header from "./Header";
 import AssistantDrawer from "./AssistantDrawer";
 import { NEON } from "../theme";
 
-// 導覽項目：依 Phase 9 README 壹節資訊架構。
-// 灰底（依賴前面 phase）頁面在對應 step 落地時再逐一加進來。
-const NAV_ITEMS = [
-  { to: "/", label: "監控中心", end: true },
-  { to: "/company", label: "公司戰情" },
-  { to: "/promotions", label: "董事會核准" },
-  { to: "/bot-review", label: "汰弱審查員" },
-  { to: "/factors", label: "因子報表" },
-  { to: "/collector", label: "市場蒐集員" },
-  { to: "/political", label: "政治專討員" },
-  { to: "/trades", label: "交易紀錄" },
-  { to: "/backtest-runs", label: "回測歷史" },
-  { to: "/presets", label: "策略方案" },
-  { to: "/explorations", label: "探討檢討" },
-  { to: "/decisions", label: "決策審計" },
-  { to: "/evolution", label: "進化實驗室" },
-  { to: "/library", label: "策略知識庫" },
-  { to: "/ai-explore", label: "AI 探勘" },
-  { to: "/charts", label: "K 線圖" },
-  { to: "/fundamentals", label: "基本面" },
-  { to: "/backtest", label: "回測工具" },
+// 導覽分組：依「操作流程」由上而下排成 5 個階段（監控 → 找題材 → 研究 → 策展 → 部署）。
+// 每組 defaultOpen 決定「初次」預設展開或收合；之後使用者展開/收合狀態會記進 localStorage。
+// 路由本身不在這裡定義（在 App.jsx），這支只負責側邊欄的「排序 + 分組 + 折疊」呈現。
+const NAV_STORAGE_KEY = "albee-nav-open";
+const NAV_GROUPS = [
+  {
+    id: "monitor",
+    title: "① 監控看盤",
+    defaultOpen: true,
+    items: [
+      { to: "/", label: "監控中心", end: true },
+      { to: "/company", label: "公司戰情" },
+      { to: "/trades", label: "交易紀錄" },
+      { to: "/decisions", label: "決策審計" },
+    ],
+  },
+  {
+    id: "source",
+    title: "② 找題材",
+    defaultOpen: true,
+    items: [
+      { to: "/collector", label: "市場蒐集員" },
+      { to: "/ai-explore", label: "AI 探勘" },
+      { to: "/political", label: "政治專討員" },
+    ],
+  },
+  {
+    id: "research",
+    title: "③ 研究‧驗證",
+    defaultOpen: true,
+    items: [
+      { to: "/funnel", label: "探勘漏斗" },
+      { to: "/factors", label: "因子報表" },
+      { to: "/charts", label: "K 線圖" },
+      { to: "/fundamentals", label: "基本面" },
+      { to: "/backtest", label: "回測工具" },
+      { to: "/stock-arena", label: "個股擂台" },
+    ],
+  },
+  {
+    id: "curate",
+    title: "④ 策展‧演進",
+    defaultOpen: false,
+    items: [
+      { to: "/evolution", label: "進化實驗室" },
+      { to: "/library", label: "策略知識庫" },
+      { to: "/backtest-runs", label: "回測歷史" },
+      { to: "/explorations", label: "探討檢討" },
+    ],
+  },
+  {
+    id: "deploy",
+    title: "⑤ 部署",
+    defaultOpen: false,
+    items: [
+      { to: "/presets", label: "策略方案" },
+      { to: "/promotions", label: "董事會核准" },
+      { to: "/bot-review", label: "汰弱審查員" },
+    ],
+  },
 ];
 
 // 單一導覽連結：用 NavLink 的 isActive 切換高亮樣式。
@@ -77,6 +119,54 @@ function NavItem({ to, label, end }) {
   );
 }
 
+// 導覽群組：可點的「階段標題列」（展開/收合）＋ 底下的導覽項。
+// open 由父層算好（手動展開狀態，或「目前所在頁就在這組內」→ 強制展開）。
+function NavGroup({ group, open, onToggle }) {
+  return (
+    <Box sx={{ mb: 1 }}>
+      <Box
+        component="button"
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          px: 2,
+          py: 0.75,
+          mb: 0.5,
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          color: "text.secondary",
+          fontFamily: '"IBM Plex Mono", monospace',
+          fontSize: 11,
+          letterSpacing: "0.12em",
+          borderRadius: 1,
+          transition: "color .2s",
+          "&:hover": { color: "text.primary" },
+        }}
+      >
+        <span>{group.title}</span>
+        {open ? (
+          <ExpandMoreIcon sx={{ fontSize: 18 }} />
+        ) : (
+          <ChevronRightIcon sx={{ fontSize: 18 }} />
+        )}
+      </Box>
+      {open && (
+        <Box sx={{ pl: 1 }}>
+          {group.items.map((item) => (
+            <NavItem key={item.to} {...item} />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 export default function SidebarLayout({
   status,
   loading,
@@ -88,6 +178,29 @@ export default function SidebarLayout({
   colorMode,
   onToggleColorMode,
 }) {
+  // 目前所在路由：用來把「含當前頁的群組」強制展開，避免人在收合群組內的頁卻看不到導覽。
+  const { pathname } = useLocation();
+
+  // 各群組展開/收合狀態：lazy 從 localStorage 還原，沒存過就用各組 defaultOpen。
+  // （照 App.jsx colorMode 的 localStorage lazy-init + useEffect 持久化範式）
+  const [openMap, setOpenMap] = useState(() => {
+    const fallback = Object.fromEntries(NAV_GROUPS.map((g) => [g.id, g.defaultOpen]));
+    try {
+      const saved = JSON.parse(localStorage.getItem(NAV_STORAGE_KEY) || "{}");
+      return { ...fallback, ...saved };
+    } catch {
+      return fallback;
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(NAV_STORAGE_KEY, JSON.stringify(openMap));
+  }, [openMap]);
+  const toggleGroup = (id) => setOpenMap((m) => ({ ...m, [id]: !m[id] }));
+
+  // 目前所在頁是否就在這組內（精確比對 to===pathname；用來強制展開該組）。
+  const groupHasActive = (group) =>
+    group.items.some((it) => it.to === pathname);
+
   return (
     <>
       <Header status={status} />
@@ -131,8 +244,13 @@ export default function SidebarLayout({
           >
             導覽
           </Typography>
-          {NAV_ITEMS.map((item) => (
-            <NavItem key={item.to} {...item} />
+          {NAV_GROUPS.map((group) => (
+            <NavGroup
+              key={group.id}
+              group={group}
+              open={openMap[group.id] || groupHasActive(group)}
+              onToggle={() => toggleGroup(group.id)}
+            />
           ))}
 
           {/* 亮/暗模式切換（E1）：存 localStorage，下次開啟沿用 */}

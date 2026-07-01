@@ -33,7 +33,13 @@ REM 看門狗迴圈：行程崩潰（斷網、Discord 重連失敗…）就等 1
 REM 與後端的 start_backend.bat 同款，人不在家時自己救自己。
 :watchdog
 venv\Scripts\python.exe -m backend.bots.political_watcher
+set _ec=%errorlevel%
 echo.
-echo [看門狗] 政治專討員結束（exit code %errorlevel%），10 秒後自動重啟... 按 Ctrl+C 放棄。
+if %_ec%==2 (
+    echo [看門狗] 政治專討員因設定缺失退出（exit code 2），請補齊 .env 後再啟動。
+    pause
+    exit /b 2
+)
+echo [看門狗] 政治專討員結束（exit code %_ec%），10 秒後自動重啟... 按 Ctrl+C 放棄。
 timeout /t 10 /nobreak >nul
 goto watchdog

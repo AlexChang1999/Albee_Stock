@@ -311,6 +311,26 @@ class Settings:
     BOT_REVIEW_MAX_CULL_PER_RUN: int = int(os.getenv("BOT_REVIEW_MAX_CULL_PER_RUN", "20"))
 
     # ========================================================
+    # AI 每日交易事後檢討（trade_review）
+    # ========================================================
+    # 每天美股收盤後（UTC 20:00 = ET 16:00）自動觸發，讀取當日決策 → LLM 分析 → 寫 explorations/ → 推播。
+    #   - TRADE_REVIEW_ENABLED：總開關（預設開）。
+    #   - TRADE_REVIEW_HOUR：每日幾點跑（UTC；預設 20 = ET 16:00 收盤後）。
+    TRADE_REVIEW_ENABLED: bool = os.getenv("TRADE_REVIEW_ENABLED", "true").lower() in ("1", "true", "yes")
+    TRADE_REVIEW_HOUR: int = int(os.getenv("TRADE_REVIEW_HOUR", "20"))
+
+    # ========================================================
+    # 策略進化反饋迴圈（strategy_feedback）
+    # ========================================================
+    # Bot 被汰弱或降級後，自動分析失敗原因、由 LLM 提案新參數候選寫入知識庫。
+    #   - FEEDBACK_MIN_RATIO：實跑均值 / OOS 期望值 < 此比值才觸發（預設 0.6 = 低於 OOS 的 60%）。
+    #   - FEEDBACK_MIN_ROUND_TRIPS：觸發所需的最低完整買賣回合數（預設 5）。
+    #   - FEEDBACK_THESIS_LIMIT：傳給 LLM 分析的最近失敗案例數（預設 10）。
+    FEEDBACK_MIN_RATIO: float = float(os.getenv("FEEDBACK_MIN_RATIO", "0.6"))
+    FEEDBACK_MIN_ROUND_TRIPS: int = int(os.getenv("FEEDBACK_MIN_ROUND_TRIPS", "5"))
+    FEEDBACK_THESIS_LIMIT: int = int(os.getenv("FEEDBACK_THESIS_LIMIT", "10"))
+
+    # ========================================================
     # 開機補跑（catch-up on boot）— 維運安全軌
     # ========================================================
     # 家用電腦不是 24/7：每日 cron 時刻沒開機，那天管線整段跳過。
@@ -528,10 +548,17 @@ class Settings:
     QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
 
     # ========================================================
-    # LINE 通知（之後再填，現在可留空）
+    # Agent Gateway — 外部 AI agent 受限存取（採納自 QuantDinger）
     # ========================================================
-    LINE_CHANNEL_ACCESS_TOKEN: str = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-    LINE_CHANNEL_SECRET: str = os.getenv("LINE_CHANNEL_SECRET", "")
+    # 讓 Claude / Cursor 等外部 AI 透過 /api/agent/v1/* 驅動我們的回測 / 策略 / 知識庫查詢，
+    # 並可下「預設 paper」的單。沿用實盤雙閘的精神，再加一道 agent 專屬閘：
+    #   - AGENT_API_TOKEN：bearer 驗證用的密鑰。留空＝整個 Gateway 關閉（端點一律回 503）。
+    #     ★ 絕不 commit，只放 .env；自己用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 產一把。
+    #   - AGENT_LIVE_TRADING_ENABLED：agent 下單能否碰真錢的「第三道閘」（鏡像 ALLOW_LIVE_TRADING）。
+    #     預設 false＝agent 只能下 paper 單。要 agent 動真錢須三者齊開：實盤網址 + ALLOW_LIVE_TRADING
+    #     + 本閘，且仍由 alpaca_client.submit_market_order 的雙閘把關（本閘只是再多一層拒絕）。
+    AGENT_API_TOKEN: str = os.getenv("AGENT_API_TOKEN", "")
+    AGENT_LIVE_TRADING_ENABLED: bool = os.getenv("AGENT_LIVE_TRADING_ENABLED", "false").lower() in ("1", "true", "yes")
 
     # ========================================================
     # 探討（檢討）檔案記憶（Phase 5）

@@ -15,6 +15,47 @@
 
 ## [未發布]
 
+### 新增 (Added) — 採納 QuantDinger 兩項能力：ScriptStrategy 引擎 + Agent Gateway/MCP
+
+> 分析外部專案 [QuantDinger](https://github.com/brokermr810/QuantDinger) 後採納兩項架構能力，
+> 簡單版優先。守住既有「回測=實盤同路徑」與實盤雙閘鐵則。
+
+- **事件驅動 ScriptStrategy 引擎**（`backend/strategies/base.py` 新增 `ScriptStrategy` +
+  `backend/strategies/context.py` 新增 `BacktestContext`）：用 `on_bar(ctx, bar)` +
+  `ctx.buy()/sell()/close()` 寫有狀態的進出場邏輯（讀得到 `ctx.in_position`/`bars_held`/`history`）。
+  - 統一入口 `produce_signals(df)` / `evaluate_last(df)`：向量化策略走預設實作（行為逐位元組不變）、
+    事件式策略覆寫成 on_bar 驅動，但**壓出的訊號仍走同一個 `_simulate_from_signals` 成交核心**
+    （次根開盤 + 含成本），零分岔。`backtest_engine._run_on_df` 與 `bot_manager._run_strategy` 改吃統一入口。
+  - 範例策略 `script_breakout`（突破進場 + 有狀態續抱）：已註冊 + 前端 `constants.js` + 參數 schema。
+  - 等價性測試證明「同一規則的向量化 vs 事件式」回測結果（EV/報酬/交易/資金曲線）完全一致。
+- **Agent Gateway**（`backend/routers/agent.py`，`/api/agent/v1/*`）：讓 Claude/Cursor 等外部 AI
+  透過 bearer token 驅動我們的回測/策略/帳戶/機會/知識庫查詢，並可下「預設 paper」的單。
+  - 三道安全閘：① `AGENT_API_TOKEN`（未設＝整組回 503）；② 唯讀為主；③ 下單預設 paper，
+    碰真錢須 `AGENT_LIVE_TRADING_ENABLED=true` 第三道閘 + 既有 Alpaca 實盤雙閘把關。
+  - 每筆呼叫落 `agent_audits` append-only 審計表（`backend/models/agent_audit.py` + Alembic 遷移 `f7a8b9c0d1e2`）。
+- **自家 MCP server**（`mcp_server/server.py` + `README.md`）：stdio MCP 薄包 Agent Gateway，
+  工具一對一映射（list_strategies / run_backtest / get_account / list_bots / submit_order 等）。
+  `requirements.txt` 加 `mcp>=1.0`（僅跑 MCP 時需要，後端本體不依賴）。
+- **設定**：`config.py` + `.env.example` 加 `AGENT_API_TOKEN`、`AGENT_LIVE_TRADING_ENABLED`（預設關）。
+- **測試**：`tests/test_agent_gateway.py`（503/401/200 + 審計 + 實盤下單 403）、
+  `tests/test_backtest.py` 等價性測試、`tests/test_strategies.py` ScriptStrategy 註冊測試。
+
+### 新增 (Added) — AI 交易日誌分析 + 策略進化反饋迴圈
+
+- **`GET /bots/daily-digest`**：每日交易摘要端點，按 Bot 分組顯示 P&L、exit_kind 分佈、thesis_breach 清單，快速查「昨天到底發生什麼」
+- **`POST /review/daily`**：手動觸發 AI 每日交易事後檢討，讀 DecisionLog + TradeLog → LLM 分析虧損模式 → 寫 `explorations/review-YYYY-MM-DD.md` → 推播摘要
+- **`GET /review/daily`**：確認指定日期 review 檔案是否存在
+- **`backend/services/trade_review.py`**：AI 每日交易分析服務（自動在 UTC 20:00 觸發，LLM 不可用時仍回傳統計）
+- **`backend/services/strategy_feedback.py`**：策略進化反饋迴圈——Bot 被汰弱/降級後 LLM 自動分析失效原因、提案新參數候選，寫入 StrategyKnowledge（status=candidate, origin=paper_feedback）
+- **`StrategyKnowledge` 新增三欄位**（Alembic 遷移 c5040cf68986）：`origin`（來源：manual/paper_feedback/discovery）、`parent_id`（前版本血緣）、`evolution_note`（AI 分析文字）
+- **前端 KnowledgeCard**：`paper_feedback` 候選顯示「從實跑學習」Chip + AI 分析展開
+- **前端 EvolutionPage**：新增「來源」篩選 toggle（全部/從實跑學習/人工建立/探勘橋）
+- **汰弱/降級後自動觸發反饋**：`bot_review._cull_bot` 和 `tracking._demote_bot` 停 Bot 後自動呼叫 `generate_candidate_from_paper`（LLM 不可用優雅跳過）
+- **APScheduler 排程**：`schedule_trade_review()`，每日 UTC 20:00 自動跑 AI 檢討
+- **catchup.py**：開機補跑管線加入 `trade_review`（美股收盤後才排）
+
+
+
 ### 接下來要做（我跟你，下個 session 接手）
 
 > 本批程式已落地（全套件 547 passed / 0 failed），但**有幾件要人觸發 / 要拍板的事還沒做**：
@@ -44,7 +85,41 @@
   `promotion.propose_promotion` 達標證據 + `GET /backtest-runs/{id}/report` 報告都已存在，但**沒有排程
   自動把達標 bot 提議送審**。下一步可加「auto_propose」排程串起最後一哩。
 
+### 修正
+
+- **`POST /discovery/validate-batch` 改為非同步（202）**：原同步呼叫跑 38 籃子 walk-forward 回測需數分鐘以上，HTTP 請求必逾時。改用 FastAPI `BackgroundTasks` 立刻回 202；前端 CompanyPage「驗證」鈕按下後改為每 10 秒輪詢 `/company/overview`，偵測到 `candidate/validated/rejected` 數字變動時自動解鎖，最多等 10 分鐘（`backend/routers/discovery.py` + `frontend/src/pages/CompanyPage.jsx`）。
+- **`test_discovery_api` 不再連 Neon + 補修非同步後遺漏的斷言（根治 flaky）**：`tests/conftest.py` 在 import `backend.config` 之前把 `DATABASE_URL` 指到暫存 SQLite，讓全域 engine（lifespan 的 `init_db`/resume/排程、`validate-batch` 背景任務 `run_auto_validate(None)` 自建的 `SessionLocal`——這些都不經 `get_db` 覆寫）改走本機檔案，整個測試程序與 Neon 脫鉤（全套件受惠，逐測試仍各自用 `tmp_path` SQLite 隔離）。同時把上一筆 validate-batch 改 202 時漏改的測試斷言（仍期待 `200 + "validated"`）更新為 `202 + status=="started"`。
+
+### 變更
+
+- **側邊欄改為依操作流程的 5 階段分組導覽（可折疊收納）**：原本一條扁平 20 項導覽清單（`SidebarLayout.jsx` 的 `NAV_ITEMS`）順序混亂、核心頁被 Phase 10~14 的戰情／實驗頁夾在中間，整理成依「操作流程」由上而下的 5 個階段——① 監控看盤 → ② 找題材 → ③ 研究‧驗證 → ④ 策展‧演進 → ⑤ 部署。每組標題可點展開/收合，次要的「④ 策展‧演進」「⑤ 部署」**預設收合**讓畫面更短；展開狀態記進 `localStorage`（`albee-nav-open`，照 colorMode 範式），直接走訪收合階段內的頁會自動展開該組、不會把目前頁的導覽藏起來。**純前端呈現層改動：路由、頁面、Outlet context 全部不動，20 頁一頁不刪、皆可達**（`frontend/src/components/SidebarLayout.jsx` + 同層測試）。
+- **移除 LINE 通知**：LINE Notify 2025 停服後遺留的 Messaging API 推播已全數移除（`notifier.py` / `config.py` / `requirements.txt` 砍 `line-bot-sdk`）；通知管道統一走 Discord Webhook（`DISCORD_WEBHOOK_URL`）。
+- **Discord Webhook 429 重試**：`_send_discord` 遇到 rate limit 時依 `retry_after` 等完再重試，最多 3 次，不再印 ⚠️ 警告。
+- **政治專討員看門狗修正**：沒設 `POLITICAL_DISCORD_TOKEN` 或未裝 `discord.py` 時改以 `sys.exit(2)` 退出；`.bat` 看門狗偵測到 exit code 2 即停止（不再無窮重啟）。
+- **安裝 `discord.py==2.7.1`**：`requirements.txt` 已記載但 venv 未裝，現已補裝，`political_watcher` 可正常啟動。
+
 ### 新增
+
+- **結構化交易日誌（買入假設 → 賣出失效回填）**：把每筆買賣的決策脈絡補到可回溯整個假設生命週期，讓週報/月報自我檢討真的有料可讀（延續 Phase 15「決策 Log 加深」）。
+  - **`DecisionLog` 加 8 欄**（Alembic `26c1a3a4aef1`，全 nullable 向後相容，既有 ~30 處寫入點不傳也不壞）：`strategy`（冗存策略代號，自適應記實際挑中的）、`total_amount`（成交總額）、`target_price`/`stop_price`（買進依風控門檻算出的停利/停損價）、`market_snapshot`（均線 5/20/60 排列+位置、量能倍數）、`position_after`（交易後庫存 best-effort）、`exit_kind`（把粗粒度 `sold` 細分成止損/停利/追蹤/策略反轉/券商）、`thesis_breach`（賣出回填「哪個買入假設失效」）。
+  - **新 `services/decision_context.py`（純函式，不碰 DB）**：`compute_market_snapshot`（收盤均線/均量**複用圖表同公式**）、`classify_exit_kind`（從 reason 判出場類型，處理「追蹤止損」含「止損」的判斷順序與券商端優先）、`build_thesis_breach`（撈最近一筆買進的 target/stop 跟出場價對照，產「跌破預設停損 $X（進場 $Y，−Z%）；當初預期漲抵 $T 未達；持有 N 天」）。
+  - **`bot_manager` 全分支接線**：`_run_strategy`/`_run_adaptive` 的 ctx 多帶 `market_snapshot`+`strategy`；買進算 target/stop/total/position_after；賣出三路（風控/策略/券商回填）算 `exit_kind` + 撈最近買進回填 `thesis_breach`。`get_bot_decisions`/`get_recent_decisions` API 補新鍵。
+  - **閉環到「讀教訓」**：`chat._format_decision_history` 把 `exit_kind`/停利停損/行情/`thesis_breach` 一併餵 LLM，覆盤教練 system prompt 加引導善用「假設失效」歸納反覆犯的錯。DecisionsPage 表格加 exit chip（吃 NEON 色票）、🎯停利/⛔停損、「行情」tooltip、假設失效小字。
+  - 測試：新 `tests/test_decision_context.py`（15 條：快照各分支／出場分類關鍵字順序／假設失效回填）+ 擴 `test_decision_log`（買進記 target/stop/total、止損回填假設失效、策略反轉分類）。
+  - **本批未做（範圍外，標記待後續）**：`STRONG_BUY` 信心分級需策略介面輸出信心分數；「預期持有時間」需 Bot 新增參數 + 前端編輯——兩者皆動既有介面，未納本批。
+- **每股多策略艦隊落地 + 決策教訓 Log（Phase 15）**：把「每股只有一個 bot」真正變成「每股多策略並存虛擬交易」，並讓每筆決策記下夠深的脈絡供回頭學。
+  - **個股擂台一鍵建艦隊**：`StockArenaPage` 加批次「🚀 部署前 N 名為 paper bots」（N 預設 5）+ 可設每單金額／輪詢秒數；去重（先查 `getBots` 比對同 `symbol+strategy` 已存在就跳過），一次把排行榜前段策略各建一個 paper bot 對該股虛擬交易，最佳由汰弱審查員浮現。全程 paper、複用既有 `createBot`/`startBot`，零新後端。
+  - **決策 Log 加深（量／股數／指標快照）**：`DecisionLog` 加 `volume`（決策當下那根 K 的成交量）、`qty`（實際下單股數）、`indicators`（該策略當下指標快照，如 `{"rsi":28.1}`）三欄（Alembic `4810c1ec25d9`）。`bot_manager._run_strategy`/`_run_adaptive_strategy` 改回 `(signal, reason, ctx)`，ctx 的指標快照**複用 `indicator_overlays.compute_overlays`** 取各序列末根（零策略改寫）；各決策分支補傳，`get_bot_decisions` API 補三鍵。
+  - **讀教訓（LLM 覆盤摘要）**：新端點 `POST /chat/bot-lessons`——撈該 Bot 決策史（含量/股數/指標）請本機 LLM 產一段「為何那些點買/賣/沒動、下次怎麼改」的檢討。複用 chat 既有 LLM client + **雲端外送閘**（`_cloud_blocked`）；只讀資料不下單。DecisionsPage 表格加「量／股數」欄 + 指標 tooltip + 頭部「📖 讀教訓」鈕。
+  - **「300 秒太久？」結論**：不是。`AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL=300` 只用於大型自動艦隊防 Alpaca 限流；手動部署本來就 60 秒，且止損是券商端 GTC 單即時成交、不受輪詢延遲影響。改為**部署時可自選輪詢秒數**，全域預設不動。
+  - 測試：`tests/test_bot_lessons.py`（新，端點閘 400/404 + stub 成功）+ 擴 `test_decision_log`（寫入量/股數/指標、`_run_strategy` 回 3-tuple ctx）+ `StockArenaPage.test.jsx`（新，批次部署 + 去重）+ `DecisionsPage.test.jsx`（量欄 + 讀教訓）。藍圖 `docs/history/phase-15-fleet-and-lessons/`。
+- **公司可操作化 + 漏斗透明 + 個股策略擂台（Phase 14）**：把「探勘管線預設全關、後端能力沒前端入口、淘汰項被藏」三個讓人困惑的缺口補上，全程人工逐步推進（不開任何排程旗標）。
+  - **每個 AI 角色一顆「跑一次」鈕**：戰情頁漏斗卡變操作台（收料／探勘／驗證／部署／審查），跑完漏斗數字當場跳動。後端新增 `backend/routers/discovery.py`（`/discovery/run`、`/triage/{id}`、`/validate-batch`、`/auto-deploy`）+ `POST /collector/scan`；`run_discovery_batch`/`run_auto_validate`/`run_auto_deploy_knowledge` 加 `force`（只略過 `*_ENABLED`，**安全閘全留**）。
+  - **文字 → 策略橋可見可按**：CollectorPage 每筆加「🔬 試轉策略」（打 `/discovery/triage/{id}`，走共用 `discovery.triage_one`，防幻覺約束不變）、顯示 `triage_note` + 候選連結；`_serialize` 補 `triage_note`/`knowledge_id`。
+  - **出處與漏斗透明**：KnowledgeCard 秀 `oos_metrics` 出處（籃子檔數／walk-forward 折數／回看天數）；新頁 `FunnelPage`（`/funnel`）兩條流水線各階段可點開看實際項目 + 淘汰理由；LibraryPage 切換補 candidate/rejected。
+  - **驗證嚴謹度拉齊**：`/knowledge/{id}/validate` 加 `use_basket`——人工驗證可用 `AUTO_VALIDATE_SYMBOLS` 完整籃子（與自動路徑同嚴謹度），EvolutionPage 預設籃子、可切單檔。
+  - **個股策略擂台**：新頁 `StockArenaPage`（`/stock-arena`）輸入股票 → `/auto-backtest` 跑遍 9 策略排名 → 每列「部署成 paper bot」；LibraryPage curated 卡加「部署到標的」（補孤兒端點 `/knowledge/{id}/deploy`）；BotReviewPage 適配表加「依標的分組」（每股策略競賽排名）。
+  - 測試：`tests/test_discovery_api.py`（新）+ 擴充 `test_discovery`/`test_collector`/`test_auto_validate`/`test_auto_deploy_knowledge`（triage_one / force / scan 回統計 / 端點閘）。藍圖 `docs/history/phase-14-company-operability/`。
 
 - **bot 汰弱審查員（Phase 13，新「職位」：考核 paper 艦隊 + 哪股票配哪策略 fit 註冊 + 軟汰弱）**：
   自動部署讓 Bot 數＝好策略數 × 標的數會持續長（5 策略 × 38 檔 = 190 Bot）。沒人管，艦隊很快

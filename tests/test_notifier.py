@@ -31,7 +31,6 @@ def test_discord_sends_when_configured(monkeypatch):
     """有設定 webhook → POST 到該網址，content 為訊息文字。"""
     calls = []
     monkeypatch.setattr(nt, "DISCORD_WEBHOOK_URL", "https://discord.test/webhook")
-    monkeypatch.setattr(nt, "LINE_USER_ID", "")  # 關掉 LINE，只測 Discord
     monkeypatch.setattr(
         nt.requests, "post",
         lambda url, **kw: calls.append((url, kw)) or SimpleNamespace(status_code=204, text=""),
@@ -50,7 +49,6 @@ def test_discord_skipped_when_not_configured(monkeypatch):
     """沒設定 webhook → 完全不呼叫 requests.post。"""
     calls = []
     monkeypatch.setattr(nt, "DISCORD_WEBHOOK_URL", "")
-    monkeypatch.setattr(nt, "LINE_USER_ID", "")
     monkeypatch.setattr(nt.requests, "post", lambda url, **kw: calls.append(url))
 
     nt.notify("測試訊息")
@@ -62,7 +60,6 @@ def test_discord_skipped_when_not_configured(monkeypatch):
 def test_discord_failure_does_not_crash(monkeypatch):
     """Discord 推播丟例外 → notify 不崩潰（吞掉並印警告）。"""
     monkeypatch.setattr(nt, "DISCORD_WEBHOOK_URL", "https://discord.test/webhook")
-    monkeypatch.setattr(nt, "LINE_USER_ID", "")
 
     def boom(url, **kw):
         raise RuntimeError("network down")

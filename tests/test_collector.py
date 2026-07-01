@@ -351,3 +351,31 @@ def test_upsert_writes_tags_and_api_filters_by_tag(tmp_path):
         assert watched[0]["tags"] == "watch:SpaceX"
         # 不給 tag → 全部
         assert len(client.get("/collector/finds").json()) == 2
+
+
+# ---------- 8. run_collector_scan 回統計 + /collector/scan 端點 + triage 欄位（Phase 14） ----------
+def test_scan_returns_stats_when_no_feeds(monkeypatch):
+    monkeypatch.setattr(collector.settings, "COLLECTOR_RSS_FEEDS", "")
+    out = run_collector_scan()
+    assert out["inserted"] == 0 and out["feeds"] == 0 and "note" in out
+
+
+def test_scan_endpoint_and_triage_fields(tmp_path, monkeypatch):
+    with _isolated_client(tmp_path) as (client, TestingSession):
+        # 種一筆已被探勘橋處理過的素材：serialize 要帶出 triage_note / knowledge_id
+        db = TestingSession()
+        try:
+            db.add(RawStrategyFind(
+                source="a", source_url="https://a.com/built", title="Built one",
+                status="built", triage_note="探勘橋：提案 rsi", knowledge_id=7,
+            ))
+            db.commit()
+        finally:
+            db.close()
+        r = client.get("/collector/finds").json()[0]
+        assert r["triage_note"] == "探勘橋：提案 rsi" and r["knowledge_id"] == 7
+
+        # POST /collector/scan：沒設 feed → 回統計 dict（note 提示），不報錯
+        monkeypatch.setattr(collector.settings, "COLLECTOR_RSS_FEEDS", "")
+        res = client.post("/collector/scan")
+        assert res.status_code == 200 and "note" in res.json()
