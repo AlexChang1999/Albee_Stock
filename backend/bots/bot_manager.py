@@ -24,7 +24,9 @@ Phase 6 設計重點：
 """
 
 import math
+import threading
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.executors.pool import ThreadPoolExecutor as APSThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -99,6 +101,32 @@ def _indicator_snapshot(strategy_name: str, params: dict, df) -> dict | None:
             if v is not None:
                 snap[s["id"]] = v
     return snap or None
+
+
+# 美東時區：判斷資料源回傳的「今天」那根日K是不是已經收盤（見 _drop_unclosed_today_bar）。
+_ET = ZoneInfo("America/New_York")
+
+# 空手買進的臨界區鎖：APScheduler 用執行緒池同時跑多個 Bot，沒鎖的話，多個 Bot
+# 幾乎同時觸發買進時可能各自查到「購買力足夠」而一起送單，實際總曝險超過預期。
+_buy_lock = threading.Lock()
+
+
+def _drop_unclosed_today_bar(df, market_is_open: bool):
+    """live 交易只信「已收盤」的日K。
+
+    市場還開著時，資料源（Alpaca/yfinance）回傳的「今天」那根日K是盤中還在
+    跳動、尚未收盤的未完成棒；但策略（均線交叉/RSI/MACD...）設計時的邏輯語意
+    是「用已收盤價判斷」。不濾掉的話，同一天內盤中價格晃動會讓指標跟著晃，
+    可能同一天內反覆翻轉買賣訊號（whipsaw）。
+    """
+    if df.empty or not market_is_open:
+        return df
+    today_et = datetime.now(_ET).date()
+    last_ts = df["timestamp"].iloc[-1]
+    last_date = last_ts.tz_convert(_ET).date() if last_ts.tzinfo else last_ts.date()
+    if last_date == today_et:
+        return df.iloc[:-1].reset_index(drop=True)
+    return df
 
 
 # 追蹤止損要記住「持倉期間出現過的最高價」。
@@ -494,7 +522,7 @@ def _emit_cycle_end(bot, status: str, detail: str = "") -> None:
     )
 
 
-def _handle_holding(bot: Bot, position, current_price: float) -> None:
+def _handle_holding(bot: Bot, position, current_price: float, market_is_open: bool) -> None:
     """持倉中：先風控出場，再看策略賣出訊號（熔斷不擋出場）。"""
     entry_price = float(position.avg_entry_price)
 
@@ -537,7 +565,7 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
     # --- 風控沒觸發 → 看策略要不要賣 ---
     # ctx（量 + 指標快照）是選用第三元素：測試常 monkeypatch _run_strategy 回 2-tuple，
     # 用 *rest 容錯，沒帶就視為空 ctx，不影響賣出主流程。
-    signal, reason, *rest = _run_strategy(bot)
+    signal, reason, *rest = _run_strategy(bot, market_is_open)
     ctx = rest[0] if rest else {}
     vol, inds = ctx.get("volume"), ctx.get("indicators")
     snap, strat = ctx.get("market_snapshot"), ctx.get("strategy")
@@ -565,14 +593,14 @@ def _handle_holding(bot: Bot, position, current_price: float) -> None:
                          volume=vol, indicators=inds, market_snapshot=snap, strategy=strat)
 
 
-def _handle_flat(bot: Bot, current_price: float) -> None:
+def _handle_flat(bot: Bot, current_price: float, market_is_open: bool) -> None:
     """空手中：跑策略，出現買進訊號 → 先過組合層守門（熔斷 / 購買力）才進場。"""
     # 沒持倉，確保沒有殘留的最高價（只在原本有值時才寫 DB，省一次無謂的 commit）
     if bot.peak_price is not None:
         _persist_peak(bot, None)
 
     # ctx（量 + 指標快照）是選用第三元素，沿用容錯：測試 monkeypatch 回 2-tuple 時 ctx 為空
-    signal, reason, *rest = _run_strategy(bot)
+    signal, reason, *rest = _run_strategy(bot, market_is_open)
     ctx = rest[0] if rest else {}
     vol, inds = ctx.get("volume"), ctx.get("indicators")
     snap, strat = ctx.get("market_snapshot"), ctx.get("strategy")
@@ -642,7 +670,7 @@ def _handle_flat(bot: Bot, current_price: float) -> None:
         _place_protective_order(bot, qty, current_price)
 
 
-def _run_strategy(bot: Bot):
+def _run_strategy(bot: Bot, market_is_open: bool):
     """抓 K 線、跑策略，回傳 (訊號, 原因)。抓不到資料時視為觀望。
 
     Phase 6 step-01：實盤改走「回測同一條資料路徑」——
@@ -658,13 +686,17 @@ def _run_strategy(bot: Bot):
     層驗證證明只有 meta-labeling 在樣本外加分（adaptive 反而 −115、已維持關），
     且驗證的 baseline 正是「固定策略訊號 + should_take」這條路徑，故把它收回線上。
     閘由 `settings.META_LABEL_ENABLED` 控（關掉 = 純一級訊號，向後相容）。
+
+    market_is_open：市場還開著時，資料源回傳的「今天」那根日K還在跳動、尚未收盤，
+    要濾掉才不會被盤中雜訊牽著同一天內反覆翻轉訊號（見 _drop_unclosed_today_bar）。
     """
     if getattr(bot, "adaptive", False):
-        return _run_adaptive_strategy(bot)
+        return _run_adaptive_strategy(bot, market_is_open)
 
     days = required_lookback_days(bot.strategy, bot.params or {})
     emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
+    df = _drop_unclosed_today_bar(df, market_is_open)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
     emit_activity(bot, "compute_signal", f"計算 {bot.strategy} 策略訊號")
@@ -697,13 +729,15 @@ def _run_strategy(bot: Bot):
     return signal, reason, ctx
 
 
-def _run_adaptive_strategy(bot: Bot):
+def _run_adaptive_strategy(bot: Bot, market_is_open: bool):
     """自適應模式（Phase 7 step-03）：依當下市場狀態挑策略再產生訊號。
 
     1. 抓一段夠長的 K 線（與對照表建立時同窗口，特徵才一致）。
     2. 算當下特徵 → 查該標的的「狀態→最佳策略對照表」（快取）。
     3. 該狀態有可信策略 → 用它產生訊號；無（fallback）→ 保守觀望。
     對照表計算或查詢失敗都不可中斷交易主流程，故 best-effort 退回觀望。
+
+    market_is_open：同 _run_strategy，濾掉盤中還沒收盤的「今天」那根日K。
     """
     # 延遲 import 避免載入順序問題（selector 會用到 backtest_engine 等較重的相依）
     from backend.services.regime_features import compute_features
@@ -713,6 +747,7 @@ def _run_adaptive_strategy(bot: Bot):
     days = settings.REGIME_MAP_DAYS
     emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線（自適應）")
     df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
+    df = _drop_unclosed_today_bar(df, market_is_open)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
 
