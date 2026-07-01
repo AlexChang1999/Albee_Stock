@@ -138,6 +138,41 @@ journalctl -u albee-backend -f                # 看後端 log（等同看 uvicor
 注意 `--host 127.0.0.1`：只綁本機，配合 §2 的「不開 8000 對公網」雙保險。
 （uvicorn 在 systemd 下不要加 `--reload`——檔案監看在伺服器上沒意義還耗資源。）
 
+### 政治員 Discord bridge（有設 `POLITICAL_DISCORD_TOKEN` 才建）
+
+`political_watcher` 是**獨立進程**，不內嵌在 FastAPI——必須另建 service，否則重開機後橋斷線、事件停更。
+
+```ini
+# /etc/systemd/system/albee-political-watcher.service
+[Unit]
+Description=Albee Political Watcher (Discord bridge)
+After=network-online.target albee-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Albee_Stock
+ExecStart=/home/ubuntu/Albee_Stock/venv/bin/python3 -m backend.bots.political_watcher
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=albee-watcher
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now albee-political-watcher
+journalctl -u albee-political-watcher -f   # 看連線 log，成功顯示 "connected to Gateway"
+```
+
+**前提**：`.env` 必須先設好 `POLITICAL_DISCORD_TOKEN`、`POLITICAL_CHANNEL_ID`、`POLITICAL_ENABLED=true`。
+沒設 token → watcher 會印出指引後退出（service 會 restart-on-failure 循環，要先填好 token 再啟動）。
+
 ---
 
 ## 5. 從自己電腦看戰情頁（SSH tunnel）
