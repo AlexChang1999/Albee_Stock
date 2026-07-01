@@ -88,7 +88,7 @@ def _last_decision(TestSession, bot_id) -> DecisionLog:
 def test_bought_decision(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=None, price=50)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
     bid = _create_bot(TestSession)
     bm.run_bot_once(bid)
     d = _last_decision(TestSession, bid)
@@ -98,7 +98,7 @@ def test_bought_decision(tmp_path, monkeypatch):
 def test_flat_hold_decision(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=None, price=50)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望中"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望中"))
     bid = _create_bot(TestSession)
     bm.run_bot_once(bid)
     d = _last_decision(TestSession, bid)
@@ -108,7 +108,7 @@ def test_flat_hold_decision(tmp_path, monkeypatch):
 def test_no_buying_power_decision(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=None, price=50)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
     monkeypatch.setattr(bm, "_available_buying_power", lambda: 100.0)  # 需 1000 > 可用 100
     bid = _create_bot(TestSession)
     bm.run_bot_once(bid)
@@ -120,7 +120,7 @@ def test_no_buying_power_decision(tmp_path, monkeypatch):
 def test_circuit_breaker_decision(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=None, price=50)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
     monkeypatch.setattr(bm, "check_breaker", lambda db=None: {"tripped": True})
     bid = _create_bot(TestSession)
     bm.run_bot_once(bid)
@@ -143,7 +143,7 @@ def test_risk_sold_decision(tmp_path, monkeypatch):
     _patch(monkeypatch, position=FakePosition(avg_entry_price=100, qty=10), price=94)
     # 策略不該被問（止損先觸發）；設成被呼叫就爆
     monkeypatch.setattr(bm, "_run_strategy",
-                        lambda bot: (_ for _ in ()).throw(AssertionError("止損時不該問策略")))
+                        lambda bot, market_is_open: (_ for _ in ()).throw(AssertionError("止損時不該問策略")))
     bid = _create_bot(TestSession, stop_loss_pct=0.05)
     bm.run_bot_once(bid)
     d = _last_decision(TestSession, bid)
@@ -157,7 +157,7 @@ def test_bought_decision_records_target_stop_total(tmp_path, monkeypatch):
 
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=None, price=50)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
     monkeypatch.setattr(bm, "_place_protective_order", lambda *a, **k: None)  # 消券商保護單噪音
     bid = _create_bot(TestSession, take_profit_pct=0.10, stop_loss_pct=0.05)
     bm.run_bot_once(bid)
@@ -176,7 +176,7 @@ def test_risk_sold_records_exit_kind_and_thesis(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=FakePosition(avg_entry_price=100, qty=10), price=94)
     monkeypatch.setattr(bm, "_run_strategy",
-                        lambda bot: (_ for _ in ()).throw(AssertionError("止損時不該問策略")))
+                        lambda bot, market_is_open: (_ for _ in ()).throw(AssertionError("止損時不該問策略")))
     bid = _create_bot(TestSession, stop_loss_pct=0.05)
     # 先種一筆買進紀錄（含當初的 target/stop），供賣出回填假設失效對照
     s = TestSession()
@@ -198,7 +198,7 @@ def test_strategy_sold_records_signal_reversal(tmp_path, monkeypatch):
     """結構化日誌：純策略訊號反轉出場（風控未觸發）→ exit_kind=signal_reversal。"""
     TestSession = _setup_db(tmp_path, monkeypatch)
     _patch(monkeypatch, position=FakePosition(avg_entry_price=100, qty=10), price=105)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.SELL, "死亡交叉", {}))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.SELL, "死亡交叉", {}))
     bid = _create_bot(TestSession)  # 無風控門檻 → check_exit 不觸發，走策略賣出
     bm.run_bot_once(bid)
     d = _last_decision(TestSession, bid)
@@ -212,7 +212,7 @@ def test_decision_records_volume_qty_indicators(tmp_path, monkeypatch):
     _patch(monkeypatch, position=None, price=50)
     ctx = {"volume": 123456.0, "indicators": {"ma_short": 231.2, "ma_long": 228.4}}
     # 真實路徑回 3-tuple（signal, reason, ctx）
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉", ctx))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉", ctx))
     bid = _create_bot(TestSession)
     bm.run_bot_once(bid)
     d = _last_decision(TestSession, bid)
@@ -237,7 +237,7 @@ def test_run_strategy_returns_ctx_with_volume_and_indicators(monkeypatch):
     monkeypatch.setattr(bm.market_data, "get_bars", lambda *a, **k: df)
     bot = SimpleNamespace(symbol="TEST", strategy="ma_crossover",
                           params={"short_window": 5, "long_window": 20}, adaptive=False)
-    signal, reason, ctx = bm._run_strategy(bot)
+    signal, reason, ctx = bm._run_strategy(bot, market_is_open=False)
     assert ctx["volume"] == 1039.0                  # 末根 1000+39
     assert ctx["indicators"] and "ma_short" in ctx["indicators"]  # 指標快照有值
 

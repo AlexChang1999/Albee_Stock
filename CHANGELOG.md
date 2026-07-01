@@ -89,6 +89,8 @@
 
 - **`POST /discovery/validate-batch` 改為非同步（202）**：原同步呼叫跑 38 籃子 walk-forward 回測需數分鐘以上，HTTP 請求必逾時。改用 FastAPI `BackgroundTasks` 立刻回 202；前端 CompanyPage「驗證」鈕按下後改為每 10 秒輪詢 `/company/overview`，偵測到 `candidate/validated/rejected` 數字變動時自動解鎖，最多等 10 分鐘（`backend/routers/discovery.py` + `frontend/src/pages/CompanyPage.jsx`）。
 - **`test_discovery_api` 不再連 Neon + 補修非同步後遺漏的斷言（根治 flaky）**：`tests/conftest.py` 在 import `backend.config` 之前把 `DATABASE_URL` 指到暫存 SQLite，讓全域 engine（lifespan 的 `init_db`/resume/排程、`validate-batch` 背景任務 `run_auto_validate(None)` 自建的 `SessionLocal`——這些都不經 `get_db` 覆寫）改走本機檔案，整個測試程序與 Neon 脫鉤（全套件受惠，逐測試仍各自用 `tmp_path` SQLite 隔離）。同時把上一筆 validate-batch 改 202 時漏改的測試斷言（仍期待 `200 + "validated"`）更新為 `202 + status=="started"`。
+- **實盤進場訊號改吃「已收盤」日K，根治盤中 whipsaw + 對齊回測隔日成交語意**：`alpaca_client.get_bars` 只給 `start` 沒給 `end`，盤中每次抓資料，最後一根「今天」的日K都是還在跳動、尚未收盤的未完成棒；但 `ma_crossover`/`macd`/`rsi` 等策略設計時的邏輯語意是「用已收盤價判斷金叉死叉/超買賣」。同一天內盤中價格晃動讓指標跟著晃，可能反覆翻轉買賣訊號，且訊號一出就立即市價成交，跟回測「隔日開盤成交」的 EV 假設完全對不上——這是實盤持續虧損、回測歷史績效對實盤沒有參考力的主因。新增 `bot_manager._drop_unclosed_today_bar`：market_is_open=True 時濾掉「今天」那根未收盤日K，只留已收盤資料算訊號；訊號因此在盤中固定不變，靠既有空手/持倉狀態機自然讓成交發生在開盤後第一輪，貼近回測「隔日開盤成交」語意，不需另外疊加排程機制（`_run_strategy`/`_run_adaptive_strategy` 簽章加收 `market_is_open`，`run_bot_once` 查一次 `is_market_open()` 往下傳）。
+- **購買力守門套用現金緩衝比例 + 加鎖防多 Bot 並發搶單**：`_available_buying_power()` 原直接回 Alpaca 帳戶原始 `buying_power`，沒套用既有 `PORTFOLIO_CASH_RESERVE_RATIO`（`capital.py::plan_capital` 已實作這個緩衝概念，但只用在模式 B 批次部署規劃、沒接到單一 Bot 的即時買進路徑），現改為回傳扣除緩衝比例後的可用額度。另外 APScheduler 用執行緒池同時跑多個 Bot，`_handle_flat` 買進前「查購買力→送單」原本沒有互斥保護，多個 Bot 幾乎同時觸發買進時可能各自查到「購買力足夠」而一起送單；加一個模組層級 `threading.Lock()` 包住這段臨界區，避免本機並發搶單導致總曝險超過預期。
 
 ### 變更
 

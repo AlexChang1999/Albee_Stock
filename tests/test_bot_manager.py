@@ -120,7 +120,7 @@ def test_stop_loss_sells_even_when_strategy_hold(tmp_path, monkeypatch):
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
     # 若流程正確，止損先觸發就 return，不會呼叫策略 → 這裡設成一呼叫就爆，當作護欄
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (_ for _ in ()).throw(AssertionError("止損時不該再問策略")))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (_ for _ in ()).throw(AssertionError("止損時不該再問策略")))
 
     bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
 
@@ -134,7 +134,7 @@ def test_holding_no_trigger_holds(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=101, orders=orders)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
 
     bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05, take_profit_pct=0.10))
 
@@ -147,7 +147,7 @@ def test_flat_buy_on_signal(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, position=None, price=50, orders=orders)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
 
     bm.run_bot_once(_create_bot(TestSession))
 
@@ -180,7 +180,7 @@ def test_trailing_stop_uses_persisted_peak(tmp_path, monkeypatch):
     orders = []
     # 進場價 100、現價 116；若用進場價當基準不會觸發，用 peak=120 才會（120→116 跌 3.3%）
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=116, orders=orders)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
 
     bm.run_bot_once(_create_bot(TestSession, trailing_stop_pct=0.03, peak_price=120))
 
@@ -198,7 +198,7 @@ def test_refetch_uses_fresh_risk(tmp_path, monkeypatch):
     TestSession = _setup_db(tmp_path, monkeypatch)
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
 
     captured = {}
 
@@ -231,7 +231,7 @@ def test_deleted_bot_is_noop_and_removes_job(tmp_path, monkeypatch):
     removed = []
     monkeypatch.setattr(bm.bot_manager, "stop_bot", lambda bot_id: removed.append(bot_id))
     # 若誤入主流程才會用到策略，這裡設成一被呼叫就爆當護欄
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (_ for _ in ()).throw(AssertionError("已刪 Bot 不該跑策略")))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (_ for _ in ()).throw(AssertionError("已刪 Bot 不該跑策略")))
 
     bm.run_bot_once(99999)  # 不存在的 id
 
@@ -289,7 +289,9 @@ def test_run_strategy_uses_unified_data_path(monkeypatch):
     bot = SimpleNamespace(symbol="TEST", strategy="ma_crossover",
                           params={"short_window": 5, "long_window": 120})
 
-    bm._run_strategy(bot)
+    # market_is_open=False：本測試只驗證資料路徑（source/days），假 df 沒帶 timestamp 欄，
+    # 過收盤K濾網（_drop_unclosed_today_bar）需要該欄，跟本測試重點無關，故略過。
+    bm._run_strategy(bot, market_is_open=False)
 
     assert captured["symbol"] == "TEST", captured
     assert captured["source"] == settings.DATA_SOURCE, captured
@@ -308,7 +310,7 @@ def test_buy_places_broker_stop_with_whole_shares(tmp_path, monkeypatch):
     orders, protective = [], []
     _patch_common(monkeypatch, position=None, price=333.0, orders=orders, protective=protective)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
 
     bot_id = _create_bot(TestSession, stop_loss_pct=0.05)
     bm.run_bot_once(bot_id)
@@ -330,7 +332,7 @@ def test_buy_skipped_when_cannot_afford_whole_share(tmp_path, monkeypatch):
     orders, protective = [], []
     _patch_common(monkeypatch, position=None, price=2000.0, orders=orders, protective=protective)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
 
     bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
 
@@ -344,7 +346,7 @@ def test_trailing_setting_uses_native_trailing_stop(tmp_path, monkeypatch):
     orders, protective = [], []
     _patch_common(monkeypatch, position=None, price=50.0, orders=orders, protective=protective)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "突破"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "突破"))
 
     bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05, trailing_stop_pct=0.03))
 
@@ -360,7 +362,7 @@ def test_ensure_replaces_missing_protective_order(tmp_path, monkeypatch):
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=101,
                   orders=orders, protective=protective)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
 
     bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
 
@@ -376,7 +378,7 @@ def test_local_exit_cancels_protective_order_first(tmp_path, monkeypatch):
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
     # 自癒這輪不動作（單視為活著且正確），聚焦撤單順序
     monkeypatch.setattr(bm, "_ensure_protective_order", lambda bot, position: None)
     monkeypatch.setattr(
@@ -410,7 +412,7 @@ def test_local_exit_aborts_when_cancel_fails(tmp_path, monkeypatch):
     orders = []
     _patch_common(monkeypatch, FakePosition(avg_entry_price=100, qty=10), price=94, orders=orders)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
     monkeypatch.setattr(bm, "_ensure_protective_order", lambda bot, position: None)
     monkeypatch.setattr(bm.alpaca_client, "cancel_order", lambda order_id: False)  # 撤不掉
 
@@ -435,7 +437,7 @@ def test_settle_broker_exit_backfills_trade(tmp_path, monkeypatch):
     orders = []
     _patch_common(monkeypatch, position=None, price=96.0, orders=orders)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", True)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "觀望"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "觀望"))
 
     filled = SimpleNamespace(id="ord-5", status="filled", filled_qty="10", filled_avg_price="95.5")
     monkeypatch.setattr(bm.alpaca_client, "get_order", lambda order_id: filled)
@@ -469,13 +471,78 @@ def test_broker_stop_disabled_keeps_legacy_behavior(tmp_path, monkeypatch):
     orders, protective = [], []
     _patch_common(monkeypatch, position=None, price=333.0, orders=orders, protective=protective)
     monkeypatch.setattr(settings, "BROKER_STOP_ENABLED", False)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
 
     bm.run_bot_once(_create_bot(TestSession, stop_loss_pct=0.05))
 
     assert orders == [("TEST", round(1000.0 / 333.0, 4), "buy")], orders  # 碎股維持舊版
     assert protective == [], protective  # 不掛券商端保護單
     print("✅ 開關關閉退回舊版行為（回歸）測試通過")
+
+
+def _fake_bars(dates):
+    """建一份最小可用的假日K DataFrame，只帶測試需要的 timestamp 欄。"""
+    return pd.DataFrame({"timestamp": pd.to_datetime(list(dates))})
+
+
+def test_drop_unclosed_today_bar_removes_last_row_when_open(monkeypatch):
+    """市場開著時，最後一根若是「今天」（美東時區）要被濾掉——那根還在盤中跳動、未收盤。"""
+    from datetime import datetime
+    today_et = datetime.now(bm._ET).date()
+    df = _fake_bars(["2020-01-01", "2020-01-02", today_et])
+
+    out = bm._drop_unclosed_today_bar(df, market_is_open=True)
+
+    assert len(out) == 2, out
+    assert out["timestamp"].iloc[-1] == pd.Timestamp("2020-01-02"), out
+    print("✅ 開市中濾掉今天未收盤日K 測試通過")
+
+
+def test_drop_unclosed_today_bar_keeps_data_when_closed(monkeypatch):
+    """market_is_open=False（休市 / 手動測試 ignore_market_hours）→ 不濾，資料原封不動。"""
+    from datetime import datetime
+    today_et = datetime.now(bm._ET).date()
+    df = _fake_bars(["2020-01-01", "2020-01-02", today_et])
+
+    out = bm._drop_unclosed_today_bar(df, market_is_open=False)
+
+    assert len(out) == 3, out
+    print("✅ 休市/手動測試不濾資料 測試通過")
+
+
+def test_drop_unclosed_today_bar_keeps_data_when_last_bar_not_today():
+    """最後一根不是「今天」（已是昨天以前的收盤資料）→ 不需要濾，原封不動。"""
+    df = _fake_bars(["2020-01-01", "2020-01-02", "2020-01-03"])
+
+    out = bm._drop_unclosed_today_bar(df, market_is_open=True)
+
+    assert len(out) == 3, out
+    print("✅ 最後一根已收盤（非今天）不濾 測試通過")
+
+
+def test_available_buying_power_applies_reserve_ratio(monkeypatch):
+    """購買力守門要套用 PORTFOLIO_CASH_RESERVE_RATIO 現金緩衝，不能把帳戶購買力全部花光。"""
+    monkeypatch.setattr(
+        bm.alpaca_client, "get_account",
+        lambda: SimpleNamespace(buying_power="1000.0"),
+    )
+    monkeypatch.setattr(settings, "PORTFOLIO_CASH_RESERVE_RATIO", 0.2)
+
+    result = bm._available_buying_power()
+
+    assert result == 800.0, result  # 1000 * (1 - 0.2)
+    print("✅ 購買力扣現金緩衝比例 測試通過")
+
+
+def test_available_buying_power_none_when_account_unavailable(monkeypatch):
+    """查不到帳戶（離線/無金鑰/出錯）→ 回 None，呼叫端放行不阻斷。"""
+    monkeypatch.setattr(
+        bm.alpaca_client, "get_account",
+        lambda: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    assert bm._available_buying_power() is None
+    print("✅ 查不到帳戶時優雅回 None 測試通過")
 
 
 if __name__ == "__main__":

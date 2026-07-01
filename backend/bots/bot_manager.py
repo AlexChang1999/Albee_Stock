@@ -388,10 +388,16 @@ def _record_decision(
 
 
 def _available_buying_power() -> float | None:
-    """best-effort 查帳戶可用購買力。離線 / 無金鑰 / 出錯 → None（呼叫端放行，不阻斷）。"""
+    """best-effort 查「扣除現金緩衝後」的可用購買力。離線 / 無金鑰 / 出錯 → None（呼叫端放行，不阻斷）。
+
+    套用 settings.PORTFOLIO_CASH_RESERVE_RATIO（capital.py::plan_capital 同一個緩衝概念）：
+    永遠保留一筆現金緩衝，不把 Alpaca 回報的購買力全部花光。
+    """
     try:
         acct = alpaca_client.get_account()
-        return float(acct.buying_power)
+        raw = float(acct.buying_power)
+        ratio = max(0.0, min(1.0, settings.PORTFOLIO_CASH_RESERVE_RATIO))
+        return raw * (1 - ratio)
     except Exception:
         return None
 
@@ -475,7 +481,10 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
         emit_activity(bot, "cycle_start", "醒來，開始這一輪檢查")
 
         # --- 1. 休市就跳過（手動執行可用 ignore_market_hours 略過此檢查）---
-        if not ignore_market_hours and not alpaca_client.is_market_open():
+        # 這裡查一次市場開盤狀態，往下傳給 _handle_holding/_handle_flat 用於過濾
+        # 「今天還沒收盤」的日K棒（見 _drop_unclosed_today_bar），避免同一輪重複打 API。
+        market_is_open = alpaca_client.is_market_open()
+        if not ignore_market_hours and not market_is_open:
             print(f"[{bot.name}] 美股休市中，本次跳過。")
             _record_decision(bot, Signal.HOLD, "美股休市中", None, ACTION_SKIPPED_MARKET_CLOSED)
             _mark_checked(bot)  # 有跑這一輪（只是休市沒動作），仍更新檢查時間
@@ -493,9 +502,9 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
             _settle_broker_exit(bot)
 
         if position is not None:
-            _handle_holding(bot, position, current_price)
+            _handle_holding(bot, position, current_price, market_is_open)
         else:
-            _handle_flat(bot, current_price)
+            _handle_flat(bot, current_price, market_is_open)
 
         _mark_checked(bot)  # 這一輪成功跑完，記錄檢查時間
         _emit_cycle_end(bot, "ok")
@@ -642,18 +651,22 @@ def _handle_flat(bot: Bot, current_price: float, market_is_open: bool) -> None:
         qty = round(bot.trade_amount / current_price, 4)
 
     # --- 購買力守門（step-05，best-effort；查不到就放行）---
-    buying_power = _available_buying_power()
-    if buying_power is not None and qty * current_price > buying_power:
-        print(f"[{bot.name}] 購買力不足（需 ${qty * current_price:.2f} > 可用 ${buying_power:.2f}），跳過買進。")
-        _record_decision(
-            bot, signal,
-            f"購買力不足：需 ${qty * current_price:.2f}，可用 ${buying_power:.2f}",
-            current_price, ACTION_SKIPPED_NO_BUYING_POWER,
-            volume=vol, indicators=inds, market_snapshot=snap, strategy=strat,
-        )
-        return
+    # 用鎖包住「查購買力→送單」：APScheduler 執行緒池同時跑多個 Bot，
+    # 沒鎖的話可能各自查到「購買力足夠」而一起送單，總曝險超過預期。
+    with _buy_lock:
+        buying_power = _available_buying_power()
+        if buying_power is not None and qty * current_price > buying_power:
+            print(f"[{bot.name}] 購買力不足（需 ${qty * current_price:.2f} > 可用 ${buying_power:.2f}），跳過買進。")
+            _record_decision(
+                bot, signal,
+                f"購買力不足：需 ${qty * current_price:.2f}，可用 ${buying_power:.2f}",
+                current_price, ACTION_SKIPPED_NO_BUYING_POWER,
+                volume=vol, indicators=inds, market_snapshot=snap, strategy=strat,
+            )
+            return
 
-    order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
+        order = alpaca_client.submit_market_order(bot.symbol, qty, "buy")
+
     _record_and_notify(bot, "buy", qty, current_price, order, reason)
     # 進場當下就把「預期獲利點 / 預計停損點」結構化記下（賣出時才回填得出哪個假設失效）。
     # 只在有設門檻時記；trailing 停損點是動態的，進場當下的值意義不大，故不記 stop。
