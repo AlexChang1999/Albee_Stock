@@ -15,6 +15,33 @@
 
 ## [未發布]
 
+### 新增 (Added) — Phase 16 M4：可插拔出場政策 ExitPolicy（2026-07-02）
+
+- **新 `backend/services/exit_policies.py`**：`ExitPlan`（stop/target/trailing + meta 依據）+
+  `ExitPolicy` 基底（`on_entry` 進場算計畫、`on_bar` 逐 bar 更新＝M10 動態出場掛點）+ 註冊表：
+  - `fixed_pct`：包既有 % 止盈損（與舊參數路徑**逐欄全等**，回歸基準）
+  - `atr`：stop = entry − k×ATR(n)，波動大放遠、波動小收緊；資料不足誠實回無停損
+  - `swing`：stop = 近 N 根已確認 swing low − buffer（防未來：右邊需 right 根確認）
+  - `vwap`：日內跌破 session VWAP 出場（動態逐 bar 更新；日 K 誠實拋錯）
+  - R:R 內建：`target = entry + rr_multiple ×(entry − stop)`（M6 掃 1.5~4R）
+- **回測引擎統一走政策路徑**：`_simulate_from_signals(+exit_policy)`，舊 % 參數內部轉接
+  FixedPctPolicy（兩者互斥、同給拋錯）；每筆有 stop 的交易記 `r_multiple`（損益/初始風險 R），
+  彙總 `avg_r_multiple`；optimizer walk-forward 聚合回填 `oos_avg_r_multiple`（M3 留的欄）。
+  `run_backtest(+exit_policy_key/exit_policy_params)`。
+- **swing/ATR 偵測進 `strategies/indicators.py`**（`atr`/`swing_lows`/`swing_highs`，
+  M5 BOS/HH-HL 共用；嚴格低於左右鄰居才算 swing，水平盤不誤判）。
+- **實盤側同一份政策（回測=實盤鐵則）**：
+  - Bot 加 `exit_policy_key`/`exit_policy_params`/`exit_plan`（遷移 `03274cbd08de`；
+    exit_plan 存進場當下算好的計畫，重啟不會用「現在的指標」重算而漂移）。
+  - `risk_manager.check_exit_plan`：吃絕對觸價的出場判斷（順序同回測：停損→追蹤→停利）。
+  - `protective_orders.protective_order_from_exit_plan`：券商端 GTC stop 價由
+    ExitPlan.stop_price 供給（`order_matches_plan` 自癒對帳沿用零改動）。
+  - `bot_manager`：進場用「跑訊號同一份 K 線」算 plan 並持久化；持倉輪檢查吃 plan；
+    續抱時動態政策 on_bar 更新；平倉/券商端成交/空手清 plan。
+  - bots API 收 `exit_policy_key`/`exit_policy_params`（建檔即驗證，錯誤回 400）。
+- 測試 `tests/test_exit_policies.py` 16 個（各政策數學/防未來/intrabar 觸發順序/跳空成交/
+  r_multiple/與舊路徑全等回歸/check_exit_plan/保護單轉接）；全套 657 passed。
+
 ### 新增 (Added) — Phase 16 M3.5：前端顯示 walk-forward OOS 診斷欄位 + timeframe 選單（2026-07-02）
 
 - **回測歷史列表補 M3 欄位**（`backend/routers/presets.py _run_summary`）：
