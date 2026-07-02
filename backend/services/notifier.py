@@ -50,5 +50,10 @@ def notify(message: str) -> None:
     發送通知到所有已設定的管道。
     :param message: 要通知的文字內容
     """
-    print(f"[通知] {message}")
+    # 主控台 log 是 best-effort：cp950 等編碼印不出 emoji 時絕不能讓例外往上炸——
+    # 這行只是回音，炸掉會連後面真正的 Discord 推播都一起死（心跳日報實測踩過）。
+    try:
+        print(f"[通知] {message}")
+    except UnicodeEncodeError:
+        print("[通知] (訊息含主控台編碼印不出的字元，內容已照常送推播管道)")
     _send_discord(message)

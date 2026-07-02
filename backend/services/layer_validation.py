@@ -32,7 +32,7 @@ from backend.services.regime_features import compute_features
 from backend.services.sizing import kelly_fraction
 from backend.services.strategy_selector import build_map_from_df, select_strategy
 from backend.services.validation import is_layer_worth_it, walk_forward_splits
-from backend.strategies import STRATEGY_REGISTRY, Signal, get_strategy
+from backend.strategies import STRATEGY_REGISTRY, BaseStrategy, Signal, get_strategy
 
 _INITIAL_CASH = 10000.0
 
@@ -45,10 +45,15 @@ def _cost():
 # ============================================================
 # 包裝策略：把「加的層」塞進既有回測路徑（generate_signal 介面）
 # ============================================================
-class MetaFilteredStrategy:
-    """step-05：一級策略產訊號後，BUY 再過 meta 二級過濾；否決則縮回 HOLD。"""
+class MetaFilteredStrategy(BaseStrategy):
+    """step-05：一級策略產訊號後，BUY 再過 meta 二級過濾；否決則縮回 HOLD。
+
+    繼承 BaseStrategy 是為了拿到 produce_signals 的預設實作（逐根重播、不偷看未來）——
+    回測引擎統一走 produce_signals 入口後，純 duck-typing 的包裝類會缺這個方法而炸。
+    """
 
     def __init__(self, base):
+        super().__init__()
         self.base = base
 
     def generate_signal(self, df):
@@ -62,7 +67,7 @@ class MetaFilteredStrategy:
         return sig, reason
 
 
-class AdaptiveMappedStrategy:
+class AdaptiveMappedStrategy(BaseStrategy):
     """step-03：用「已建好的對照表」逐根挑策略再委派。
 
     無可信策略時 **退回 best-fixed（穩健預設）而非 HOLD**：meta-strategy 在沒把握的狀態
@@ -72,6 +77,7 @@ class AdaptiveMappedStrategy:
     """
 
     def __init__(self, regime_map: dict, fallback_key: str | None = None):
+        super().__init__()  # 繼承 BaseStrategy：拿 produce_signals 預設實作（同 MetaFilteredStrategy）
         self.regime_map = regime_map
         self.fallback_key = fallback_key
 

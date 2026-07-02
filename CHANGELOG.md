@@ -15,6 +15,38 @@
 
 ## [未發布]
 
+### 新增 (Added) — 回測驗證日：風控出場模擬 + 4 支全池分析 CLI（2026-07-02）
+
+- **回測引擎 opt-in 風控出場模擬**（`backend/services/backtest_engine.py`）：
+  `stop_loss_pct` / `take_profit_pct` / `trailing_stop_pct` 參數（預設 None＝行為 bit-for-bit 不變）。
+  日 K 粒度誠實近似：high/low 觸價、跳空穿停損成交在更差開盤價、追蹤止損 peak 不偷看當根、
+  檢查順序同實盤 `risk_manager`（停損→追蹤→停利）；交易紀錄加 `exit_reason`、結果加
+  `num_stop_loss/num_take_profit/num_trailing_stop` 觸發統計。補 6 個單元測試。
+  ——補上「回測=實盤」原則在出場端的缺口（實盤有風控出場、舊回測只認策略訊號）。
+- **4 支全池分析 CLI**（`scripts/`，只讀不寫 DB、不下單）＋總報告
+  [`docs/reference/analysis-2026-07-02/`](docs/reference/analysis-2026-07-02/README.md)：
+  - `full_backtest_report.py`：38 檔 × 9 策略 × 參數網格、OOS EV 排名、蒙地卡羅壓力測試、
+    風控對照組（發現：風控組 29/38 檔回撤變小、但停利 15% 傷報酬；只有 17/38 冠軍贏 Buy&Hold）。
+  - `scan_frequency_study.py`：分鐘 K 實測 30~600s 掃頻的風控出場延遲滑價 + API 用量
+    （結論：日 K 策略掃頻不影響進場；190 bots 下 **300s 維持不變**，60s 會打滿 Alpaca 限流）。
+  - `stock_pool_report.py`：38 檔逐檔 OOS EV / 假突破率 / DecisionLog 訊號活動分層
+    （誠實發現：32 檔 OOS 樣本僅 1~2 筆屬統計噪音；已證實核心池僅 AMD/AVGO/INTC/ORCL/BAC/MS 6 檔）。
+  - `fund_flow_report.py`：11 產業 ETF 相對強度輪動 + 領漲股 + 隔日發動候選 + 資金流納入策略路線圖。
+
+### 修正 (Fixed) — 回測驗證日系統體檢（2026-07-02）
+
+- `/bots` API 190 個 Bot 逐檔打 Alpaca 持倉 + 逐檔查 TradeLog（2×190 次往返、實測 57 秒）
+  → 改批次抓（固定 2 次往返）（`backend/routers/bots.py`）。
+- `layer_validation` 兩個包裝策略（MetaFiltered/AdaptiveMapped）缺 `produce_signals`
+  （回測引擎統一入口改版後漏改）→ 改繼承 `BaseStrategy` 取得預設實作。
+- `script_breakout` 漏接指標疊圖映射（`indicator_overlays.py` 補 builder）；
+  向量化覆蓋測試的豁免改「ScriptStrategy 子類」原則性判斷（新增 Script 策略不再漏接）。
+- `catchup.py` 開機補跑在 cp950 主控台印 emoji 直接炸掉整個補跑 job → 編碼失敗退回 ASCII。
+- `notifier.notify()` 的主控台回音 print 在 cp950 下炸掉，會**連後面的 Discord 推播一起死**
+  （心跳日報實測沒發出去）→ print 包 try/except，log 失敗不擋推播本體。
+- （已知未修）排程選主鎖「靜默失鎖」可能導致雙 leader：VM 失鎖後仍自以為 leader 跑排程。
+  處置與根治方案見總報告第 0 節；需重啟 VM 服務 + 後續加「定期驗鎖」。
+
 ### 新增 (Added) — 採納 QuantDinger 兩項能力：ScriptStrategy 引擎 + Agent Gateway/MCP
 
 > 分析外部專案 [QuantDinger](https://github.com/brokermr810/QuantDinger) 後採納兩項架構能力，

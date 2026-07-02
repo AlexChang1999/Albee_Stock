@@ -175,8 +175,30 @@ def delete_bot(bot_id: int, db: Session = Depends(get_db)):
 
 @router.get("")
 def list_bots(db: Session = Depends(get_db)):
-    """列出所有 Bot（含各自的績效指標）。"""
+    """列出所有 Bot（含各自的績效指標）。
+
+    效能注意：這裡刻意「批次」抓資料，不要在迴圈裡逐 Bot 查——
+    艦隊有 190 個 Bot 時，逐 Bot 各打一次 Alpaca 持倉 API + 一次 TradeLog 查詢
+    （2 × 190 次網路往返，Neon/Alpaca 都在雲端）會讓這條 API 跑到近一分鐘。
+    改成：持倉一次抓全部、交易紀錄一次撈全部再依 bot_id 分組，往返數固定為 2。
+    """
     bots = db.query(Bot).all()
+
+    # 持倉均價：一次列出所有持倉 → {symbol: avg_entry_price}（離線/無金鑰回空，優雅降級）
+    entry_by_symbol: dict[str, float] = {}
+    for pos in alpaca_client.list_positions():
+        try:
+            entry_by_symbol[pos.symbol] = float(pos.avg_entry_price)
+        except Exception:
+            continue
+
+    # 交易紀錄：一次撈全部（由舊到新），在記憶體依 bot_id 分組
+    trades_by_bot: dict[int, list[dict]] = {}
+    for r in db.query(TradeLog).order_by(TradeLog.created_at.asc()).all():
+        trades_by_bot.setdefault(r.bot_id, []).append(
+            {"side": r.side, "qty": r.qty, "price": r.price}
+        )
+
     return [
         {
             "id": b.id,
@@ -193,10 +215,10 @@ def list_bots(db: Session = Depends(get_db)):
             # 監聽狀態：持倉最高價（None=空手）、最後一次檢查時間（給前端顯示排程是否在動）
             "peak_price": b.peak_price,
             # 進場均價（來自 Alpaca 持倉，空手/離線為 None）：給前端圖表畫進場線/止損線用
-            "avg_entry_price": _avg_entry_price(b.symbol),
+            "avg_entry_price": entry_by_symbol.get(b.symbol),
             "last_checked_at": b.last_checked_at.isoformat() if b.last_checked_at else None,
             # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
-            "stats": _bot_stats(db, b.id),
+            "stats": compute_bot_stats(trades_by_bot.get(b.id, [])),
         }
         for b in bots
     ]

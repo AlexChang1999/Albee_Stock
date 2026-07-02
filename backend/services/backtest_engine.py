@@ -58,6 +58,9 @@ def _resolve_source(source: str, days: int) -> str:
 def _simulate_from_signals(
     signals: list, df: pd.DataFrame, initial_cash: float, reasons: list | None = None,
     commission_bps: float = 0.0, slippage_bps: float = 0.0,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+    trailing_stop_pct: float | None = None,
 ) -> dict:
     """
     吃「每根 K 棒一個訊號」的序列，跑全進全出的資金模擬並算出全套績效。
@@ -77,11 +80,27 @@ def _simulate_from_signals(
     :param reasons: 對應每根的文字理由（選填，只為交易紀錄好看，不影響數字）
     :param commission_bps: 單邊手續費（basis point，萬分之一）
     :param slippage_bps: 單邊滑價（basis point）
+    :param stop_loss_pct / take_profit_pct / trailing_stop_pct:
+        風控出場模擬（0.10 = 10%；None = 關，行為與舊版完全相同）。
+        補上「回測=實盤」原則在出場端的缺口：實盤 Bot 有 risk_manager 的
+        停損/停利/追蹤止損盤中出場，但舊回測只認策略訊號，兩邊 EV 會分岔。
+        日 K 粒度的誠實近似（檢查順序與 risk_manager.check_exit 一致：停損→追蹤→停利）：
+        - 觸價用當根 high/low 判斷（無該欄退回 close），觸發即以「觸價價位」成交、
+          不等次根（實盤風控本來就是盤中市價出場，不是隔日）。
+        - 跳空穿越停損/追蹤 → 只能成交在更差的開盤價（保守，不美化）；
+          跳空開高過停利 → 成交在開盤價（如實反映較好的成交）。
+        - 追蹤止損的最高價 peak 用「進場成交價起、逐根 high」更新；
+          當根先用「前面 bar 為止的 peak」檢查、檢查完才併入當根 high（不偷看未來）。
+        - 同一根內多重觸發只取一種（依上述順序），與實盤單次檢查一次只出一種一致。
     """
     prices = df["close"].to_numpy(dtype=float)
     # 成交價來源：隔日成交用「次根開盤價」；無 open 欄則退回次根收盤價
     # （與向量化策略「缺 high/low 用 close 代替」的退化規則同精神）。
     fill_src = df["open"].to_numpy(dtype=float) if "open" in df.columns else prices
+    # 風控觸價判斷用的日內高低（無該欄退回 close，退化成「只在收盤價穿越時觸發」）
+    highs = df["high"].to_numpy(dtype=float) if "high" in df.columns else prices
+    lows = df["low"].to_numpy(dtype=float) if "low" in df.columns else prices
+    risk_on = any(x is not None for x in (stop_loss_pct, take_profit_pct, trailing_stop_pct))
     has_ts = "timestamp" in df.columns
     ts = df["timestamp"].astype(str).to_numpy() if has_ts else None
 
@@ -96,6 +115,8 @@ def _simulate_from_signals(
     equity_dates = []    # 與 equity_curve 等長的「真實日期」字串（報表用真年月，非假 2000）
     total_cost = 0.0     # 本次回測累計摩擦成本（手續費 + 滑價）
     pending = None       # 前一根 close 算出、待這一根「以成交價」換手的單：(side, reason)
+    peak_price = 0.0     # 持倉期間最高價（追蹤止損用；空手時無意義）
+    risk_exit_counts = {"stop_loss": 0, "take_profit": 0, "trailing_stop": 0}
 
     for i in range(len(prices)):
         price = float(prices[i])      # 當根收盤價，用來估市值
@@ -114,6 +135,7 @@ def _simulate_from_signals(
                 position = qty
                 cash = 0.0
                 entry_price = eff
+                peak_price = eff  # 追蹤止損的最高價從進場成交價起算
                 trades.append(
                     {"date": date, "side": "buy", "price": round(eff, 2),
                      "qty": round(qty, 4), "reason": p_reason}
@@ -129,11 +151,53 @@ def _simulate_from_signals(
                 trades.append(
                     {"date": date, "side": "sell", "price": round(eff, 2),
                      "qty": round(position, 4), "reason": p_reason,
-                     "profit": round(profit, 2)}
+                     "profit": round(profit, 2), "exit_reason": "signal"}
                 )
                 position = 0.0
                 entry_price = 0.0
+                peak_price = 0.0
             pending = None
+
+        # --- 1.5 風控出場模擬（opt-in；順序同實盤 risk_manager：停損→追蹤→停利）---
+        if risk_on and position > 0:
+            o = float(fill_src[i])
+            hi = float(highs[i])
+            lo = float(lows[i])
+            sl_level = entry_price * (1 - stop_loss_pct) if stop_loss_pct else None
+            trail_level = peak_price * (1 - trailing_stop_pct) if trailing_stop_pct else None
+            tp_level = entry_price * (1 + take_profit_pct) if take_profit_pct else None
+
+            exit_raw, exit_kind = None, None
+            if sl_level is not None and (o <= sl_level or lo <= sl_level):
+                # 跳空開低穿過停損 → 只能成交在更差的開盤價（min 同時涵蓋兩種情況）
+                exit_raw, exit_kind = min(o, sl_level), "stop_loss"
+            elif trail_level is not None and (o <= trail_level or lo <= trail_level):
+                exit_raw, exit_kind = min(o, trail_level), "trailing_stop"
+            elif tp_level is not None and (o >= tp_level or hi >= tp_level):
+                # 跳空開高過停利 → 成交在較好的開盤價（如實反映）
+                exit_raw, exit_kind = max(o, tp_level), "take_profit"
+
+            if exit_raw is not None:
+                eff = exit_raw * (1 - slippage_rate)
+                gross = position * eff
+                commission = gross * commission_rate
+                proceeds = gross - commission
+                profit = proceeds - position * entry_price
+                total_cost += commission + position * (exit_raw - eff)
+                cash += proceeds
+                risk_exit_counts[exit_kind] += 1
+                trades.append(
+                    {"date": date, "side": "sell", "price": round(eff, 2),
+                     "qty": round(position, 4),
+                     "reason": f"風控出場：{exit_kind} 觸價 {exit_raw:.2f}",
+                     "profit": round(profit, 2), "exit_reason": exit_kind}
+                )
+                position = 0.0
+                entry_price = 0.0
+                peak_price = 0.0
+            else:
+                # 檢查完才把當根 high 併入 peak（當根檢查只用「前面 bar 為止」的 peak，不偷看）
+                peak_price = max(peak_price, hi)
 
         # --- 2. 記錄當根收盤後的總資產（連同真實日期，供報表用真年月）---
         equity_curve.append(cash + position * price)
@@ -220,6 +284,10 @@ def _simulate_from_signals(
         "expectancy_pct": round(expectancy, 2),
         "profit_factor": round(profit_factor, 2) if profit_factor is not None else None,
         "total_cost": round(total_cost, 2),  # 本次回測累計摩擦成本（手續費 + 滑價）
+        # 風控出場觸發統計（沒開風控模擬時恆為 0）
+        "num_stop_loss": risk_exit_counts["stop_loss"],
+        "num_take_profit": risk_exit_counts["take_profit"],
+        "num_trailing_stop": risk_exit_counts["trailing_stop"],
         "trades": trades,
         "equity_curve": [round(e, 2) for e in equity_curve],
         "equity_dates": equity_dates,  # 與 equity_curve 等長；報表用真實日期取代假 2000
@@ -230,6 +298,9 @@ def _run_on_df(
     strategy, df: pd.DataFrame, initial_cash: float,
     commission_bps: float = 0.0, slippage_bps: float = 0.0,
     features: pd.DataFrame | None = None,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+    trailing_stop_pct: float | None = None,
 ) -> dict:
     """
     在一份 K 線資料上跑回測（事件式：逐根呼叫策略 generate_signal，純邏輯、不連線）。
@@ -262,6 +333,8 @@ def _run_on_df(
     return _simulate_from_signals(
         signals, df, initial_cash, reasons=reasons,
         commission_bps=commission_bps, slippage_bps=slippage_bps,
+        stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
+        trailing_stop_pct=trailing_stop_pct,
     )
 
 
@@ -275,6 +348,9 @@ def run_backtest(
     commission_bps: float | None = None,
     slippage_bps: float | None = None,
     features: pd.DataFrame | None = None,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+    trailing_stop_pct: float | None = None,
 ) -> dict:
     """
     對某檔股票跑回測（會連資料源抓歷史資料，多年區間走本機快取 bar_cache）。
@@ -288,6 +364,10 @@ def run_backtest(
     :param slippage_bps: 單邊滑價（bps）；None＝讀 config 預設
     :param features: 選用環境特徵（與抓回的 df 等長），透傳給 _run_on_df 的訊號層；
                      None＝純價量回測（行為不變）。
+    :param stop_loss_pct / take_profit_pct / trailing_stop_pct:
+        風控出場模擬（同 Bot 風控欄位語意，0.10=10%；None=關）。
+        帶 Bot 的實際風控參數重跑回測，能看到「策略訊號 + 風控出場」合體後的
+        誠實 EV（含停損/停利/追蹤觸發統計 num_stop_loss 等）。
     """
     # 成本預設讀全系統 config，呼叫端可顯式覆寫（含 0 = 關成本對照用）
     if commission_bps is None:
@@ -309,6 +389,8 @@ def run_backtest(
         strategy, df, initial_cash,
         commission_bps=commission_bps, slippage_bps=slippage_bps,
         features=features,
+        stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
+        trailing_stop_pct=trailing_stop_pct,
     )
 
     # 補上這次回測的基本資訊
