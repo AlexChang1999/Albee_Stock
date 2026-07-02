@@ -377,6 +377,37 @@ def _settle_broker_exit(bot: Bot) -> bool:
     return False
 
 
+def run_weekly_reports() -> None:
+    """每週一報告批跑（Phase 16 M9）：4 支報告依序 run()，摘要推播、全文落當日 analysis 夾。
+
+    順序有依賴：full_backtest 先產 backtest-champions.csv，stock_pool 體檢要讀它。
+    單支失敗不擋後面的（各自 try），失敗也推播——沉默的失敗比失敗本身更危險。
+    延遲 import：scripts 各檔 import 很重（pandas/alpaca），別拖慢後端開機。
+    """
+    from scripts import (  # noqa: PLC0415
+        full_backtest_report,
+        fund_flow_report,
+        scan_frequency_study,
+        stock_pool_report,
+    )
+
+    out_dir = full_backtest_report.default_out_dir()  # 四支落同一個當日夾
+    jobs = [
+        ("全池回測", lambda: full_backtest_report.run(out_dir=out_dir)),
+        ("資金流分析", lambda: fund_flow_report.run(out_dir=out_dir)),
+        ("股票池體檢+瘦身建議", lambda: stock_pool_report.run(out_dir=out_dir)),
+        ("掃頻研究", lambda: scan_frequency_study.run(out_dir=out_dir)),
+    ]
+    for name, fn in jobs:
+        try:
+            md = fn()
+            # 推播只帶摘要頭（前 12 行）；全文在報告檔，通知塞全文會被平台截爛
+            digest = "\n".join(md.splitlines()[:12])
+            notify(f"📊 週報「{name}」完成（全文：docs/reference/{out_dir.name}/）\n{digest}")
+        except Exception as e:
+            notify(f"⚠️ 週報「{name}」失敗：{e}")
+
+
 def _mark_checked(bot: Bot) -> None:
     """記錄這個 Bot「最後一次成功跑完檢查」的時間，給前端顯示排程是否在動。"""
     now = datetime.now()
@@ -1040,6 +1071,26 @@ class BotManager:
             "interval",
             minutes=interval_minutes,
             id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_weekly_reports(self) -> None:
+        """
+        掛上「每週一 08:00（台北）自動跑 4 支報告腳本」的定時工作（Phase 16 M9）。
+
+        依序跑 full_backtest_report → fund_flow_report → stock_pool_report →
+        scan_frequency_study（順序有依賴：股票池體檢要讀全池回測的冠軍檔）。
+        摘要走 notify 推播、全文落 docs/reference/analysis-<當日>/。
+        只在 leader 掛（main.py _promote_to_leader），降級時隨 unschedule_outbound_jobs 卸下。
+        """
+        self.scheduler.add_job(
+            run_weekly_reports,
+            "cron",
+            day_of_week="mon",
+            hour=8,
+            minute=0,
+            timezone="Asia/Taipei",
+            id="weekly_reports",
             replace_existing=True,
         )
 

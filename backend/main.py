@@ -99,6 +99,8 @@ def _promote_to_leader() -> None:
         bot_manager.schedule_leader_backtest(settings.LEADER_BACKTEST_HOUR)
         # AI 每日交易事後檢討（收盤後 LLM 分析決策 → explorations/ + 推播；TRADE_REVIEW_ENABLED=false = 不掛）
         bot_manager.schedule_trade_review(settings.TRADE_REVIEW_HOUR)
+        # Phase 16 M9：每週一 08:00（台北）自動跑 4 支報告腳本（摘要推播 + 全文落當日 analysis 夾）
+        bot_manager.schedule_weekly_reports()
         # 開機補跑：家用電腦不是 24/7——啟動時把「時刻已過 + 今天還沒跑」的每日 job
         # 依管線順序立刻補跑（必須排在所有 schedule_* 之後，設定才齊）。
         bot_manager.schedule_catchup_on_boot()

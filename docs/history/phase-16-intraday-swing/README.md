@@ -24,9 +24,9 @@
 | M4 | 可插拔 ExitPolicy（ATR / Swing / VWAP stop + R:R） | ✅ 2026-07-02 完成（Volume Profile 依約延後） |
 | M5 | 進場趨勢過濾器框架（EMA 排列 / VWAP / ADX / HH-HL / BOS / regime） | ✅ 2026-07-02 完成（框架+測試；上線與否等 M6 OOS 判定） |
 | M6 | 大型研究矩陣批跑（timeframe × stop × R:R × filter 全比較） | ⬜ 未開工（長跑任務） |
-| M7 | RS 模組 + 股票池 38→15~20 瘦身 | ⬜ 未開工 |
+| M7 | RS 模組 + 股票池 38→15~20 瘦身 | ✅ 2026-07-02 完成（建議 38→20 檔已產出，等人核准改 .env） |
 | M8 | Scanner 30 秒改造（單一掃描迴圈批次抓全池） | ⬜ 未開工（依賴 M6 定案 timeframe） |
-| M9 | 4 支報告腳本進 scheduler（每週一自動健康檢查） | ⬜ 未開工 |
+| M9 | 4 支報告腳本進 scheduler（每週一自動健康檢查） | ✅ 2026-07-02 完成（週一 08:00 台北，leader-only） |
 | M10 | AI Decision Layer（規則式可回測 entry gate + 動態出場） | ⬜ 未開工 |
 | M11 | 資金流因子 60 天滿期 OOS 驗證（無加分即砍） | ⬜ 等收集滿（起算 2026-07-02 前後，約 2026-09 初到期） |
 | M12 | 最終報告（timeframe/stop/R:R 比較 + 過擬合分析 + 上線組合建議） | ⬜ 未開工 |

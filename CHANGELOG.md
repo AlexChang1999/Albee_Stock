@@ -15,6 +15,32 @@
 
 ## [未發布]
 
+### 新增 (Added) — Phase 16 M7+M9：RS 池瘦身 + 週報進 scheduler（2026-07-02）
+
+- **M7 相對強度 RS 模組**：
+  - 新 `backend/services/relative_strength.py`：`rs_score`（標的報酬% − 基準報酬%）+
+    `rs_scores`（1/5/20 日多窗口 + 等權綜合分；資料不足誠實回 None）——把
+    fund_flow_report 的「報酬 − SPY」邏輯泛化成可重用服務。
+  - 新 `backend/services/sectors.py`：38 檔手工 sector 對照（SPDR ETF key + 中文標籤），
+    yfinance 補洞、查不到回 unknown。
+  - `scripts/stock_pool_report.py` 擴充：每檔加 sector + RS 1/5/20/綜合欄；
+    新「池瘦身建議」段——OOS EV>0 才有資格、指數 ETF 保留、
+    **同 sector 只留 RS 綜合分前 3 檔**、上限 20（核心池優先），附依據表 +
+    建議 `.env` 字串。**只產建議，人核准後才自行改 .env（程式不動 .env）**。
+  - 已跑批：2026-07-02 建議 38 → 20 檔（見
+    [`docs/reference/analysis-2026-07-02/stock-pool.md`](docs/reference/analysis-2026-07-02/stock-pool.md)）。
+- **M9 報告腳本進 scheduler**：
+  - 4 支報告腳本（full_backtest_report / fund_flow_report / stock_pool_report /
+    scan_frequency_study）各重構出 `run() -> str`（回 markdown 全文）可呼叫介面，
+    CLI 殼保留、行為不變；輸出夾改 `analysis-<當日>`（stock_pool 找不到當日冠軍檔
+    自動退回最近一份）。`scripts/` 加 `__init__.py` 成 package。
+  - `bot_manager.schedule_weekly_reports()`：每週一 08:00（台北）依序跑 4 支
+    （順序有依賴：全池回測先產冠軍檔），摘要 `notify` 推播、全文落當日夾；
+    單支失敗不擋後面且失敗也推播。掛在 `main.py _promote_to_leader()`（leader-only），
+    降級時隨 `unschedule_outbound_jobs` 卸下。heartbeat 沿用不動。
+- 測試 `tests/test_relative_strength.py` 8 個（RS 數學/缺值/sector 對照/cron 註冊/
+  失敗隔離）；全套 676 passed。
+
 ### 新增 (Added) — Phase 16 M5：進場趨勢過濾器框架（2026-07-02）
 
 - **新 `backend/services/trend_filters.py`**：`TrendFilter` 基底（`allow_entry(df, i)`）+
