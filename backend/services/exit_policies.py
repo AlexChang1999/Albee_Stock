@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, asdict
 
 import pandas as pd
 
-from backend.strategies.indicators import atr, swing_lows
+from backend.strategies.indicators import adx_components, atr, swing_lows
 
 
 @dataclass
@@ -252,12 +252,124 @@ class VwapStopPolicy(ExitPolicy):
         )
 
 
+class AdaptiveExitPolicy(ExitPolicy):
+    """動態出場（M10）：ATR 停損起手，持倉中依市況逐 bar 調整。
+
+    三條規則（全規則式、可回測；每次調整記進 ExitPlan.meta 供稽核）：
+      1. **波動升 → 收緊 trailing**：當前 ATR ÷ 進場時 ATR ≥ vol_tighten_ratio
+         → 掛上 tighten_trailing_pct 的追蹤止損（波動放大時獲利要鎖緊）。
+      2. **ADX 走強 → 放寬 target 續抱**：ADX ≥ max(進場 ADX + adx_gain, adx_strong)
+         **且 +DI > −DI**（ADX 不分方向——做多時空頭走強不是續抱理由）
+         → target 由 rr 推到 rr + widen_rr（趨勢加速不急著下車；只放寬一次）。
+      3. **動能衰竭 → 提前出場**：近 momo_len 根報酬 < 0 且量比 < 1（價跌量縮）
+         → stop 上移到當根收盤（次根即出，不戀棧）。
+
+    成本註記：on_bar 每根重算 ATR/ADX（切片防未來），持倉越久越貴——
+    分鐘框架長抱會慢；研究矩陣驗證段量級可接受，實盤每輪只算一次無感。
+    """
+
+    key = "adaptive"
+
+    def __init__(self, atr_len: int = 14, atr_mult: float = 2.0, rr_multiple: float | None = 2.0,
+                 vol_tighten_ratio: float = 1.5, tighten_trailing_pct: float = 0.02,
+                 adx_gain: float = 5.0, adx_strong: float = 25.0, widen_rr: float = 1.0,
+                 momo_len: int = 5, vol_avg_len: int = 20):
+        self.atr_len = int(atr_len)
+        self.atr_mult = float(atr_mult)
+        self.rr_multiple = rr_multiple
+        self.vol_tighten_ratio = float(vol_tighten_ratio)
+        self.tighten_trailing_pct = float(tighten_trailing_pct)
+        self.adx_gain = float(adx_gain)
+        self.adx_strong = float(adx_strong)
+        self.widen_rr = float(widen_rr)
+        self.momo_len = int(momo_len)
+        self.vol_avg_len = int(vol_avg_len)
+
+    def _atr_adx(self, df: pd.DataFrame, i: int) -> tuple[float, float, bool]:
+        """到第 i 根為止的 (ATR, ADX, 多頭方向 +DI>−DI)（算不出回 nan / False）。"""
+        sub = df.iloc[: i + 1]
+        a = atr(sub, length=self.atr_len)
+        atr_val = float(a.iloc[-1]) if len(a) else float("nan")
+        adx_series, plus_di, minus_di = adx_components(sub, length=self.atr_len)
+        adx_val = float(adx_series.iloc[-1]) if len(adx_series) else float("nan")
+        bullish = (len(plus_di) > 0 and not pd.isna(plus_di.iloc[-1])
+                   and not pd.isna(minus_di.iloc[-1])
+                   and float(plus_di.iloc[-1]) > float(minus_di.iloc[-1]))
+        return atr_val, adx_val, bullish
+
+    def on_entry(self, df: pd.DataFrame, i: int, entry_price: float) -> ExitPlan:
+        atr_val, adx_val, _ = self._atr_adx(df, i)
+        if pd.isna(atr_val) or atr_val <= 0:
+            return ExitPlan(meta={"policy": self.key,
+                                  "reason": f"ATR({self.atr_len}) 資料不足，無停損"})
+        stop = entry_price - self.atr_mult * atr_val
+        if stop <= 0:
+            return ExitPlan(meta={"policy": self.key, "reason": "ATR 停損算出 ≤ 0，無停損"})
+        return ExitPlan(
+            stop_price=stop,
+            target_price=_rr_target(entry_price, stop, self.rr_multiple),
+            meta={"policy": self.key, "entry_atr": round(atr_val, 4),
+                  "entry_adx": None if pd.isna(adx_val) else round(adx_val, 2),
+                  "rr_multiple": self.rr_multiple, "adjustments": []},
+        )
+
+    def on_bar(self, df: pd.DataFrame, i: int, plan: ExitPlan, state: dict) -> ExitPlan:
+        if plan.stop_price is None:  # 進場時就沒 stop（資料不足）→ 不動態調整
+            return plan
+        entry_price = state.get("entry_price")
+        entry_atr = plan.meta.get("entry_atr")
+        atr_now, adx_now, bullish = self._atr_adx(df, i)
+        meta = {**plan.meta, "adjustments": list(plan.meta.get("adjustments") or [])}
+        stop, target, trailing = plan.stop_price, plan.target_price, plan.trailing_pct
+
+        # 1) 波動升 → 收緊 trailing
+        if (entry_atr and not pd.isna(atr_now)
+                and atr_now / entry_atr >= self.vol_tighten_ratio
+                and (trailing is None or trailing > self.tighten_trailing_pct)):
+            trailing = self.tighten_trailing_pct
+            meta["adjustments"].append(
+                {"bar": i, "rule": "vol_tighten",
+                 "atr_ratio": round(atr_now / entry_atr, 2), "trailing_pct": trailing})
+
+        # 2) ADX 走強（且是多頭方向）→ 放寬 target 續抱（只放寬一次）
+        entry_adx = plan.meta.get("entry_adx")
+        if (target is not None and not meta.get("target_widened")
+                and not pd.isna(adx_now) and self.rr_multiple and bullish
+                and adx_now >= max((entry_adx or 0) + self.adx_gain, self.adx_strong)):
+            risk = entry_price - plan.stop_price if entry_price else None
+            if risk and risk > 0:
+                target = entry_price + (self.rr_multiple + self.widen_rr) * risk
+                meta["target_widened"] = True
+                meta["adjustments"].append(
+                    {"bar": i, "rule": "adx_widen", "adx": round(adx_now, 1),
+                     "new_target": round(target, 4)})
+
+        # 3) 動能衰竭（價跌量縮）→ stop 上移到當根收盤，次根出場
+        close = df["close"].astype(float)
+        if i >= self.momo_len:
+            momo = close.iloc[i] / close.iloc[i - self.momo_len] - 1.0
+            vol_ratio = None
+            if "volume" in df.columns and i + 1 >= self.vol_avg_len:
+                avg = float(df["volume"].iloc[i + 1 - self.vol_avg_len: i + 1].mean())
+                vol_ratio = float(df["volume"].iloc[i]) / avg if avg > 0 else None
+            if momo < 0 and vol_ratio is not None and vol_ratio < 1.0:
+                new_stop = float(close.iloc[i])
+                if new_stop > stop:  # 只往上收、不往下放（stop 永不倒退）
+                    stop = new_stop
+                    meta["adjustments"].append(
+                        {"bar": i, "rule": "exhaust_exit", "momentum": round(momo, 4),
+                         "volume_ratio": round(vol_ratio, 2), "new_stop": round(stop, 4)})
+
+        return ExitPlan(stop_price=stop, target_price=target, trailing_pct=trailing, meta=meta)
+
+
 # 政策註冊表（key → 類別）。M6 研究矩陣、bots API、回測 API 都吃這份。
 EXIT_POLICY_REGISTRY: dict[str, type[ExitPolicy]] = {
     FixedPctPolicy.key: FixedPctPolicy,
     AtrStopPolicy.key: AtrStopPolicy,
     SwingLowPolicy.key: SwingLowPolicy,
     VwapStopPolicy.key: VwapStopPolicy,
+    AdaptiveExitPolicy.key: AdaptiveExitPolicy,
 }
 
 
