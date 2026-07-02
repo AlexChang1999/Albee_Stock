@@ -199,6 +199,22 @@ def _momentum(df, p):
     }
 
 
+def _script_breakout(df, p):
+    lookback = p.get("lookback", 20)
+    exit_lookback = p.get("exit_lookback", 10)
+    close = df["close"]
+    # 策略比的是「不含今天的前 N 根收盤」極值 → 序列用 shift(1) 對齊同一語義
+    return {
+        "overlays": [
+            _line(df, close.rolling(window=lookback).max().shift(1),
+                  "brk_high", f"前{lookback}根收盤高", "gold"),
+            _line(df, close.rolling(window=exit_lookback).min().shift(1),
+                  "brk_low", f"前{exit_lookback}根收盤低", "cyan"),
+        ],
+        "pane": None,
+    }
+
+
 def _adx_trend(df, p):
     period = p.get("period", 14)
     adx_threshold = p.get("adx_threshold", 25)
@@ -231,6 +247,8 @@ OVERLAY_BUILDERS = {
     "momentum": _momentum,
     "adx_trend": _adx_trend,
     "composite": lambda df, p: _empty(),
+    # 事件驅動突破續抱：畫進場（前 lookback 根收盤高）/出場（前 exit_lookback 根收盤低）參考線
+    "script_breakout": _script_breakout,
 }
 
 

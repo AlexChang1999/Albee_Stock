@@ -90,10 +90,14 @@ def test_vectorized_matches_event(strategy_key):
 
 def test_all_registered_strategies_vectorized():
     """提醒：若有策略沒列進 SIGNAL_BUILDERS，這裡會列出來（optimizer 會退回事件式，不算錯）。"""
-    from backend.strategies import STRATEGY_REGISTRY
+    from backend.strategies import STRATEGY_REGISTRY, ScriptStrategy
     # composite（Phase 8 step-03）是「聚合多個子策略」的組合器，本質上無法收成單一向量化 builder，
     # 刻意只走事件式路徑（_run_on_df 內逐根聚合子策略訊號），故豁免此不變式。
-    EVENT_ONLY = {"composite"}
+    # ScriptStrategy 子類（事件驅動、有狀態 on_bar）整個家族天生走事件式重播，同樣豁免——
+    # 用 issubclass 判斷而非手列名單，之後新增 Script 策略不會再漏接這個測試。
+    EVENT_ONLY = {"composite"} | {
+        key for key, cls in STRATEGY_REGISTRY.items() if issubclass(cls, ScriptStrategy)
+    }
     missing = set(STRATEGY_REGISTRY) - set(SIGNAL_BUILDERS) - EVENT_ONLY
     # 其餘策略期望全部都有向量化版本
     assert not missing, f"這些策略還沒向量化（會走慢路徑）：{missing}"

@@ -170,5 +170,10 @@ def run_catchup(now: datetime | None = None) -> dict:
             # 一步失敗不中斷後續；不落紀錄 → 當天稍後 cron / 下次開機自然重試
             summary[job_name] = f"failed: {e}"
 
-    print(f"🩹 開機補跑完成：{summary}")
+    # Windows 主控台/管線可能是 cp950，emoji 印不出來會直接炸掉整個補跑 job（實測踩過），
+    # 摘要照印但編碼失敗時退回 ASCII 版本，不讓「印 log」毀掉「補跑本體」。
+    try:
+        print(f"🩹 開機補跑完成：{summary}")
+    except UnicodeEncodeError:
+        print(f"[catchup] done: {summary}")
     return summary

@@ -329,6 +329,111 @@ def test_script_strategy_equivalent_to_vectorized():
     print(f"✅ ScriptStrategy 等價性測試通過：兩路徑 EV={scr['expected_value']}、{scr['num_trades']} 筆交易完全一致")
 
 
+# ============================================================
+# 風控出場模擬（opt-in 停損 / 停利 / 追蹤止損）
+# ============================================================
+
+def test_stop_loss_triggers_intrabar():
+    """進場 10，停損 10%（觸價 9）：當根 low 跌到 8 → 以 9 出場，資產 900。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10],
+        "high":  [10, 10, 10, 10],
+        "low":   [10, 10, 8, 10],
+        "close": [10, 10, 9.5, 10],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, stop_loss_pct=0.10)
+    assert r["num_stop_loss"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "stop_loss", sells
+    assert sells[0]["price"] == 9.0, sells
+    assert r["final_equity"] == 900.0, r
+
+
+def test_stop_loss_gap_down_fills_at_open():
+    """跳空開低穿過停損（觸價 9、開盤 7）→ 只能成交在更差的開盤價 7（保守不美化）。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 7],
+        "high":  [10, 10, 7.5],
+        "low":   [10, 10, 6.5],
+        "close": [10, 10, 7],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, stop_loss_pct=0.10)
+    assert r["num_stop_loss"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["price"] == 7.0, sells
+    assert r["final_equity"] == 700.0, r
+
+
+def test_take_profit_triggers_intrabar():
+    """進場 10，停利 20%（觸價 12）：當根 high 衝到 13 → 以 12 出場，資產 1200。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10],
+        "high":  [10, 10, 13, 10],
+        "low":   [10, 10, 10, 10],
+        "close": [10, 10, 11, 10],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, take_profit_pct=0.20)
+    assert r["num_take_profit"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "take_profit", sells
+    assert sells[0]["price"] == 12.0, sells
+    assert r["final_equity"] == 1200.0, r
+
+
+def test_trailing_stop_uses_prior_peak():
+    """
+    進場 10 → 漲到 20（peak）→ 回落跌破 20×(1−10%)=18 → 以 18 出場。
+    驗證 peak 用「前面 bar 為止」的最高價：漲到 20 那根自己不會被 9（舊 peak 10 的觸價）觸發。
+    """
+    df = pd.DataFrame({
+        "open":  [10, 10, 19, 19, 19],
+        "high":  [10, 10, 20, 19, 19],
+        "low":   [10, 10, 19, 17, 19],
+        "close": [10, 10, 20, 18, 19],
+    })
+    strat = FakeStrategy([Signal.BUY] + [Signal.HOLD] * 4)
+    r = _run_on_df(strat, df, initial_cash=1000, trailing_stop_pct=0.10)
+    assert r["num_trailing_stop"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "trailing_stop", sells
+    assert sells[0]["price"] == 18.0, sells
+    assert r["final_equity"] == 1800.0, r
+
+
+def test_risk_params_off_behavior_unchanged():
+    """不帶風控參數（預設 None）→ 即使日內大跌也不觸發，行為與舊版完全相同。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 30],
+        "high":  [10, 10, 10, 30],
+        "low":   [10, 10, 5, 30],   # 日內曾腰斬，但沒開停損就不該出場
+        "close": [10, 10, 10, 30],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.SELL, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000)
+    assert r["num_stop_loss"] == 0 and r["num_take_profit"] == 0 and r["num_trailing_stop"] == 0, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "signal", sells
+    assert r["final_equity"] == 3000.0, r
+
+
+def test_reentry_after_risk_exit():
+    """風控出場後空手，策略再給 BUY → 次根照常再進場（風控不會把 Bot 卡死）。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10, 10],
+        "high":  [10, 10, 10, 10, 10],
+        "low":   [10, 10, 8, 10, 10],
+        "close": [10, 10, 9, 10, 10],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD, Signal.BUY, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, stop_loss_pct=0.10)
+    buys = [t for t in r["trades"] if t["side"] == "buy"]
+    assert len(buys) == 2, r["trades"]  # 停損出場後有再進場
+    assert r["num_stop_loss"] == 1, r
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))
