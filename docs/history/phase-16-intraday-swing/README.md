@@ -22,7 +22,7 @@
 | M3 | Optimizer walk-forward 聚合 OOS + 排行榜擴充 + 排名守門 | ✅ 2026-07-02 完成（前端欄位顯示留 M3.5） |
 | M3.5 | 前端 BacktestRuns / StockArena 顯示新欄位 | ✅ 2026-07-02 完成 |
 | M4 | 可插拔 ExitPolicy（ATR / Swing / VWAP stop + R:R） | ✅ 2026-07-02 完成（Volume Profile 依約延後） |
-| M5 | 進場趨勢過濾器框架（EMA 排列 / VWAP / ADX / HH-HL / BOS / regime） | ⬜ 未開工 |
+| M5 | 進場趨勢過濾器框架（EMA 排列 / VWAP / ADX / HH-HL / BOS / regime） | ✅ 2026-07-02 完成（框架+測試；上線與否等 M6 OOS 判定） |
 | M6 | 大型研究矩陣批跑（timeframe × stop × R:R × filter 全比較） | ⬜ 未開工（長跑任務） |
 | M7 | RS 模組 + 股票池 38→15~20 瘦身 | ⬜ 未開工 |
 | M8 | Scanner 30 秒改造（單一掃描迴圈批次抓全池） | ⬜ 未開工（依賴 M6 定案 timeframe） |

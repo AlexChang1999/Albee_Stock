@@ -15,6 +15,22 @@
 
 ## [未發布]
 
+### 新增 (Added) — Phase 16 M5：進場趨勢過濾器框架（2026-07-02）
+
+- **新 `backend/services/trend_filters.py`**：`TrendFilter` 基底（`allow_entry(df, i)`）+
+  六個過濾器註冊表——只否決 BUY、不產生訊號、不碰 SELL/HOLD（只煞車不猜方向）：
+  - `ema_stack`：EMA20>50>200 多頭排列（pandas ewm，因果不偷看）
+  - `vwap_side`：價在 session VWAP 上（日內專用；日 K 放行 + 註明不適用）
+  - `adx_min`：ADX ≥ 門檻（復用 `indicators.adx_components`；NaN 保守否決）
+  - `hh_hl`：近 N 根「最後兩個 swing 高/低點都走高」的上升結構（復用 M4 swing 偵測）
+  - `bos`：收盤突破最近已確認 swing high（break of structure）
+  - `regime`：Phase 7 `classify_regime` == trending 才進
+- **引擎掛點**：`_run_on_df(+entry_filters)` 在訊號產生後、成交模擬前過濾；
+  被否決記 HOLD + 否決理由。`None`（預設）行為與現況 bit-for-bit 相同。
+- **M5 只建框架**：哪個 filter 上線由 M6 研究矩陣 `is_layer_worth_it` OOS 判定，
+  加不了分就砍（比照 Phase 11 macro 層前例）。
+- 測試 `tests/test_trend_filters.py` 11 個；全套 668 passed。
+
 ### 新增 (Added) — Phase 16 M4：可插拔出場政策 ExitPolicy（2026-07-02）
 
 - **新 `backend/services/exit_policies.py`**：`ExitPlan`（stop/target/trailing + meta 依據）+

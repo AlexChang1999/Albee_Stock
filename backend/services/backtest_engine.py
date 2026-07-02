@@ -347,6 +347,7 @@ def _run_on_df(
     take_profit_pct: float | None = None,
     trailing_stop_pct: float | None = None,
     exit_policy: ExitPolicy | None = None,
+    entry_filters: list | None = None,
 ) -> dict:
     """
     在一份 K 線資料上跑回測（事件式：逐根呼叫策略 generate_signal，純邏輯、不連線）。
@@ -375,6 +376,11 @@ def _run_on_df(
     # - 向量化策略（BaseStrategy）：預設實作＝逐根 generate_signal（行為與舊版逐位元組相同）。
     # - 事件式策略（ScriptStrategy）：覆寫成 on_bar 驅動，但壓出的訊號序列仍走同一成交核心。
     signals, reasons = strategy.produce_signals(sig_df)
+    # 進場趨勢過濾（M5，選用）：BUY 逐一過過濾器，被否決改記 HOLD + 理由。
+    # 只動「訊號層」；None（預設）= 行為與現況完全相同。哪個 filter 上線由 M6 OOS 判定。
+    if entry_filters:
+        from backend.services.trend_filters import apply_entry_filters
+        signals, reasons = apply_entry_filters(signals, reasons, sig_df, entry_filters)
     # 成交模擬只吃 price-only 的 df（features 不進成交層）
     return _simulate_from_signals(
         signals, df, initial_cash, reasons=reasons,
