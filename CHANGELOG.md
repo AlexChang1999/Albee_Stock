@@ -15,6 +15,14 @@
 
 ## [未發布]
 
+### 新增 (Added) — 報酬率期望檢討書（2026-07-03）
+
+- 新 `docs/reference/return-expectation-review-2026-07.md`：回應「半年翻一倍」期望——
+  現實基準表（SPY/本系統 OOS ~20%/巴菲特/Medallion）、翻倍所需 ~10 倍槓桿的破產數學
+  （MaxDD×槓桿、滿 Kelly 過度下注區）、五條合法放大手段與代價（集中/2x 保證金/
+  高頻已驗死路/期權期貨不支援/≤10% 高風險實驗艙）、修正目標（年化 15~30% 複利 + 本金計畫）。
+  無程式變更；`docs/README.md` 索引同步。
+
 ### 新增 (Added) — 回測驗證日：風控出場模擬 + 4 支全池分析 CLI（2026-07-02）
 
 - **回測引擎 opt-in 風控出場模擬**（`backend/services/backtest_engine.py`）：

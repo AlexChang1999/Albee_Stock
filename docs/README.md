@@ -57,6 +57,7 @@
 | [`reference/strategy-pipeline-workflow.md`](reference/strategy-pipeline-workflow.md) | **11 模組策略探勘工作流**（操作者視角）：蒐集員→AI探勘→進化實驗室→知識庫→自動化主水管 + 政治員煞車 + 5 條旁路；人只在「晉升 curated／跑真錢」出手 + 品質地基（參數 schema 漏洞修補）。 |
 | [`reference/roadmap-strategy-workbench.md`](reference/roadmap-strategy-workbench.md) | 策略工作台 roadmap（Phase 5）。 |
 | [`reference/human-vs-ai-operation.md`](reference/human-vs-ai-operation.md) | 人機操作落差 + 分階段上線（跑真錢前必讀）。 |
+| [`reference/return-expectation-review-2026-07.md`](reference/return-expectation-review-2026-07.md) | 報酬率期望檢討書：「半年翻一倍」的破產數學（槓桿/Kelly）+ 合法放大手段與代價 + 修正目標（複利+本金）。 |
 | [`reference/one-person-company-gap-analysis.md`](reference/one-person-company-gap-analysis.md) | 一人公司缺口盤點（願景 vs 現況 + 前置進料未通電 + 上線後維運缺口 + 優先序）。 |
 | [`reference/financial-services-reference.md`](reference/financial-services-reference.md) | 金融服務參考。 |
 | [`reference/rl-feasibility-assessment.md`](reference/rl-feasibility-assessment.md) | 強化學習（DQN/PPO）交易員可行性評估：現階段 No-Go + 重啟條件。 |
