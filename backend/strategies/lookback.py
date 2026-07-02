@@ -56,16 +56,31 @@ def min_bars_required(strategy_key: str, params: dict | None = None) -> int:
     return _DEFAULT_MIN_BARS
 
 
-def required_lookback_days(strategy_key: str, params: dict | None = None) -> int:
+def required_lookback_bars(strategy_key: str, params: dict | None = None) -> int:
+    """
+    「至少需要幾根 K 棒」含暖機緩衝（不分時間框架——bar 數是框架無關的語意）。
+
+    ×1.6 暖機緩衝：剛好夠算不代表算得穩（rolling/EWM/ADX 需要更長暖機才收斂）。
+    """
+    return math.ceil(min_bars_required(strategy_key, params) * 1.6)
+
+
+def required_lookback_days(
+    strategy_key: str, params: dict | None = None, timeframe: str = "1Day"
+) -> int:
     """
     把「策略需要的最小 K 棒數」換算成「往前抓幾個日曆天」，並保留緩衝。
 
     回測與實盤共用此函式算回看長度，消滅「實盤 60、回測 365」的硬編碼分岔。
+    :param timeframe: K 線時間框架。日內框架一天有多根 bar，同樣的 bar 數
+                      換算出來的日曆天少得多（見 timeframes.bars_to_calendar_days）。
+                      預設 "1Day" —— 既有呼叫行為不變。
     """
-    min_bars = min_bars_required(strategy_key, params)
+    bars_with_buffer = required_lookback_bars(strategy_key, params)
 
-    # ×1.6 暖機緩衝：剛好夠算不代表算得穩（rolling/EWM/ADX 需要更長暖機才收斂）
-    bars_with_buffer = math.ceil(min_bars * 1.6)
+    if timeframe != "1Day":
+        from backend.services.timeframes import bars_to_calendar_days
+        return bars_to_calendar_days(bars_with_buffer, timeframe)
 
     # 交易日 → 日曆日（週末），再 +5 吸收國定假日
     return math.ceil(bars_with_buffer * 7 / 5) + 5

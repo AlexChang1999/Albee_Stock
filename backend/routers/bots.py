@@ -20,7 +20,8 @@ from backend.database import get_db
 from backend.models import Bot, TradeLog, DecisionLog
 from backend.bots.bot_manager import bot_manager, run_bot_once
 from backend.routers.bars import _to_candles
-from backend.services import market_data
+from backend.services import market_data, timeframes
+from backend.services.exit_policies import get_exit_policy
 from backend.services.indicator_overlays import compute_overlays
 from backend.services.performance import compute_bot_stats
 from backend.services.alpaca_client import alpaca_client
@@ -44,6 +45,12 @@ class BotCreate(BaseModel):
     stop_loss_pct: float | None = None       # 固定止損
     trailing_stop_pct: float | None = None   # 追蹤止損
     check_interval_sec: int = 60             # 監測頻率（秒）
+    timeframe: str = "1Day"                  # K 線時間框架（M2；合法值見 services/timeframes.py）
+
+    # ----- 可插拔出場政策（Phase 16 M4）-----
+    # None = 沿用上面三個 % 欄位（舊行為）。合法 key 見 services/exit_policies.py。
+    exit_policy_key: str | None = None
+    exit_policy_params: dict | None = None
 
 
 class RiskUpdate(BaseModel):
@@ -87,6 +94,16 @@ def _bot_stats(db: Session, bot_id: int) -> dict:
     return compute_bot_stats(trades)
 
 
+def _validate_exit_policy(payload: BotCreate) -> None:
+    """出場政策 key/params 建檔時就驗證（試建一次實例），錯誤別等到進場那刻才炸。"""
+    if not payload.exit_policy_key:
+        return
+    try:
+        get_exit_policy(payload.exit_policy_key, payload.exit_policy_params)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"出場政策設定無效：{e}")
+
+
 def _get_bot_or_404(db: Session, bot_id: int) -> Bot:
     """共用：查出 Bot，找不到就回 404，避免每個路由重複寫。"""
     bot = db.query(Bot).filter(Bot.id == bot_id).first()
@@ -99,6 +116,7 @@ def _get_bot_or_404(db: Session, bot_id: int) -> Bot:
 @router.post("")
 def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
     """建立一個新的 Bot。"""
+    _validate_exit_policy(payload)
     bot = Bot(
         name=payload.name,
         strategy=payload.strategy,
@@ -109,6 +127,9 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
         stop_loss_pct=payload.stop_loss_pct,
         trailing_stop_pct=payload.trailing_stop_pct,
         check_interval_sec=payload.check_interval_sec,
+        timeframe=timeframes.validate(payload.timeframe),
+        exit_policy_key=payload.exit_policy_key,
+        exit_policy_params=payload.exit_policy_params,
     )
     db.add(bot)
     db.commit()
@@ -119,6 +140,7 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
 @router.put("/{bot_id}")
 def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     """編輯一個既有的 Bot。"""
+    _validate_exit_policy(payload)
     bot = _get_bot_or_404(db, bot_id)
     bot.name = payload.name
     bot.strategy = payload.strategy
@@ -129,6 +151,9 @@ def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     bot.stop_loss_pct = payload.stop_loss_pct
     bot.trailing_stop_pct = payload.trailing_stop_pct
     bot.check_interval_sec = payload.check_interval_sec
+    bot.timeframe = timeframes.validate(payload.timeframe)
+    bot.exit_policy_key = payload.exit_policy_key
+    bot.exit_policy_params = payload.exit_policy_params
     db.commit()
     db.refresh(bot)
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
@@ -211,6 +236,9 @@ def list_bots(db: Session = Depends(get_db)):
             "stop_loss_pct": b.stop_loss_pct,
             "trailing_stop_pct": b.trailing_stop_pct,
             "check_interval_sec": b.check_interval_sec,
+            "timeframe": getattr(b, "timeframe", None) or "1Day",
+            "exit_policy_key": getattr(b, "exit_policy_key", None),
+            "exit_policy_params": getattr(b, "exit_policy_params", None),
             "is_active": b.is_active,
             # 監聽狀態：持倉最高價（None=空手）、最後一次檢查時間（給前端顯示排程是否在動）
             "peak_price": b.peak_price,

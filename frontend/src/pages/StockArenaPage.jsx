@@ -27,8 +27,10 @@ import {
   TableContainer,
   Paper,
   Chip,
+  MenuItem,
 } from "@mui/material";
 import { api } from "../api";
+import { TIMEFRAMES, DEFAULT_TIMEFRAME } from "../constants";
 import { NEON } from "../theme";
 
 // 數字格式：缺值 "—"，否則固定小數
@@ -39,6 +41,7 @@ function fmt(v, digits = 2) {
 export default function StockArenaPage() {
   const [symbol, setSymbol] = useState("AAPL");
   const [days, setDays] = useState(365);
+  const [timeframe, setTimeframe] = useState(DEFAULT_TIMEFRAME); // M3.5：K 線時間框架
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -62,6 +65,7 @@ export default function StockArenaPage() {
         symbol: symbol.toUpperCase(),
         days: Number(days),
         initial_cash: 10000,
+        timeframe,
       });
       setResult(r);
     } catch (e) {
@@ -69,7 +73,7 @@ export default function StockArenaPage() {
     } finally {
       setLoading(false);
     }
-  }, [symbol, days]);
+  }, [symbol, days, timeframe]);
 
   // 把某列策略部署成 paper bot（對這檔股票虛擬交易），跑起來餵 bot-review 適配排行。
   const deployRow = useCallback(
@@ -86,6 +90,7 @@ export default function StockArenaPage() {
           params: entry.params || {},
           trade_amount: Number(tradeAmount),
           check_interval_sec: Number(intervalSec),
+          timeframe, // 回測=實盤鐵則：bot 用跟擂台回測同一個時間框架
         });
         await api.startBot(bot.id); // 立刻掛排程開始虛擬交易（全程 paper）
         setMsg(`已部署 paper bot：${sym} · ${entry.strategy_key}（每股策略虛擬交易，之後看汰弱審查員適配排行）`);
@@ -95,7 +100,7 @@ export default function StockArenaPage() {
         setDeployKey(null);
       }
     },
-    [result, symbol, tradeAmount, intervalSec]
+    [result, symbol, tradeAmount, intervalSec, timeframe]
   );
 
   // 批次：把排行榜「前 N 名」一次部署成 N 個 paper bot（每股多策略並存）。
@@ -131,6 +136,7 @@ export default function StockArenaPage() {
           params: entry.params || {},
           trade_amount: Number(tradeAmount),
           check_interval_sec: Number(intervalSec),
+          timeframe, // 回測=實盤鐵則：bot 用跟擂台回測同一個時間框架
         });
         await api.startBot(bot.id); // 全程 paper
         seen.add(entry.strategy_key);
@@ -146,7 +152,7 @@ export default function StockArenaPage() {
     } finally {
       setBusyBatch(false);
     }
-  }, [result, symbol, board, topN, tradeAmount, intervalSec]);
+  }, [result, symbol, board, topN, tradeAmount, intervalSec, timeframe]);
 
   return (
     <Box>
@@ -174,6 +180,18 @@ export default function StockArenaPage() {
           onChange={(e) => setDays(e.target.value)}
           sx={{ width: 120 }}
         />
+        <TextField
+          size="small"
+          select
+          label="K 線"
+          value={timeframe}
+          onChange={(e) => setTimeframe(e.target.value)}
+          sx={{ width: 110 }}
+        >
+          {TIMEFRAMES.map((tf) => (
+            <MenuItem key={tf} value={tf}>{tf}</MenuItem>
+          ))}
+        </TextField>
         <Button variant="contained" onClick={runScan} disabled={loading}>
           {loading ? "掃描中…（數十秒）" : "🏟️ 開跑擂台"}
         </Button>
@@ -246,6 +264,9 @@ export default function StockArenaPage() {
                     <TableCell align="right">OOS EV</TableCell>
                     <TableCell align="right">OOS 勝率%</TableCell>
                     <TableCell align="right">OOS 報酬%</TableCell>
+                    <TableCell align="right">Gap</TableCell>
+                    <TableCell align="right">OOS 回合</TableCell>
+                    <TableCell align="right">OOS Sharpe</TableCell>
                     <TableCell align="right">回合數</TableCell>
                     <TableCell align="right">部署</TableCell>
                   </TableRow>
@@ -267,6 +288,18 @@ export default function StockArenaPage() {
                       </TableCell>
                       <TableCell align="right">{fmt(e.oos_win_rate_pct, 1)}</TableCell>
                       <TableCell align="right">{fmt(e.oos_total_return_pct, 1)}</TableCell>
+                      {/* 過擬合 Gap =(IS−OOS)/|IS|；>0.5 紅色警示（排名守門會把它沉底） */}
+                      <TableCell
+                        align="right"
+                        sx={{
+                          color: (e.overfit_gap ?? 0) > 0.5 ? NEON.red : "text.secondary",
+                          fontWeight: (e.overfit_gap ?? 0) > 0.5 ? 700 : 400,
+                        }}
+                      >
+                        {fmt(e.overfit_gap)}
+                      </TableCell>
+                      <TableCell align="right">{e.oos_num_round_trips ?? "—"}</TableCell>
+                      <TableCell align="right">{fmt(e.oos_sharpe)}</TableCell>
                       <TableCell align="right">{e.num_round_trips ?? "—"}</TableCell>
                       <TableCell align="right">
                         <Button

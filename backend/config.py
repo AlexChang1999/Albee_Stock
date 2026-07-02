@@ -165,6 +165,15 @@ class Settings:
     SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
 
     # ========================================================
+    # 日內單一掃描迴圈（Phase 16 M8）
+    # ========================================================
+    # 日內 timeframe 的 Bot 不再各掛 interval job（38 bot × 各自抓 = 76+ req/min 撞限流），
+    # 改由「一個掃描 job」每 N 秒批次抓全池（1 req/scan ≈ 2 req/min）再逐 bot 派發。
+    # 1Day Bot 不受影響（per-bot job 保留，300s 甜蜜點不變）。0 = 關閉（日內 Bot 退回
+    # per-bot job，行為與 M8 之前一致）。
+    INTRADAY_SCAN_INTERVAL_SEC: int = int(os.getenv("INTRADAY_SCAN_INTERVAL_SEC", "30"))
+
+    # ========================================================
     # 市場蒐集員 — 爬蟲收料（Phase 10 step-04）
     # ========================================================
     # 定時從 RSS / 部落格收「策略描述文字」進收件匣（raw_strategy_finds），當人 /
@@ -403,6 +412,14 @@ class Settings:
     # optimizer 海選挑冠軍時，把歷史切「訓練段 / 測試段」，冠軍看「測試段（樣本外 OOS）」的 EV，
     # 不看樣本內——避免挑到「最會擬合過去雜訊」的參數。test_ratio = 測試段佔比（時間軸後段）。
     OOS_TEST_RATIO: float = float(os.getenv("OOS_TEST_RATIO", "0.3"))
+
+    # M3：optimizer 排名守門（walk-forward 聚合 OOS 之後的硬約束）
+    # - MIN_OOS_TRIPS：OOS 交易樣本數低於此值的組合直接沉底（1~2 筆的「冠軍」是噪音，
+    #   stock_pool 體檢已用 38 檔驗證過這個教訓）。
+    # - MAX_OVERFIT_GAP：過擬合差距 (IS−OOS)/|IS| 超過此值的組合沉底
+    #   （0.5 = 樣本外掉超過一半，樣本內再漂亮也不可信）。
+    OPTIMIZER_MIN_OOS_TRIPS: int = int(os.getenv("OPTIMIZER_MIN_OOS_TRIPS", "20"))
+    OPTIMIZER_MAX_OVERFIT_GAP: float = float(os.getenv("OPTIMIZER_MAX_OVERFIT_GAP", "0.5"))
 
     # ========================================================
     # AI 情緒閘（Phase 6 step-07）

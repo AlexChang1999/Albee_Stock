@@ -42,6 +42,8 @@ class AutoBacktestRequest(BaseModel):
     days: int = 365
     initial_cash: float = 10000.0
     source: str = settings.DATA_SOURCE  # 資料源：預設讀全系統設定 DATA_SOURCE，可覆寫
+    timeframe: str = "1Day"             # K 線時間框架（M2；"1Min"~"1Day"）
+    walk_forward: bool = True           # M3：walk-forward 聚合 OOS（False = 舊單次切分）
 
 
 @router.post("/backtest")
@@ -130,6 +132,16 @@ def _entry_summary(entry: dict) -> dict:
         "oos_win_rate_pct": m.get("oos_win_rate_pct"),
         "oos_total_return_pct": m.get("oos_total_return_pct"),
         "is_expected_value": m.get("is_expected_value"),
+        # ★M3 過擬合診斷欄位（walk-forward 聚合 OOS）
+        "overfit_gap": m.get("overfit_gap"),
+        "oos_num_round_trips": m.get("oos_num_round_trips"),
+        "oos_folds": m.get("oos_folds"),
+        "oos_sharpe": m.get("oos_sharpe"),
+        "oos_sortino": m.get("oos_sortino"),
+        "oos_profit_factor": m.get("oos_profit_factor"),
+        "oos_max_drawdown_pct": m.get("oos_max_drawdown_pct"),
+        "oos_avg_r_multiple": m.get("oos_avg_r_multiple"),
+        "timeframe": m.get("timeframe"),
     }
 
 
@@ -150,6 +162,8 @@ def auto_backtest(payload: AutoBacktestRequest, db: Session = Depends(get_db)):
             days=payload.days,
             initial_cash=payload.initial_cash,
             source=payload.source,
+            timeframe=payload.timeframe,
+            walk_forward=payload.walk_forward,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"全自動回測失敗：{e}")

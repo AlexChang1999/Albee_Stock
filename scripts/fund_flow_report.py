@@ -22,6 +22,7 @@
 
 import csv
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,7 +38,10 @@ from backend.config import settings  # noqa: E402
 from backend.services import bar_cache  # noqa: E402
 from backend.services.orderflow_proxy import compute_orderflow  # noqa: E402
 
-OUT_DIR = ROOT / "docs" / "reference" / "analysis-2026-07-02"
+def default_out_dir() -> Path:
+    """報告輸出夾：docs/reference/analysis-<今天>（M9 週跑每次落在當日夾）。"""
+    return ROOT / "docs" / "reference" / f"analysis-{date.today().isoformat()}"
+
 
 SECTOR_ETFS = {
     "XLK": "科技", "XLF": "金融", "XLE": "能源", "XLV": "醫療", "XLY": "非必需消費",
@@ -94,13 +98,14 @@ def metrics_for(sym: str, bench_close=None) -> dict | None:
     return out
 
 
-def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def run(out_dir: Path | None = None) -> str:
+    """跑資金流分析，落 CSV/markdown 到 out_dir，回傳 markdown 全文（M9 排程用）。"""
+    out_dir = Path(out_dir) if out_dir else default_out_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     bench = metrics_for(BENCH)
     if bench is None:
-        print("抓不到 SPY 基準資料")
-        return 1
+        raise RuntimeError("抓不到 SPY 基準資料")
 
     # ---------- 產業 ETF 輪動 ----------
     etf_rows = []
@@ -141,7 +146,7 @@ def main() -> int:
                [{**r, "kind": "stock"} for r in stock_rows]
     fields = ["kind", "symbol", "sector", "sector_etf", "ret_1d", "ret_5d", "ret_20d",
               "rs_1d", "rs_5d", "rs_20d", "volume_ratio", "net_pressure_5d"]
-    with open(OUT_DIR / "fund-flow.csv", "w", newline="", encoding="utf-8-sig") as f:
+    with open(out_dir / "fund-flow.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         w.writerows(all_rows)
@@ -188,8 +193,19 @@ def main() -> int:
         "3. **有加分才上線**：驗證通過 → 加進 screener 第 1.5 層（量能之後、情緒之前）；"
         "驗證不過 → 誠實砍掉（同 Phase 11 macro 層先例）。",
     ]
-    (OUT_DIR / "fund-flow.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"完成：ETF {len(etf_rows)} 檔、個股 {len(stock_rows)} 檔、隔日候選 {len(candidates)} 檔 → {OUT_DIR}")
+    md = "\n".join(lines)
+    (out_dir / "fund-flow.md").write_text(md, encoding="utf-8")
+    print(f"完成：ETF {len(etf_rows)} 檔、個股 {len(stock_rows)} 檔、隔日候選 {len(candidates)} 檔 → {out_dir}")
+    return md
+
+
+def main() -> int:
+    """CLI 殼：呼叫 run()（M9 排程走 run()，CLI 行為不變）。"""
+    try:
+        run()
+    except RuntimeError as e:
+        print(e)
+        return 1
     return 0
 
 

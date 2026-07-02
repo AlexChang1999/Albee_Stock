@@ -101,10 +101,17 @@ def var_cvar(returns: pd.Series, confidence: float = 0.95) -> tuple:
     return (rnd(var), rnd(cvar))
 
 
-def extended_metrics(equity_curve) -> dict:
+def extended_metrics(equity_curve, timeframe: str = "1Day") -> dict:
     """
     從 equity_curve 算一組風險調整後指標。任何單項失敗回 None，不影響其他項。
     回傳 key 都是 JSON-friendly 的純量，可直接塞進回測結果一起回前端。
+
+    :param timeframe: equity_curve 的「每根」是什麼時間框架的 bar。
+        年化倍率（Sharpe/Sortino/波動）必須用對基數：日 K = 252、
+        5 分 K ≈ 19656（見 timeframes.periods_per_year）——用錯基數指標全錯。
+        日內框架下 calmar / cagr 回 None：兩者依賴「真實日期跨度」，
+        假日期索引在日內粒度會嚴重失真，寧缺勿錯。
+        預設 "1Day" —— 既有呼叫行為 bit-for-bit 不變。
     """
     rets = returns_from_equity(equity_curve)
     # VaR/CVaR 自算、不靠 quantstats，所以放在 _QS_OK 閘之前（沒裝 qs 也要有值）
@@ -119,12 +126,18 @@ def extended_metrics(equity_curve) -> dict:
     def _round(v, n=2):
         return round(v, n) if v is not None else None
 
+    from backend.services.timeframes import periods_per_year, is_intraday
+
+    ppy = periods_per_year(timeframe)  # 1Day=252（與舊 TRADING_DAYS 常數一致）
+    intraday = is_intraday(timeframe)
+
     return {
-        "sharpe": _round(_safe(lambda: qs.stats.sharpe(rets))),
-        "sortino": _round(_safe(lambda: qs.stats.sortino(rets))),
-        "calmar": _round(_safe(lambda: qs.stats.calmar(rets))),
-        "volatility_ann_pct": _round(_safe(lambda: qs.stats.volatility(rets) * 100)),
-        "cagr_pct": _round(_safe(lambda: qs.stats.cagr(rets) * 100)),
+        "sharpe": _round(_safe(lambda: qs.stats.sharpe(rets, periods=ppy))),
+        "sortino": _round(_safe(lambda: qs.stats.sortino(rets, periods=ppy))),
+        # calmar/cagr 由日期跨度年化，日內的假日期索引會失真 → 誠實回 None
+        "calmar": None if intraday else _round(_safe(lambda: qs.stats.calmar(rets))),
+        "volatility_ann_pct": _round(_safe(lambda: qs.stats.volatility(rets, periods=ppy) * 100)),
+        "cagr_pct": None if intraday else _round(_safe(lambda: qs.stats.cagr(rets) * 100)),
         "var_95_pct": var95,
         "cvar_95_pct": cvar95,
     }
