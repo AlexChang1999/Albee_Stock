@@ -20,7 +20,7 @@
 | M1 | 選主鎖修復（租約制 + 定期驗鎖 + 下單第三閘 + 自動升降級） | ✅ 2026-07-02 完成 |
 | M2 | 多 timeframe 資料地基（1Min~1Day 全鏈貫穿，預設 1Day 零改動相容） | ✅ 2026-07-02 完成 |
 | M3 | Optimizer walk-forward 聚合 OOS + 排行榜擴充 + 排名守門 | ✅ 2026-07-02 完成（前端欄位顯示留 M3.5） |
-| M3.5 | 前端 BacktestRuns / StockArena 顯示新欄位 | ⬜ 未開工 |
+| M3.5 | 前端 BacktestRuns / StockArena 顯示新欄位 | ✅ 2026-07-02 完成 |
 | M4 | 可插拔 ExitPolicy（ATR / Swing / VWAP stop + R:R） | ⬜ 未開工 |
 | M5 | 進場趨勢過濾器框架（EMA 排列 / VWAP / ADX / HH-HL / BOS / regime） | ⬜ 未開工 |
 | M6 | 大型研究矩陣批跑（timeframe × stop × R:R × filter 全比較） | ⬜ 未開工（長跑任務） |

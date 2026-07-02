@@ -15,6 +15,21 @@
 
 ## [未發布]
 
+### 新增 (Added) — Phase 16 M3.5：前端顯示 walk-forward OOS 診斷欄位 + timeframe 選單（2026-07-02）
+
+- **回測歷史列表補 M3 欄位**（`backend/routers/presets.py _run_summary`）：
+  `oos_expected_value` / `overfit_gap` / `oos_num_round_trips` / `timeframe`
+  （舊紀錄沒跑 walk-forward 回 None，前端顯示 "—"）。
+- **前端三處補顯示**（Gap > 0.5 紅色警示＝後端排名守門的沉底線；顏色吃 theme/NEON）：
+  - `BacktestRunsPage`：EV 榜加「OOS EV / Gap / K線」三欄。
+  - `StockArenaPage`：排行榜加「Gap / OOS 回合 / OOS Sharpe」欄；新增 K 線時間框架下拉，
+    掃描與**部署 bot 都帶同一個 timeframe**（回測=實盤鐵則）。
+  - `AutoBacktestPanel`：新增 timeframe 下拉；排行榜加可排序欄「OOS EV / Gap / OOS 交易」。
+- `frontend/src/constants.js` 新增 `TIMEFRAMES` / `DEFAULT_TIMEFRAME`
+  （與後端 `services/timeframes.py ALL_TIMEFRAMES` 同一份清單）。
+- 元件測試：`AutoBacktestPanel.test.jsx` 新檔 + StockArena / BacktestRuns 各補一測
+  （前端 141 passed、後端 641 passed 全綠）。
+
 ### 修正 (Fixed) — 測試樁補 timeframe 參數（2026-07-02）
 
 - M2 給 `market_data.get_bars` / `bar_cache.get_bars_cached` / `yfinance_client.get_bars`

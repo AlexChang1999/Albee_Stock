@@ -26,6 +26,10 @@ const RUNS = [
     max_drawdown_pct: 4,
     has_postmortem: false,
     is_good: false,
+    oos_expected_value: 8.1,
+    overfit_gap: 0.62,
+    oos_num_round_trips: 22,
+    timeframe: "5Min",
   },
   {
     id: 2,
@@ -52,6 +56,17 @@ describe("BacktestRunsPage", () => {
     expect(await screen.findByText("AAPL", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("12.5")).toBeInTheDocument();
     expect(screen.getByText("-3.2")).toBeInTheDocument();
+  });
+
+  it("M3.5：顯示 OOS EV / Gap / timeframe；舊紀錄缺欄位顯示 —", async () => {
+    render(<BacktestRunsPage />);
+    await screen.findByText("12.5");
+    // 第一筆有 walk-forward 欄位
+    expect(screen.getByText("8.1")).toBeInTheDocument();
+    expect(screen.getByText("0.62")).toBeInTheDocument();
+    expect(screen.getByText("5Min")).toBeInTheDocument();
+    // 第二筆是舊紀錄（無 OOS 欄位）→ 該列顯示 "—" 不會壞畫面
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("點收藏鈕呼叫 favoriteBacktestRun（反轉 is_good）", async () => {

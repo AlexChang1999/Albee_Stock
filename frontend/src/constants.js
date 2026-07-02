@@ -26,6 +26,13 @@ export function strategyLabel(key) {
   return STRATEGIES.find((s) => s.value === key)?.label || key;
 }
 
+// K 線時間框架清單（M2/M3.5）——與後端 `backend/services/timeframes.py` 的
+// ALL_TIMEFRAMES 同一份清單，後端加減框架時兩邊要一起改。
+export const TIMEFRAMES = [
+  "1Min", "5Min", "15Min", "30Min", "1Hour", "2Hour", "4Hour", "1Day",
+];
+export const DEFAULT_TIMEFRAME = "1Day";
+
 // 回測區間快捷選項（天數）。選「最長」送 ~26 年（2000→2026），後端會自動改用
 // yfinance 抓長歷史（Alpaca 免費版抓不到那麼久）。選了會填進「回測天數」欄。
 export const BACKTEST_RANGES = [
