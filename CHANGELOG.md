@@ -15,6 +15,121 @@
 
 ## [未發布]
 
+### 新增 (Added) — Phase 16 M6 完成 + M12 最終報告（2026-07-03）
+
+- **M6 四輪漏斗全部跑完**（核心 6 檔 × 730 天，walk-forward 聚合 OOS）：
+  - Round 1（48 格）：甜蜜點 30Min~4Hour；1Min 僅 momentum、1Day 僅 stochastic 存活。
+  - Round 2（120 格）：**20 組比較中出場政策只贏 baseline 6 組**——均值回歸型策略
+    掛 stop 砍掉回彈利潤，訊號出場是強基準；R:R 越大越好（rr=None/4 最佳）。
+    出場政策價值在定義 R + 券商端 GTC 保護（保險費），不在拉 EV。
+  - Round 3（48 格）：**vwap_side 是唯一普遍加分的 filter**（6/8 timeframe 建議上線）；
+    hh_hl 次之（5/8）；bos/regime/ema_stack 多數不值得。
+  - Round 4（48 格，M10 驗證）：**adaptive_exit 日內全滅、只在 1Day worth 4/6**；
+    decision_gate 幾乎沒攔到單（改善 +0 = 無證據）→ 除 1Day 外全不掛。
+- `scripts/research_matrix.py` 加 `--round 3` 報表參數化（與 Round 4 共用 worth 矩陣格式）。
+- **M12** 新 `scripts/final_report.py`：聚合 checkpoint 產 13 節最終報告
+  （timeframe/stop/R:R 比較、過擬合分析、池瘦身、scanner 效能、最終上線建議表——
+  filter/decision layer 逐 timeframe 判「worth ≥3 檔且改善總和 >0」才掛）。
+  報告落 `docs/reference/analysis-2026-07-03/final-report.md`。
+
+### 新增 (Added) — Phase 16 M8：日內單一掃描迴圈（批次抓全池）（2026-07-03）
+
+- `bot_manager` 加 `run_intraday_scan()` + `BotManager.schedule_intraday_scan()`：
+  日內 timeframe 的啟用 Bot 不再各掛 interval job（38 bot 各自抓 = 76+ req/min
+  撞 200 上限），改一個 30 秒 job：每 timeframe 一次 `get_bars_multi` +
+  一次 `get_latest_prices` + 一次 `list_positions`（~6 req/min）→ 塞預取快取
+  → 逐 bot 走**既有 `run_bot_once`**（決策邏輯零分岔）。
+  - 快取過期 / 掃描關閉 / 1Day Bot → 自動退回原單檔 REST 路徑，行為與 M8 前一致。
+  - `start_bot` 分流：日內 Bot 併入掃描迴圈不掛 per-bot job；1Day Bot 照舊
+    （300s 甜蜜點不變）。休市時掃描直接返回（不逐 bot 灌 DecisionLog）。
+  - 訊號只用已收完 bar（`_drop_unclosed_today_bar` 日內分支砍最後一根）。
+  - 單輪耗時列印 + 超過間隔推播警告；`INTRADAY_SCAN_INTERVAL_SEC`（預設 30，0=關）。
+  - `main.py` `_promote_to_leader` 掛載（leader-only，降級自動卸下）。
+  - 測試 `tests/test_intraday_scan.py`：7 個（批次一次/只派發日內/休市返回/快取過期
+    與 positions 不可信語意/run_bot_once 吃快取不打單檔 REST/start_bot 分流）。
+    ⚠️ 踩坑：模組層預取快取會污染同行程其他測試 → autouse fixture 前後都清。全套 694 綠。
+
+### 新增 (Added) — Phase 16 M10：AI Decision Layer（規則式進場評分 + 動態出場）（2026-07-03）
+
+- 新 `backend/services/decision_layer.py`：策略喊 BUY 之後的第二層守門。
+  - `entry_score(df, i, params)` → `DecisionVerdict(enter|half_size|skip, score, reasons)`：
+    四特徵子分數平均（ADX 趨勢、量比、5 日動能、ATR% 波動——全復用
+    `regime_features.compute_features`），參數化 dict 可進 PARAM_GRIDS 掃描。
+    特徵覆蓋率不足 → 誠實「不干預」放行（本層要靠證據否決，沒證據不砍單）。
+  - `apply_entry_gate(signals, df)`：回測掛點，skip → BUY 改 HOLD + 審計清單；
+    **單向約束**：只否決/縮量，HOLD/SELL 原樣、絕不無中生有 BUY（與 meta_label 同格）。
+    half_size 回測端視同 enter（全進全出引擎無法半倉——不高估縮量好處）。
+- `backend/services/exit_policies.py` 加 `AdaptiveExitPolicy`（key="adaptive"，M4
+  on_bar 掛點的第一個動態政策）：ATR 停損起手，持倉中 (1) 波動升 ≥1.5× → 收緊
+  trailing、(2) ADX 走強**且 +DI>−DI**（ADX 不分方向，空頭走強不是做多續抱理由）
+  → target rr+1 續抱（只放寬一次）、(3) 價跌量縮動能衰竭 → stop 上移當根收盤
+  次根出場（stop 永不倒退）。每次調整記 `ExitPlan.meta.adjustments` 可稽核。
+- `scripts/research_matrix.py` 加 `--round 4`：M10 層驗證——Round 2 冠軍組合上
+  baseline vs（gate / adaptive / gate+adaptive）逐 fold OOS，`is_layer_worth_it`
+  判去留（**worth 才掛實盤**；上線判準未過前不接 bot_manager）。
+- 測試 `tests/test_decision_layer.py`：12 個（評分界線/資料不足不干預/參數化/
+  單向約束/adaptive 三規則含方向性與 stop 不倒退）。全套 687 綠。
+
+### 新增 (Added) — Phase 16 M6-3：研究矩陣 Round 3（進場過濾器 OOS 判去留）（2026-07-03）
+
+- `scripts/research_matrix.py` 加 `--round 3`：Round 2 每 timeframe 冠軍
+  （策略 × 出場組合，baseline 也有資格）× M5 的 6 個 trend filters，
+  每 filter 逐 fold「不加層 vs 加層」跑 OOS，交 `validation.is_layer_worth_it` 判定。
+  報表輸出 worth 判定矩陣（symbol × filter），規則「worth 檔數 ≥3 才建議上線，
+  加不了分就砍」（macro 層教訓）。
+
+### 新增 (Added) — Phase 16 M6-2：研究矩陣 Round 2（stop × R:R）（2026-07-03）
+
+- `scripts/research_matrix.py` 加 `--round 2`：Round 1 存活組合（每 timeframe 前 3
+  且守門通過 ≥3 檔——單檔獨強不算策略功勞）× 出場政策網格 28 組：
+  atr/swing × rr∈{None,1.5,2,2.2,2.5,3,4}、fixed_pct 四型
+  （只SL/只Trailing/SL+Trailing/SL+Target）、vwap（僅日內）+ baseline（無政策）對照。
+  - 訊號走 `vectorized_engine.SIGNAL_BUILDERS` 快路徑、模擬走
+    `backtest_engine._simulate_from_signals(exit_policy=...)`——M4 出場政策
+    在回測端的第一次大規模消費，零改後端。
+  - fold 切法與 Round 1 同一套（密度換算窗）→ baseline 數字可與 Round 1 對上；
+    報表每張表第一列 baseline，出場組合沒贏 baseline 就不值得加。
+- **Round 1 已跑完**（核心 6 檔 × 8 timeframe × 730 天，40 分鐘）：
+  甜蜜點在 30Min~4Hour（多檔普遍通過守門、年交易 17~80 次無 PDT 疑慮）；
+  1Min 幾乎全滅（僅 momentum 4/6）、1Day 僅 stochastic 5/6。
+  榜單見 `docs/reference/analysis-2026-07-03/research-matrix-round1.md`。
+
+### 新增 (Added) — Phase 16 M6-1：研究矩陣 Round 1（timeframe 海選）（2026-07-03）
+
+- 新 `scripts/research_matrix.py`：M6 三輪漏斗的第一輪——
+  全策略（PARAM_GRIDS 9 種）× 全 timeframe × 無 filter × fixed_pct baseline。
+  - 單格掃描直接復用 `optimizer.run_auto_backtest`（walk-forward 聚合 OOS +
+    樣本數/過擬合守門 + 向量化快路徑），本腳本只做外層編排。
+  - **fold 窗按 bar 密度換算**：`VALIDATION_*` 預設 180/60/60「根」是日 K 語意，
+    1Min 40 萬根會切出幾千個一小時級的無意義 fold → 換算成等效交易日
+    （180/60/60 交易日 × 該檔實際密度 len(df)/交易日數，含盤前盤後真實值）。
+  - 斷點續跑：每格 checkpoint 落 `data/research/<study_tag>/`（gitignore），
+    中斷重跑跳過已完成格；`--force` 重算、`--no-db` 跳過落庫。
+  - 每格冠軍落一筆 `BacktestRun`（metrics 帶 `study_tag`）；跨 symbol 聚合排名鍵
+    =（守門通過檔數, 平均 OOS EV）——先普遍性再期望值；日內高頻組合
+    （估計年交易 >150）標 ⚠️PDT。榜單 + 全格 CSV 落 `docs/reference/analysis-<日期>/`。
+
+### 新增 (Added) — Phase 16 M6-0：分鐘 K 批次預熱 + 資料品質體檢（2026-07-03）
+
+- 新 `scripts/warm_cache.py`：研究矩陣（M6）前置的快取預熱 CLI。
+  - 抓取走既有 `bar_cache.get_bars_cached_multi`（缺口才補、parquet 冪等 →
+    **中斷重跑同指令即斷點續跑**）；限流走 `alpaca_client` 內建 token bucket（200 req/min）。
+  - 預設核心 6 檔（AMD/AVGO/INTC/ORCL/BAC/MS，stock-pool 體檢核心池）×
+    全部 8 timeframe × 730 天；`--symbols/--timeframes/--days/--source` 可調。
+  - 順帶 **IEX 稀疏率體檢**：只數 RTH（9:30–16:00 ET）bar 對比理論根數
+    （IEX 會回盤前盤後 bar，總數會灌水掩蓋 RTH 缺格——實測 AMD 5Min 一天 166 根
+    vs 理論 78 根）；≥30% ⚠️、≥60% ❌ 該組合回測不可信。
+    報告落 `docs/reference/analysis-<日期>/warm-cache-quality.md`，
+    給 M6 Round 1 擴池前的人在迴路判斷。
+
+### 修正 (Fixed) — 後端啟動：188 Bot 重掛期間 Neon 連線被掐斷導致啟動失敗（2026-07-02）
+
+- `backend/main.py` `_resume_active_bots()`：原本整段重掛迴圈（上百 Bot、跑數分鐘）
+  抱著同一條 Neon 連線，中途被雲端掐斷（`SSL connection has been closed unexpectedly`），
+  `db.close()` rollback 直接炸掉 lifespan、`Application startup failed`。
+  改為查完 active Bot 立即歸還 session，再用 detached 物件跑重掛迴圈
+  （`start_bot` 只讀 id/name/check_interval_sec，查詢時已載入，安全）。
+
 ### 新增 (Added) — Phase 16 M7+M9：RS 池瘦身 + 週報進 scheduler（2026-07-02）
 
 - **M7 相對強度 RS 模組**：
