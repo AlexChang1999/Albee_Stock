@@ -25,6 +25,7 @@ Phase 6 設計重點：
 
 import math
 import threading
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -111,6 +112,114 @@ _ET = ZoneInfo("America/New_York")
 # 空手買進的臨界區鎖：APScheduler 用執行緒池同時跑多個 Bot，沒鎖的話，多個 Bot
 # 幾乎同時觸發買進時可能各自查到「購買力足夠」而一起送單，實際總曝險超過預期。
 _buy_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# M8：日內單一掃描迴圈的「批次預取快取」
+# ---------------------------------------------------------------------------
+# run_intraday_scan 每輪先批次抓好（K 線 / 最新價 / 持倉），逐 bot 派發時
+# run_bot_once / _run_strategy 優先吃這份快取 → 38 bot 一輪只打 ~3 次 API。
+# 快取過期（非掃描迴圈觸發，例如 1Day bot 的 per-bot job / 手動 /run）→
+# 自動退回原本的單檔 REST 路徑，行為與 M8 之前完全一致。
+_scan_lock = threading.Lock()
+_scan_prefetch: dict = {"bars": {}, "prices": {}, "positions": None, "at": 0.0}
+
+
+def _prefetch_fresh() -> bool:
+    """預取快取還新鮮嗎（掃描間隔的 2 倍內；掃描關閉時恆 False）。"""
+    interval = settings.INTRADAY_SCAN_INTERVAL_SEC
+    if interval <= 0:
+        return False
+    return (time.monotonic() - _scan_prefetch["at"]) <= interval * 2
+
+
+def _prefetched_bars(symbol: str, timeframe: str):
+    """掃描迴圈剛抓的 K 線（無 / 過期 → None，呼叫端走單檔舊路徑）。"""
+    with _scan_lock:
+        if not _prefetch_fresh():
+            return None
+        return _scan_prefetch["bars"].get((symbol.upper(), timeframe))
+
+
+def _prefetched_price(symbol: str):
+    """掃描迴圈剛抓的最新價（無 / 過期 → None）。"""
+    with _scan_lock:
+        if not _prefetch_fresh():
+            return None
+        return _scan_prefetch["prices"].get(symbol.upper())
+
+
+def _prefetched_position(symbol: str) -> tuple[bool, object]:
+    """掃描迴圈剛抓的持倉。回 (命中, 持倉物件或 None)——
+    positions 是「整包」快照，命中且查無此檔＝真的空手（None 是有效答案）。"""
+    with _scan_lock:
+        positions = _scan_prefetch["positions"]
+        if not _prefetch_fresh() or positions is None:
+            return False, None
+        return True, positions.get(symbol.upper())
+
+
+def run_intraday_scan() -> None:
+    """M8 單一掃描迴圈：批次抓全池 → 逐 bot 派發（僅日內 timeframe 的啟用 Bot）。
+
+    請求數：每輪「每個 timeframe 1 次 get_bars_multi + 1 次 latest_prices +
+    1 次 list_positions」——38 bot × 30 秒從 76+ req/min 降到 ~6 req/min。
+    休市直接返回（不逐 bot 記 DecisionLog：每 30 秒 × N bot 會灌爆審計表；
+    1Day bot 的 per-bot job 照舊記休市，審計語意不變）。
+    """
+    db = SessionLocal()
+    try:
+        bots = db.query(Bot).filter(Bot.is_active.is_(True)).all()
+    finally:
+        db.close()
+    intraday = [b for b in bots if (getattr(b, "timeframe", None) or "1Day") != "1Day"]
+    if not intraday:
+        return
+    if not alpaca_client.is_market_open():
+        return
+
+    t0 = time.monotonic()
+    # 1) K 線：同 timeframe 一桶、回看天數取該桶最大值（批次一次抓齊）
+    bars: dict = {}
+    groups: dict[str, list] = {}
+    for b in intraday:
+        groups.setdefault(b.timeframe, []).append(b)
+    for tf, group in groups.items():
+        days = max(required_lookback_days(b.strategy, b.params or {}, timeframe=tf)
+                   for b in group)
+        symbols = sorted({b.symbol.upper() for b in group})
+        try:
+            fetched = market_data.get_bars_multi(
+                symbols, days=days, source=settings.DATA_SOURCE, timeframe=tf)
+        except Exception:
+            fetched = {}  # 批次失敗 → 這輪快取留空，逐 bot 退回單檔路徑（不全滅）
+        for sym, df in fetched.items():
+            bars[(sym.upper(), tf)] = df
+
+    # 2) 最新價 + 持倉：各一次批次請求（失敗 → 逐 bot 自查）
+    all_symbols = sorted({b.symbol.upper() for b in intraday})
+    try:
+        prices = alpaca_client.get_latest_prices(all_symbols)
+    except Exception:
+        prices = {}
+    try:
+        positions = {str(p.symbol).upper(): p for p in alpaca_client.list_positions()}
+    except Exception:
+        positions = None  # None = 整包不可信，_prefetched_position 回未命中
+
+    with _scan_lock:
+        _scan_prefetch.update(
+            {"bars": bars, "prices": prices, "positions": positions, "at": time.monotonic()})
+
+    # 3) 逐 bot 派發（run_bot_once 內部優先吃預取快取；訊號只用已收完 bar——
+    #    _drop_unclosed_today_bar 的日內分支會砍掉最後一根未收完的 bar）
+    for b in intraday:
+        run_bot_once(b.id)
+
+    elapsed = time.monotonic() - t0
+    print(f"[M8] 日內掃描 {len(intraday)} bot 完成，耗時 {elapsed:.1f}s")
+    if elapsed > max(settings.INTRADAY_SCAN_INTERVAL_SEC, 1):
+        notify(f"⚠️ 日內掃描單輪耗時 {elapsed:.1f}s 已超過間隔 "
+               f"{settings.INTRADAY_SCAN_INTERVAL_SEC}s，考慮加大間隔或縮池。")
 
 
 def _drop_unclosed_today_bar(df, market_is_open: bool, timeframe: str = "1Day"):
@@ -593,10 +702,14 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
             _emit_cycle_end(bot, "skipped_market_closed")
             return
 
-        # --- 2. 查目前持倉與現價 ---
+        # --- 2. 查目前持倉與現價（M8：掃描迴圈剛批次抓過就吃快取，過期退回單檔 REST）---
         emit_activity(bot, "fetch_data", f"查詢 {bot.symbol} 持倉與現價")
-        position = alpaca_client.get_position(bot.symbol)
-        current_price = alpaca_client.get_latest_price(bot.symbol)
+        hit, position = _prefetched_position(bot.symbol)
+        if not hit:
+            position = alpaca_client.get_position(bot.symbol)
+        current_price = _prefetched_price(bot.symbol)
+        if current_price is None:
+            current_price = alpaca_client.get_latest_price(bot.symbol)
 
         # 空手但 DB 記著券商端保護單 id → 多半是託管止損在本機不在場時成交了，
         # 先回填交易/決策紀錄（維運安全軌 H1），再照常走空手分支。
@@ -842,8 +955,12 @@ def _run_strategy(bot: Bot, market_is_open: bool):
     # 回測=實盤鐵則：抓資料用 Bot 自己的 timeframe（與回測驗證同一粒度，不可分岔）
     tf = getattr(bot, "timeframe", None) or "1Day"
     days = required_lookback_days(bot.strategy, bot.params or {}, timeframe=tf)
-    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 {tf} K 線")
-    df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE, timeframe=tf)
+    # M8：掃描迴圈剛批次抓過同 (symbol, timeframe) 就直接用（回看天數是該桶最大值，必夠）；
+    # 快取過期 / 非掃描觸發 → 原本的單檔路徑，行為不變。
+    df = _prefetched_bars(bot.symbol, tf)
+    if df is None:
+        emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 {tf} K 線")
+        df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE, timeframe=tf)
     df = _drop_unclosed_today_bar(df, market_is_open, timeframe=tf)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
@@ -995,6 +1112,13 @@ class BotManager:
         # 若已存在同 id 的工作，先移除避免重複
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
+        # M8：日內 timeframe 的 Bot 併入單一掃描迴圈（不各掛 per-bot job，省 API 配額）；
+        # 1Day Bot 照舊 per-bot job（300s 甜蜜點不變）。掃描關閉（interval=0）時退回舊行為。
+        tf = getattr(bot, "timeframe", None) or "1Day"
+        if tf != "1Day" and settings.INTRADAY_SCAN_INTERVAL_SEC > 0:
+            notify(f"▶️ Bot 已啟動：{bot.name}（日內 {tf}，併入 "
+                   f"{settings.INTRADAY_SCAN_INTERVAL_SEC} 秒單一掃描迴圈）")
+            return
         self.scheduler.add_job(
             run_bot_once,
             "interval",
@@ -1070,6 +1194,28 @@ class BotManager:
             run_opportunity_scan,
             "interval",
             minutes=interval_minutes,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_intraday_scan(self, interval_seconds: int) -> None:
+        """
+        掛上「日內單一掃描迴圈」的週期工作（Phase 16 M8）。
+
+        每 interval_seconds 秒跑一次 run_intraday_scan：批次抓全池 K 線/報價/持倉
+        → 逐 bot 派發。interval_seconds <= 0 代表關閉：移除既有 job（若有）並返回
+        （日內 Bot 會在 start_bot 退回 per-bot job）。只在 leader 掛
+        （main.py _promote_to_leader），降級時隨 unschedule_outbound_jobs 卸下。
+        """
+        job_id = "intraday_scan"
+        if interval_seconds <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_intraday_scan,
+            "interval",
+            seconds=interval_seconds,
             id=job_id,
             replace_existing=True,
         )

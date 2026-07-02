@@ -165,6 +165,15 @@ class Settings:
     SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
 
     # ========================================================
+    # 日內單一掃描迴圈（Phase 16 M8）
+    # ========================================================
+    # 日內 timeframe 的 Bot 不再各掛 interval job（38 bot × 各自抓 = 76+ req/min 撞限流），
+    # 改由「一個掃描 job」每 N 秒批次抓全池（1 req/scan ≈ 2 req/min）再逐 bot 派發。
+    # 1Day Bot 不受影響（per-bot job 保留，300s 甜蜜點不變）。0 = 關閉（日內 Bot 退回
+    # per-bot job，行為與 M8 之前一致）。
+    INTRADAY_SCAN_INTERVAL_SEC: int = int(os.getenv("INTRADAY_SCAN_INTERVAL_SEC", "30"))
+
+    # ========================================================
     # 市場蒐集員 — 爬蟲收料（Phase 10 step-04）
     # ========================================================
     # 定時從 RSS / 部落格收「策略描述文字」進收件匣（raw_strategy_finds），當人 /
