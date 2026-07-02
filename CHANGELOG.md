@@ -15,6 +15,40 @@
 
 ## [未發布]
 
+### 新增 (Added) — Phase 16 短線轉型 M1~M3：選主鎖租約制 + 多 timeframe 地基 + optimizer walk-forward（2026-07-02）
+
+> 藍圖與 M4~M12 計畫書：[`docs/history/phase-16-intraday-swing/`](docs/history/phase-16-intraday-swing/README.md)
+
+- **M1 選主鎖修復（修掉唯一真金風險：靜默失鎖 → 雙 leader 重複下單）**：
+  - `backend/services/scheduler_lock.py` 重寫為**租約制**（新表 `scheduler_lease` 單列，
+    遷移 `2768500820b2`——同時補建 Neon 幽靈 rev 的血緣）：原子 UPDATE 搶租約（TTL 90s、
+    DB 時鐘 UTC）、leader 每 30s 續約驗鎖、續約失敗**先立旗擋單再卸排程**、
+    follower 每 30s 嘗試接手自動升級（VM 重啟後零人工自動重取鎖）。
+  - `alpaca_client` 下單**第三閘** `assert_leader()`：非 leader 一律拒單（與實盤雙閘並列）。
+  - `main.py` lifespan 重構：leader 區塊抽成 `_promote_to_leader()`；無論輸贏都掛租約守護 job。
+  - `bot_manager.unschedule_outbound_jobs()`：降級時卸下所有對外 job。失鎖行為＝只停新單、
+    不自動平倉（持倉靠券商端 GTC 保護單）。測試 `tests/test_scheduler_lock.py` 12 個。
+- **M2 多 timeframe 資料地基**（1Min/5Min/15Min/30Min/1Hour/2Hour/4Hour/1Day，
+  預設 "1Day" 零改動相容）：
+  - 新 `backend/services/timeframes.py` 單一事實來源（年化基數 `periods_per_year`、
+    bar↔日曆天換算）。`alpaca_client` / `yfinance_client`（超限誠實拋錯）/ `market_data` /
+    `bar_cache`（timeframe 目錄維度；日內「今天」永遠當尾缺口重抓）/ `lookback` /
+    `analytics`（Sharpe/Sortino 年化基數修正；日內 calmar/cagr 誠實回 None）/
+    `backtest_engine`（日內一律 alpaca 源）全鏈貫穿。
+  - `bots.timeframe` 欄位（遷移 `d0d0c19d13b0`）；實盤 `_run_strategy` 用 Bot 自己的
+    timeframe 抓資料（回測=實盤鐵則）；`_drop_unclosed_today_bar` 泛化為日內濾未收完 bar。
+    測試 `tests/test_timeframes.py` 12 個。
+- **M3 Optimizer walk-forward 聚合 OOS + 排行榜擴充**：
+  - `run_auto_backtest(+timeframe, +walk_forward=True)`：`_wf_aggregate` 把所有滾動 fold 的
+    OOS round trips 串接聚合（EV/勝率/PF/MaxDD 取各 fold 最差/串接報酬算 Sharpe·Sortino），
+    OOS 樣本數從單次切分的 1~2 筆拉高到可信程度；資料太短誠實退回單次切分。
+  - 新欄位 `overfit_gap =(IS−OOS)/|IS|`、`oos_num_round_trips`（跨折加總）、`oos_folds`、
+    `oos_sharpe/oos_sortino/oos_profit_factor/oos_max_drawdown_pct`、`oos_avg_r_multiple`
+    （留 M4 回填）。**排名守門**：OOS 交易 < `OPTIMIZER_MIN_OOS_TRIPS`(20) 或
+    gap > `OPTIMIZER_MAX_OVERFIT_GAP`(0.5) 直接沉底。
+  - `/auto-backtest` API 加 `timeframe`/`walk_forward` 參數、摘要回傳全部新欄位
+    （BacktestRun.metrics 為 JSON，零遷移）。測試 `tests/test_optimizer_walkforward.py` 6 個。
+
 ### 新增 (Added) — 回測驗證日：風控出場模擬 + 4 支全池分析 CLI（2026-07-02）
 
 - **回測引擎 opt-in 風控出場模擬**（`backend/services/backtest_engine.py`）：

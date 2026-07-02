@@ -29,7 +29,11 @@ from backend.services.alpaca_client import alpaca_client
 from backend.bots.bot_manager import bot_manager
 from backend.routers import bots, backtest, orders, presets, chat, quotes, fundamentals, bars, recommendations, automation, strategies, knowledge, explorations, company, opportunities, promotion, factors, collector, political, macro, positions, bot_activity, bot_review, discovery, review, agent
 from backend.services.bot_activity import hub as activity_hub
-from backend.services.scheduler_lock import acquire_scheduler_lock, release_scheduler_lock
+from backend.services.scheduler_lock import (
+    acquire_scheduler_lock,
+    release_scheduler_lock,
+    start_lease_daemon,
+)
 
 
 def _resume_active_bots() -> None:
@@ -52,25 +56,17 @@ def _resume_active_bots() -> None:
         db.close()
 
 
-# lifespan：定義 app「啟動時」與「關閉時」要做的事。
-# 這是 FastAPI 現在推薦的寫法（取代舊的 @app.on_event）。
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # --- 啟動時 ---
-    init_db()  # 把資料庫的表建好（如果還沒建）
-    # Bot 活動事件中樞接上事件迴圈（必須在恢復排程之前——排程一接回來就會發事件）
-    activity_hub.attach_loop()
+def _promote_to_leader() -> None:
+    """
+    升級為排程 leader：掛上所有「對外動作」的排程 job。
 
-    # 排程器選主：多實例（地端 + 雲端 VM 同連 Neon）時，只有搶到鎖的 leader 掛排程，
-    # 避免重複下單 / 重複推播 / 互蓋止損。沒搶到的實例只當唯讀 API。
-    # SQLite 單機永遠是 leader（無競爭）。下方所有 schedule_* 與 _resume_active_bots
-    # 都會「對外動作或寫狀態」，故整段只在 leader 執行。
-    is_leader = acquire_scheduler_lock()
-    if not is_leader:
-        print("🟡 已有其他實例擔任排程 leader：本實例只提供 API，不掛排程、不對外推播/下單")
-        yield
-        return
+    兩個呼叫時機：
+    1. 開機時搶到租約（原本 lifespan 的 leader-only 區塊，抽成函式）
+    2. 運行中前任 leader 失聯，本實例（原 follower）搶到租約自動接手
+       —— 這就是「VM 重啟後自動重新取得 Leader Lock」的機制，零人工介入。
 
+    所有 schedule_* 都用 replace_existing / 先移除再掛，重複呼叫冪等。
+    """
     _resume_active_bots()  # 重啟後把啟用中的 Bot 排程接回來
     # 模式 B：掛上盤前自動部署的每日定時工作（時刻讀 DB 規則；是否真的部署仍由 enabled 總開關控制）
     _db = SessionLocal()
@@ -108,9 +104,47 @@ async def lifespan(app: FastAPI):
         bot_manager.schedule_catchup_on_boot()
     finally:
         _db.close()
-    print(f"🚀 Albee Stock 啟動完成（排程 leader；模擬交易模式：{settings.IS_PAPER}）")
+
+
+def _demote_from_leader() -> None:
+    """
+    降級為 follower：卸下所有對外排程 job（Bot 掃描、推播、部署…），
+    只留租約守護 job 讓本實例之後有機會搶回 leader。
+    下單層另有 assert_leader 第三閘擋著，雙保險。
+    """
+    bot_manager.unschedule_outbound_jobs()
+
+
+# lifespan：定義 app「啟動時」與「關閉時」要做的事。
+# 這是 FastAPI 現在推薦的寫法（取代舊的 @app.on_event）。
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- 啟動時 ---
+    init_db()  # 把資料庫的表建好（如果還沒建）
+    # Bot 活動事件中樞接上事件迴圈（必須在恢復排程之前——排程一接回來就會發事件）
+    activity_hub.attach_loop()
+
+    # 排程器選主（租約制）：多實例（地端 + 雲端 VM 同連 Neon）時，只有持有租約的
+    # leader 掛排程，避免重複下單 / 重複推播 / 互蓋止損。沒搶到的實例只當唯讀 API。
+    # SQLite 單機永遠是 leader（無競爭）。
+    is_leader = acquire_scheduler_lock()
+    if is_leader:
+        _promote_to_leader()
+        print(f"🚀 Albee Stock 啟動完成（排程 leader；模擬交易模式：{settings.IS_PAPER}）")
+    else:
+        print("🟡 已有其他實例擔任排程 leader：本實例只提供 API，不掛排程、不對外推播/下單")
+
+    # 無論輸贏都掛「租約守護」job（SQLite 單機內部直接跳過）：
+    # - leader 靠它每 30 秒續約 + 驗證租約還是不是自己的，失鎖 → 立即停排程停下單
+    # - follower 靠它在前任失聯後（TTL 90 秒內）自動接手升級
+    start_lease_daemon(
+        bot_manager.scheduler,
+        on_promote=_promote_to_leader,
+        on_demote=_demote_from_leader,
+    )
+
     yield
-    # --- 關閉時 ---：釋放排程鎖，讓其他實例能接手當 leader
+    # --- 關閉時 ---：讓出租約，其他實例可立刻接手當 leader（不用等 TTL 過期）
     release_scheduler_lock()
 
 

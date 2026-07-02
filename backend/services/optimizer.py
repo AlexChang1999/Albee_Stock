@@ -20,6 +20,7 @@ from backend.config import settings
 from backend.services import bar_cache
 from backend.services.backtest_engine import _run_on_df
 from backend.services.vectorized_engine import is_vectorized, run_vectorized
+from backend.services.validation import walk_forward_splits
 from backend.strategies import get_strategy
 
 
@@ -114,11 +115,101 @@ def _is_valid_combo(strategy_key: str, params: dict) -> bool:
     return True
 
 
+def _wf_aggregate(strategy_key: str, params: dict, df, initial_cash: float,
+                  commission_bps: float, slippage_bps: float,
+                  timeframe: str = "1Day") -> dict | None:
+    """
+    walk-forward 聚合 OOS（M3）：把每個滾動測試段各跑一次含成本回測，
+    再把「所有 fold 的 round trips 串起來」算一份聚合 OOS 指標。
+
+    為什麼要聚合而不是只看單次 70/30 切分：單次切分的 OOS 交易常常只有 1~2 筆
+    （stock_pool 體檢已證實 38 檔中 32 檔如此），根本是噪音；多 fold 串接把
+    OOS 樣本數拉高到可信程度，同時每個 fold 都是「沒見過的未來」，語意不變。
+
+    :return: 聚合指標 dict；資料太短湊不出任何 fold 時回 None（呼叫端退回單次切分）。
+    """
+    folds = walk_forward_splits(len(df))
+    if not folds:
+        return None
+
+    total_trips = 0
+    total_profit = 0.0     # Σ(每 fold EV × 該 fold 交易數) = 全部 OOS 損益
+    total_wins = 0
+    total_win_amt = 0.0    # Σ 獲利交易總額（聚合 profit factor 分子）
+    total_loss_amt = 0.0   # Σ 虧損交易總額絕對值（分母）
+    worst_dd = 0.0         # 各 fold 最大回撤取最差（保守）
+    stitched_returns = []  # 各 fold 報酬序列串接（算聚合 Sharpe/Sortino 用）
+
+    for fold in folds:
+        test_df = df.iloc[fold["test_start"]: fold["test_end"]].reset_index(drop=True)
+        m = _run_combo(strategy_key, params, test_df, initial_cash, commission_bps, slippage_bps)
+        trips = m.get("num_round_trips") or 0
+        total_trips += trips
+        if trips and isinstance(m.get("expected_value"), (int, float)):
+            total_profit += m["expected_value"] * trips
+        wins = m.get("num_wins") or 0
+        losses = m.get("num_losses") or 0
+        total_wins += wins
+        if wins and m.get("avg_win"):
+            total_win_amt += m["avg_win"] * wins
+        if losses and m.get("avg_loss"):
+            total_loss_amt += abs(m["avg_loss"]) * losses
+        dd = m.get("max_drawdown_pct")
+        if isinstance(dd, (int, float)):
+            worst_dd = max(worst_dd, dd)
+        # equity → 報酬序列（fold 各自從 initial_cash 起跑，pct_change 消掉水位差）
+        eq = m.get("equity_curve") or []
+        for prev, cur in zip(eq, eq[1:]):
+            if prev:
+                stitched_returns.append(cur / prev - 1.0)
+
+    # 聚合 Sharpe/Sortino：把串接後的報酬重建成一條 equity，交給 extended_metrics
+    # （同一套年化基數；日內框架 calmar/cagr 會誠實回 None）
+    sharpe = sortino = None
+    if len(stitched_returns) >= 2:
+        from backend.services.analytics import extended_metrics
+        eq, curve = 1.0, [1.0]
+        for r in stitched_returns:
+            eq *= (1.0 + r)
+            curve.append(eq)
+        ext = extended_metrics(curve, timeframe=timeframe)
+        sharpe, sortino = ext.get("sharpe"), ext.get("sortino")
+
+    ev = (total_profit / total_trips) if total_trips else 0.0
+    return {
+        "oos_expected_value": round(ev, 4),
+        "oos_num_round_trips": total_trips,          # ★跨折加總的 OOS 樣本數
+        "oos_folds": len(folds),
+        "oos_win_rate_pct": round(total_wins / total_trips * 100, 2) if total_trips else 0.0,
+        "oos_profit_factor": round(total_win_amt / total_loss_amt, 4) if total_loss_amt else None,
+        "oos_max_drawdown_pct": round(worst_dd, 2),
+        "oos_sharpe": sharpe,
+        "oos_sortino": sortino,
+        # 平均 R multiple 需要「每筆交易的初始風險 R」——等 M4 ExitPolicy 落地後回填
+        "oos_avg_r_multiple": None,
+    }
+
+
+def _overfit_gap(is_ev, oos_ev) -> float | None:
+    """
+    過擬合差距 gap = (IS − OOS) / |IS|。
+    0 = 樣本外完全守住樣本內表現；1 = 樣本外歸零；>1 = 樣本外反虧。
+    IS ≤ 0 時 gap 無意義（樣本內就不賺，談不上「過擬合虛高」）→ 回 None。
+    """
+    if not isinstance(is_ev, (int, float)) or not isinstance(oos_ev, (int, float)):
+        return None
+    if is_ev <= 0:
+        return None
+    return round((is_ev - oos_ev) / abs(is_ev), 4)
+
+
 def run_auto_backtest(
     symbol: str,
     days: int = 365,
     initial_cash: float = 10000.0,
     source: str = settings.DATA_SOURCE,
+    timeframe: str = "1Day",
+    walk_forward: bool = True,
 ) -> dict:
     """
     對某檔股票做「全自動掃描」：跑遍所有策略 × 參數組合，依 EV 排名。
@@ -127,6 +218,9 @@ def run_auto_backtest(
     :param days: 回測往前抓幾天的資料
     :param initial_cash: 每組回測的初始資金（統一，才能公平比較）
     :param source: 資料源，"alpaca"（預設）或 "yfinance"
+    :param timeframe: K 線時間框架（M2；預設日 K 行為不變）
+    :param walk_forward: True（預設）＝每組合加跑 walk-forward 聚合 OOS，
+        排名改看聚合值（樣本數跨折加總，更可信）；False＝只跑單次 70/30 切分（舊路徑）。
     :return: dict，含最佳組合 best、完整排行榜 leaderboard、掃描統計等。
              （這裡只算、不存 DB；存檔交給 router，職責分離。）
     """
@@ -136,8 +230,12 @@ def run_auto_backtest(
     commission_bps = settings.BACKTEST_COMMISSION_BPS
     slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
 
+    # 日內框架一律 alpaca（yfinance 分鐘級歷史太短；與 backtest_engine._resolve_source 同邏輯）
+    if timeframe != "1Day":
+        source = "alpaca"
+
     # 1) 資料只抓一次，之後所有組合共用（關鍵效能設計）；多年區間走本機快取（Phase 11 step-04）
-    df = bar_cache.get_bars_cached(symbol, days=days, source=source)
+    df = bar_cache.get_bars_cached(symbol, days=days, source=source, timeframe=timeframe)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
     data_points = len(df)
@@ -161,6 +259,7 @@ def run_auto_backtest(
             metrics["symbol"] = symbol
             metrics["strategy"] = strategy_key
             metrics["days"] = days
+            metrics["timeframe"] = timeframe
             metrics["data_points"] = data_points
             # ★樣本外指標（挑冠軍 / 設門檻一律看這組）＋樣本內對照（看「掉多少」就知道過擬合多嚴重）
             metrics["is_expected_value"] = is_m["expected_value"]
@@ -174,16 +273,37 @@ def run_auto_backtest(
             # OOS 期望值佔本金 %（維運安全軌 H3 tracking error 的右半邊基準：
             # 回測複利 vs Paper 固定金額，美元 EV 不可直接比，一律用 % 歸一化）
             metrics["oos_expectancy_pct"] = oos_m["expectancy_pct"]
+
+            # ★M3：walk-forward 聚合 OOS（多折串接，樣本數可信）覆蓋單次切分的 OOS 值；
+            # 資料太短湊不出 fold（_wf_aggregate 回 None）→ 保留單次切分值（誠實退化）。
+            if walk_forward:
+                wf = _wf_aggregate(strategy_key, params, df, initial_cash,
+                                   commission_bps, slippage_bps, timeframe)
+                if wf is not None:
+                    metrics.update(wf)
+            # 過擬合差距（排行榜必看：>0.5 = 樣本外掉超過一半，冠軍再漂亮也可疑）
+            metrics["overfit_gap"] = _overfit_gap(
+                metrics["is_expected_value"], metrics["oos_expected_value"]
+            )
             results.append({"strategy_key": strategy_key, "params": params, "metrics": metrics})
 
     # 3) ★依「樣本外 EV」由高到低排名（防過擬合的硬約束：不在整段歷史上挑最佳）；
     #    OOS EV 相同時用「OOS 總報酬」當第二排序鍵。
+    #    M3 排名守門：OOS 樣本數不足 or 過擬合差距過大 → 直接沉底（樣本 1~2 筆的
+    #    「冠軍」是噪音，被它騙過一次就夠了）。
+    min_trips = settings.OPTIMIZER_MIN_OOS_TRIPS
+    max_gap = settings.OPTIMIZER_MAX_OVERFIT_GAP
+
     def _rank_key(r):
         m = r["metrics"]
         ev = m.get("oos_expected_value")
         ev = ev if isinstance(ev, (int, float)) else float("-inf")
         ret = m.get("oos_total_return_pct") or 0.0
-        return (ev, ret)
+        trips = m.get("oos_num_round_trips") or 0
+        gap = m.get("overfit_gap")
+        # 守門旗標排最前：通過守門的組合永遠排在沒通過的前面
+        passes = 1 if (trips >= min_trips and (gap is None or gap <= max_gap)) else 0
+        return (passes, ev, ret)
 
     results.sort(key=_rank_key, reverse=True)
 
@@ -191,6 +311,8 @@ def run_auto_backtest(
     return {
         "symbol": symbol,
         "days": days,
+        "timeframe": timeframe,
+        "walk_forward": walk_forward,
         "initial_cash": initial_cash,
         "data_points": data_points,
         "combos_tested": len(results),

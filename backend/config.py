@@ -404,6 +404,14 @@ class Settings:
     # 不看樣本內——避免挑到「最會擬合過去雜訊」的參數。test_ratio = 測試段佔比（時間軸後段）。
     OOS_TEST_RATIO: float = float(os.getenv("OOS_TEST_RATIO", "0.3"))
 
+    # M3：optimizer 排名守門（walk-forward 聚合 OOS 之後的硬約束）
+    # - MIN_OOS_TRIPS：OOS 交易樣本數低於此值的組合直接沉底（1~2 筆的「冠軍」是噪音，
+    #   stock_pool 體檢已用 38 檔驗證過這個教訓）。
+    # - MAX_OVERFIT_GAP：過擬合差距 (IS−OOS)/|IS| 超過此值的組合沉底
+    #   （0.5 = 樣本外掉超過一半，樣本內再漂亮也不可信）。
+    OPTIMIZER_MIN_OOS_TRIPS: int = int(os.getenv("OPTIMIZER_MIN_OOS_TRIPS", "20"))
+    OPTIMIZER_MAX_OVERFIT_GAP: float = float(os.getenv("OPTIMIZER_MAX_OVERFIT_GAP", "0.5"))
+
     # ========================================================
     # AI 情緒閘（Phase 6 step-07）
     # ========================================================

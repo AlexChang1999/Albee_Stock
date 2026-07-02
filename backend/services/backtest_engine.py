@@ -41,11 +41,18 @@ logger = logging.getLogger(__name__)
 ALPACA_MAX_DAYS = 1825
 
 
-def _resolve_source(source: str, days: int) -> str:
+def _resolve_source(source: str, days: int, timeframe: str = "1Day") -> str:
     """
     長區間自動選資料源：用 alpaca 但 days 超過免費版可靠範圍時，自動改 yfinance。
     顯式想用 yfinance 的呼叫端不受影響；顯式 alpaca 但超長則覆寫並落 log（誠實告知）。
+
+    日內框架一律用 alpaca：yfinance 的分鐘級歷史太短（1m 只有 7 天、5m~30m 只有
+    60 天）且無 2h/4h，alpaca 分鐘 K 反而可回溯到 2016——切換邏輯與日 K 相反。
     """
+    if timeframe != "1Day":
+        if source != "alpaca":
+            logger.info("日內框架 %s 僅 alpaca 有足夠歷史，資料源自動改用 alpaca", timeframe)
+        return "alpaca"
     if source == "alpaca" and days > ALPACA_MAX_DAYS:
         logger.info(
             "回測區間 %d 天超過 Alpaca 免費版可靠範圍(%d)，自動改用 yfinance 抓長歷史",
@@ -351,6 +358,7 @@ def run_backtest(
     stop_loss_pct: float | None = None,
     take_profit_pct: float | None = None,
     trailing_stop_pct: float | None = None,
+    timeframe: str = "1Day",
 ) -> dict:
     """
     對某檔股票跑回測（會連資料源抓歷史資料，多年區間走本機快取 bar_cache）。
@@ -368,6 +376,9 @@ def run_backtest(
         風控出場模擬（同 Bot 風控欄位語意，0.10=10%；None=關）。
         帶 Bot 的實際風控參數重跑回測，能看到「策略訊號 + 風控出場」合體後的
         誠實 EV（含停損/停利/追蹤觸發統計 num_stop_loss 等）。
+    :param timeframe: K 線時間框架（"1Min"~"1Day"，預設日 K —— 既有呼叫行為不變）。
+        「訊號於次根 bar 開盤成交」的誠實語意在任何框架下都成立（日 K = 隔日開盤、
+        5 分 K = 下一根 5 分 bar 開盤），_simulate_from_signals 零改動。
     """
     # 成本預設讀全系統 config，呼叫端可顯式覆寫（含 0 = 關成本對照用）
     if commission_bps is None:
@@ -376,11 +387,12 @@ def run_backtest(
         slippage_bps = settings.BACKTEST_SLIPPAGE_BPS
 
     # 長區間自動選資料源：Alpaca 免費版抓不到 2000 年那麼久，超過門檻自動改 yfinance。
-    source = _resolve_source(source, days)
+    # 日內框架則反過來一律 alpaca（yfinance 分鐘級歷史太短）。
+    source = _resolve_source(source, days, timeframe)
 
     # 走本機快取（Phase 11 step-04）：缺區間才補抓、其餘命中快取，多年回測不每次重打 API。
     # get_bars_cached 包在 market_data.get_bars 外層、簽章相容、嚴格 ⊆ 請求區間（不洩漏未來）。
-    df = bar_cache.get_bars_cached(symbol, days=days, source=source)
+    df = bar_cache.get_bars_cached(symbol, days=days, source=source, timeframe=timeframe)
     if df.empty:
         raise ValueError(f"抓不到 {symbol} 的歷史資料")
 
@@ -397,8 +409,10 @@ def run_backtest(
     result["symbol"] = symbol
     result["strategy"] = strategy_name
     result["days"] = days
+    result["timeframe"] = timeframe
     result["data_points"] = len(df)
     # 附上 quantstats 風險調整後指標（Sharpe/Sortino/Calmar/年化波動/CAGR）。
     # 只在「單筆回測」算（optimizer 海選走 _run_on_df，不經這裡，故不拖慢掃描）。
-    result["extended"] = extended_metrics(result.get("equity_curve"))
+    # timeframe 透傳給年化基數（日 K=252、分鐘 K 依 bar 數放大，用錯全錯）。
+    result["extended"] = extended_metrics(result.get("equity_curve"), timeframe=timeframe)
     return result

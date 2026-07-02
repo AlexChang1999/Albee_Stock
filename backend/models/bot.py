@@ -38,6 +38,11 @@ class Bot(Base):
     # 每次下單金額（美元），新手先用固定金額控制風險
     trade_amount = Column(Float, default=1000.0)
 
+    # K 線時間框架（M2 多 timeframe 地基）：策略吃哪種粒度的 K 線。
+    # 合法值見 services/timeframes.py（"1Min"~"1Day"）。預設 "1Day" = 舊行為不變。
+    # 回測=實盤鐵則：Bot 實盤抓資料與回測驗證必須用同一個 timeframe，不可分岔。
+    timeframe = Column(String, default="1Day", nullable=False, server_default="1Day")
+
     # ----- 風控（Phase 4 監聽系統用）-----
     # 以下三個百分比皆「可不填」(None)；填了才啟用該機制。
     # 用小數表示，例如 0.10 = 10%。

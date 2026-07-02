@@ -20,7 +20,7 @@ from backend.database import get_db
 from backend.models import Bot, TradeLog, DecisionLog
 from backend.bots.bot_manager import bot_manager, run_bot_once
 from backend.routers.bars import _to_candles
-from backend.services import market_data
+from backend.services import market_data, timeframes
 from backend.services.indicator_overlays import compute_overlays
 from backend.services.performance import compute_bot_stats
 from backend.services.alpaca_client import alpaca_client
@@ -44,6 +44,7 @@ class BotCreate(BaseModel):
     stop_loss_pct: float | None = None       # 固定止損
     trailing_stop_pct: float | None = None   # 追蹤止損
     check_interval_sec: int = 60             # 監測頻率（秒）
+    timeframe: str = "1Day"                  # K 線時間框架（M2；合法值見 services/timeframes.py）
 
 
 class RiskUpdate(BaseModel):
@@ -109,6 +110,7 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
         stop_loss_pct=payload.stop_loss_pct,
         trailing_stop_pct=payload.trailing_stop_pct,
         check_interval_sec=payload.check_interval_sec,
+        timeframe=timeframes.validate(payload.timeframe),
     )
     db.add(bot)
     db.commit()
@@ -129,6 +131,7 @@ def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     bot.stop_loss_pct = payload.stop_loss_pct
     bot.trailing_stop_pct = payload.trailing_stop_pct
     bot.check_interval_sec = payload.check_interval_sec
+    bot.timeframe = timeframes.validate(payload.timeframe)
     db.commit()
     db.refresh(bot)
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
@@ -211,6 +214,7 @@ def list_bots(db: Session = Depends(get_db)):
             "stop_loss_pct": b.stop_loss_pct,
             "trailing_stop_pct": b.trailing_stop_pct,
             "check_interval_sec": b.check_interval_sec,
+            "timeframe": getattr(b, "timeframe", None) or "1Day",
             "is_active": b.is_active,
             # 監聽狀態：持倉最高價（None=空手）、最後一次檢查時間（給前端顯示排程是否在動）
             "peak_price": b.peak_price,

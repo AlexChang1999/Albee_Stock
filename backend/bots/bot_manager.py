@@ -111,16 +111,22 @@ _ET = ZoneInfo("America/New_York")
 _buy_lock = threading.Lock()
 
 
-def _drop_unclosed_today_bar(df, market_is_open: bool):
-    """live 交易只信「已收盤」的日K。
+def _drop_unclosed_today_bar(df, market_is_open: bool, timeframe: str = "1Day"):
+    """live 交易只信「已收完」的 K 棒。
 
-    市場還開著時，資料源（Alpaca/yfinance）回傳的「今天」那根日K是盤中還在
-    跳動、尚未收盤的未完成棒；但策略（均線交叉/RSI/MACD...）設計時的邏輯語意
-    是「用已收盤價判斷」。不濾掉的話，同一天內盤中價格晃動會讓指標跟著晃，
+    日 K（1Day）：市場還開著時，資料源（Alpaca/yfinance）回傳的「今天」那根日K是
+    盤中還在跳動、尚未收盤的未完成棒；但策略（均線交叉/RSI/MACD...）設計時的邏輯
+    語意是「用已收盤價判斷」。不濾掉的話，同一天內盤中價格晃動會讓指標跟著晃，
     可能同一天內反覆翻轉買賣訊號（whipsaw）。
+
+    日內框架（5Min 等）：盤中「最後一根」bar 通常還沒收完（且免費方案最新 15 分鐘
+    走 IEX，數值也可能與 SIP 有出入）→ 一律砍掉最後一根，只用已收完的 bar 產訊號。
     """
     if df.empty or not market_is_open:
         return df
+    if timeframe != "1Day":
+        # 日內：最後一根視為未收完，直接砍（保守——寧可晚一根，不可用半根）
+        return df.iloc[:-1].reset_index(drop=True)
     today_et = datetime.now(_ET).date()
     last_ts = df["timestamp"].iloc[-1]
     last_date = last_ts.tz_convert(_ET).date() if last_ts.tzinfo else last_ts.date()
@@ -706,10 +712,12 @@ def _run_strategy(bot: Bot, market_is_open: bool):
     if getattr(bot, "adaptive", False):
         return _run_adaptive_strategy(bot, market_is_open)
 
-    days = required_lookback_days(bot.strategy, bot.params or {})
-    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 K 線")
-    df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE)
-    df = _drop_unclosed_today_bar(df, market_is_open)
+    # 回測=實盤鐵則：抓資料用 Bot 自己的 timeframe（與回測驗證同一粒度，不可分岔）
+    tf = getattr(bot, "timeframe", None) or "1Day"
+    days = required_lookback_days(bot.strategy, bot.params or {}, timeframe=tf)
+    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 {tf} K 線")
+    df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE, timeframe=tf)
+    df = _drop_unclosed_today_bar(df, market_is_open, timeframe=tf)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
     emit_activity(bot, "compute_signal", f"計算 {bot.strategy} 策略訊號")
@@ -874,6 +882,25 @@ class BotManager:
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
             notify(f"⏸️ Bot 已停止：id={bot_id}")
+
+    def unschedule_outbound_jobs(self) -> None:
+        """
+        卸下所有「對外動作」的排程 job（選主降級用）。
+
+        leader 失去租約時呼叫：把 Bot 掃描、盤前部署、心跳推播……全部移除，
+        只留 `scheduler_lease_daemon`（租約守護 job）——它必須活著，之後才有機會
+        搶回租約、自動升級回 leader。
+
+        注意：這裡不改 DB 的 bot.is_active（Bot 在使用者眼中仍是「啟用中」，
+        只是本實例不跑）；新 leader 升級時 _resume_active_bots 會照 DB 重掛。
+        """
+        for job in self.scheduler.get_jobs():
+            if job.id == "scheduler_lease_daemon":
+                continue
+            try:
+                self.scheduler.remove_job(job.id)
+            except Exception:
+                pass  # job 可能剛好自己跑完消失，忽略
 
     def schedule_auto_deploy(self, hour: int) -> None:
         """
