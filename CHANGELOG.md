@@ -15,6 +15,21 @@
 
 ## [未發布]
 
+### 新增 (Added) — 後端每日自動啟動腳本 + M6 冠軍組合部署（2026-07-03）
+
+- 新 `scripts/autostart_backend.ps1`：排程用啟動器——先查 8000 埠，
+  後端已在跑就跳過（不重複啟動搶埠），否則最小化視窗啟動既有 `start_backend.bat`
+  （看門狗 + 開機補跑行為不變）。
+- 新 `scripts/setup-autostart.ps1`：一鍵註冊 Windows 排程工作
+  `AlbeeStock-Backend-AutoStart`——每天 21:15（開盤前）+ 登入時觸發，
+  WakeToRun 從睡眠喚醒（⚠️ 完全關機叫不醒）；`-Remove` 移除。
+  **需系統管理員 PowerShell 跑一次**。踩坑：.ps1 含中文必須 UTF-8 **帶 BOM**，
+  無 BOM 會炸 PowerShell 5.1 parser。
+- 部署 M6 冠軍組合 24 隻 paper Bot（id 213~236）：★主力 4 組合
+  （30Min/1Hour bollinger 訊號出場、2Hour donchian+swing_rr1.5、
+  4Hour macd+swing_rr4）× 核心 6 檔，參數取各檔 Round 2 冠軍、$1000/bot，
+  日內框架自動走 M8 掃描迴圈——開始累積 paper 實跑 vs 回測 OOS 的 tracking 資料。
+
 ### 新增 (Added) — Phase 16 M6 完成 + M12 最終報告（2026-07-03）
 
 - **M6 四輪漏斗全部跑完**（核心 6 檔 × 730 天，walk-forward 聚合 OOS）：
