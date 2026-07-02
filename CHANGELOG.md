@@ -15,6 +15,13 @@
 
 ## [未發布]
 
+### 修正 (Fixed) — 測試樁補 timeframe 參數（2026-07-02）
+
+- M2 給 `market_data.get_bars` / `bar_cache.get_bars_cached` / `yfinance_client.get_bars`
+  加了 `timeframe` 參數後，4 個測試檔（`test_bar_cache` / `test_batch_fetch` /
+  `test_bot_manager` / `test_oos`）的 monkeypatch 假函式簽名沒跟上，收到
+  `timeframe` kwarg 直接 TypeError（13 failed）。全部補上 `timeframe="1Day"` 預設參數。
+
 ### 新增 (Added) — Phase 16 短線轉型 M1~M3：選主鎖租約制 + 多 timeframe 地基 + optimizer walk-forward（2026-07-02）
 
 > 藍圖與 M4~M12 計畫書：[`docs/history/phase-16-intraday-swing/`](docs/history/phase-16-intraday-swing/README.md)
