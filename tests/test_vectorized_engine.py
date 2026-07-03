@@ -95,7 +95,10 @@ def test_all_registered_strategies_vectorized():
     # 刻意只走事件式路徑（_run_on_df 內逐根聚合子策略訊號），故豁免此不變式。
     # ScriptStrategy 子類（事件驅動、有狀態 on_bar）整個家族天生走事件式重播，同樣豁免——
     # 用 issubclass 判斷而非手列名單，之後新增 Script 策略不會再漏接這個測試。
-    EVENT_ONLY = {"composite"} | {
+    # snr_3_0：多階段序列掃描（swing→爆發→Fresh 計數→拒絕→確認→結構突破），
+    # 狀態跨多根、無法收成單一向量化 builder，刻意只走事件式（同 composite 豁免；
+    # 且 v1 不進 optimizer PARAM_GRIDS，向量化快路徑本來就用不到）。
+    EVENT_ONLY = {"composite", "snr_3_0"} | {
         key for key, cls in STRATEGY_REGISTRY.items() if issubclass(cls, ScriptStrategy)
     }
     missing = set(STRATEGY_REGISTRY) - set(SIGNAL_BUILDERS) - EVENT_ONLY

@@ -34,6 +34,7 @@ class BacktestRequest(BaseModel):
     days: int = 365  # 回測往前抓幾天
     initial_cash: float = 10000.0  # 初始資金
     source: str = settings.DATA_SOURCE  # 資料源：預設讀全系統設定 DATA_SOURCE，可覆寫
+    allow_short: bool = False  # 做空開關：僅回測評估用，實盤 Bot 只做多
 
 
 class AutoBacktestRequest(BaseModel):
@@ -60,6 +61,7 @@ def backtest(payload: BacktestRequest):
             days=payload.days,
             initial_cash=payload.initial_cash,
             source=payload.source,
+            allow_short=payload.allow_short,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"回測失敗：{e}")

@@ -62,7 +62,7 @@
 | [`reference/financial-services-reference.md`](reference/financial-services-reference.md) | 金融服務參考。 |
 | [`reference/rl-feasibility-assessment.md`](reference/rl-feasibility-assessment.md) | 強化學習（DQN/PPO）交易員可行性評估：現階段 No-Go + 重啟條件。 |
 | [`reference/dev-pitfalls-log.md`](reference/dev-pitfalls-log.md) | 開發踩坑紀錄：歷來實際炸過、用 commit 修掉的坑（症狀/根因/修法/出處），CLAUDE.md 鐵則的完整史料版。 |
-| [`reference/strategies/`](reference/strategies/) | 個別策略筆記（如 `williams_r.md`）。 |
+| [`reference/strategies/`](reference/strategies/) | 個別策略筆記（如 `williams_r.md`、`snr_3_0.md` 供需區策略規格）。 |
 | [`reference/analysis-2026-07-02/`](reference/analysis-2026-07-02/README.md) | **回測驗證日總報告**：38 檔全池回測（OOS 排名 + 蒙地卡羅）／掃頻研究（結論：維持 300s）／股票池分層（已證實核心 6 檔）／資金流分析 + 原始 CSV。重跑腳本：`scripts/{full_backtest_report,scan_frequency_study,stock_pool_report,fund_flow_report}.py`。 |
 
 ## ux/ — 前端 UX
