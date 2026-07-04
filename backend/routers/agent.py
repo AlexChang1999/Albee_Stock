@@ -85,6 +85,7 @@ class AgentBacktestRequest(BaseModel):
     days: int = 365
     initial_cash: float = 10000.0
     source: str = settings.DATA_SOURCE
+    allow_short: bool = False  # 做空開關：僅回測評估用，實盤 Bot 只做多
 
 
 @router.post("/backtest", dependencies=[_guard])
@@ -99,6 +100,7 @@ def agent_backtest(payload: AgentBacktestRequest, db: Session = Depends(get_db))
             days=payload.days,
             initial_cash=payload.initial_cash,
             source=payload.source,
+            allow_short=payload.allow_short,
         )
         _audit(db, "/api/agent/v1/backtest", snapshot, "ok",
                f"EV={result.get('expected_value')}")

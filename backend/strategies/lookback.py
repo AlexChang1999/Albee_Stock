@@ -51,6 +51,10 @@ def min_bars_required(strategy_key: str, params: dict | None = None) -> int:
         return int(p.get("period", 14))
     if strategy_key == "adx_trend":
         return int(p.get("period", 14)) * 2
+    if strategy_key == "snr_3_0":
+        # 對齊 snr_3_0.generate_signal 的「資料不足」門檻：zone 回看 + ATR 暖機 + swing 右側確認
+        return (int(p.get("zone_lookback", 80)) + int(p.get("atr_period", 14))
+                + int(p.get("swing_window", 3)) + 1)
 
     # 未知策略：給保守預設，至少不會抓太少而靜默失準
     return _DEFAULT_MIN_BARS

@@ -25,8 +25,11 @@ description: 把交易策略的描述/規則/數據，自動變成本專案能�
    - 純 pandas 算指標；`generate_signal` 回 `(Signal.BUY/SELL/HOLD, 中文原因)`；
      開頭先擋資料不足回 HOLD。中文註解說明指標白話邏輯（仿 `rsi.py`）。
 
-2. **註冊** `backend/strategies/__init__.py`
+2. **註冊** `backend/strategies/__init__.py`（**四處**，缺一不可）
    - 加 1 行 import + 在 `STRATEGY_REGISTRY` 加 `"<name>": <Class>Strategy`。
+   - `STRATEGY_LABELS` 加 `"<name>": "中文名"`（GET /strategies 顯示名單一來源）。
+   - `STRATEGY_PARAM_SPECS` 加參數 schema（default 必須 == 策略檔 `params.get` 預設值，
+     否則 LLM 探勘橋/參數驗證會靜默漂移）。
 
 3. **前端清單** `frontend/src/constants.js`
    - `STRATEGIES` 陣列加 `{ value: "<name>", label: "中文名" }`，`value` 必須==註冊鍵。

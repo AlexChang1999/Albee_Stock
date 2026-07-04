@@ -249,6 +249,9 @@ OVERLAY_BUILDERS = {
     "composite": lambda df, p: _empty(),
     # 事件驅動突破續抱：畫進場（前 lookback 根收盤高）/出場（前 exit_lookback 根收盤低）參考線
     "script_breakout": _script_breakout,
+    # SNR 3.0：zone 是「逐根動態判定的多階段序列」（swing→爆發→回踩→拒絕→確認），
+    # 沒有固定指標線可畫，v1 比照 composite 回空（前端顯示提示）。
+    "snr_3_0": lambda df, p: _empty(),
 }
 
 

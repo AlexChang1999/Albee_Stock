@@ -69,6 +69,7 @@ def _simulate_from_signals(
     stop_loss_pct: float | None = None,
     take_profit_pct: float | None = None,
     trailing_stop_pct: float | None = None,
+    allow_short: bool = False,
     exit_policy: ExitPolicy | None = None,
 ) -> dict:
     """
@@ -101,6 +102,14 @@ def _simulate_from_signals(
         - 追蹤止損的最高價 peak 用「進場成交價起、逐根 high」更新；
           當根先用「前面 bar 為止的 peak」檢查、檢查完才併入當根 high（不偷看未來）。
         - 同一根內多重觸發只取一種（依上述順序），與實盤單次檢查一次只出一種一致。
+    :param allow_short: 做空開關（預設 False＝行為與舊版完全相同：SELL 只平多）。
+        True 時：SELL 且空手 → 開空（side="short"）、BUY 且持空 → 回補（side="cover"）；
+        position 用「負股數」表示空單，equity = cash + position*price 公式自動正確。
+        持多時 SELL 仍只平多（不直接翻倉——平倉後下一次反向訊號才進場，兩段式）。
+        空單風控鏡像：停損=價格上漲 x%、停利=價格下跌 x%、追蹤用持倉期間「最低價」
+        （空單風控走 % 參數語意；exit_policy 的 ExitPlan 目前只涵蓋多單）。
+        ⚠️ 無保證金模型（價格大漲時空單 equity 可為負、報酬可 < -100%，如實呈現）；
+        **僅供回測評估，實盤 Bot 只做多**。
     :param exit_policy: 可插拔出場政策（M4）。進場時 on_entry 拿 ExitPlan、
         逐 bar on_bar 更新（動態政策），觸價語意同上（stop→追蹤→target）。
         三個 pct 參數其實就是 FixedPctPolicy 的轉接（內部統一走政策路徑）；
@@ -139,7 +148,8 @@ def _simulate_from_signals(
     equity_dates = []    # 與 equity_curve 等長的「真實日期」字串（報表用真年月，非假 2000）
     total_cost = 0.0     # 本次回測累計摩擦成本（手續費 + 滑價）
     pending = None       # 前一根 close 算出、待這一根「以成交價」換手的單：(side, reason)
-    peak_price = 0.0     # 持倉期間最高價（追蹤止損用；空手時無意義）
+    peak_price = 0.0     # 多單持倉期間最高價（追蹤止損用；空手時無意義）
+    trough_price = 0.0   # 空單持倉期間最低價（空單追蹤止損用；與 peak_price 分開存，避免雙語意）
     risk_exit_counts = {"stop_loss": 0, "take_profit": 0, "trailing_stop": 0}
     plan = None          # 目前持倉的出場計畫（ExitPlan；空手時 None）
     r_risk = 0.0         # 初始風險 R = entry − stop（每股；plan 無 stop 時 0 = 不算 r_multiple）
@@ -170,7 +180,7 @@ def _simulate_from_signals(
                     {"date": date, "side": "buy", "price": round(eff, 2),
                      "qty": round(qty, 4), "reason": p_reason}
                 )
-            else:  # sell：全出
+            elif side == "sell":  # 平多：全出
                 eff = raw_fill * (1 - slippage_rate)        # 滑價：賣在較差(較低)價
                 gross = position * eff
                 commission = gross * commission_rate
@@ -190,6 +200,37 @@ def _simulate_from_signals(
                 peak_price = 0.0
                 plan = None
                 r_risk = 0.0
+            elif side == "short":  # 開空：賣出借券，position 記負股數
+                eff = raw_fill * (1 - slippage_rate)        # 滑價：開空＝賣出，滑到更低價（不利）
+                qty = cash / eff                             # 全 equity notional 開空（空手時 equity==cash）
+                gross = qty * eff
+                commission = gross * commission_rate
+                total_cost += commission + qty * (raw_fill - eff)
+                cash += gross - commission                   # 收到賣券現金（扣手續費）
+                position = -qty
+                entry_price = eff
+                trough_price = eff  # 空單追蹤止損的最低價從進場成交價起算
+                trades.append(
+                    {"date": date, "side": "short", "price": round(eff, 2),
+                     "qty": round(qty, 4), "reason": p_reason}
+                )
+            else:  # cover：回補平空
+                eff = raw_fill * (1 + slippage_rate)        # 滑價：回補＝買入，滑到更高價（不利）
+                qty = -position
+                gross = qty * eff
+                commission = gross * commission_rate
+                # 鏡像多單慣例：開倉手續費已從現金扣、平倉手續費計入 profit
+                profit = qty * (entry_price - eff) - commission
+                total_cost += commission + qty * (eff - raw_fill)
+                cash -= gross + commission
+                trades.append(
+                    {"date": date, "side": "cover", "price": round(eff, 2),
+                     "qty": round(qty, 4), "reason": p_reason,
+                     "profit": round(profit, 2), "exit_reason": "signal"}
+                )
+                position = 0.0
+                entry_price = 0.0
+                trough_price = 0.0
             pending = None
 
         # --- 1.5 風控出場模擬（opt-in；順序同實盤 risk_manager：停損→追蹤→停利）---
@@ -238,6 +279,47 @@ def _simulate_from_signals(
                 # 檢查完才把當根 high 併入 peak（當根檢查只用「前面 bar 為止」的 peak，不偷看）
                 peak_price = max(peak_price, hi)
 
+        # --- 1.6 空單風控出場（多單邏輯的完整鏡像：停損=價漲、停利=價跌、追蹤用最低價）---
+        elif risk_on and position < 0:
+            o = float(fill_src[i])
+            hi = float(highs[i])
+            lo = float(lows[i])
+            sl_level = entry_price * (1 + stop_loss_pct) if stop_loss_pct else None
+            trail_level = trough_price * (1 + trailing_stop_pct) if trailing_stop_pct else None
+            tp_level = entry_price * (1 - take_profit_pct) if take_profit_pct else None
+
+            exit_raw, exit_kind = None, None
+            if sl_level is not None and (o >= sl_level or hi >= sl_level):
+                # 跳空開高穿過停損 → 只能回補在更差的開盤價（max 同時涵蓋兩種情況）
+                exit_raw, exit_kind = max(o, sl_level), "stop_loss"
+            elif trail_level is not None and (o >= trail_level or hi >= trail_level):
+                exit_raw, exit_kind = max(o, trail_level), "trailing_stop"
+            elif tp_level is not None and (o <= tp_level or lo <= tp_level):
+                # 跳空開低過停利 → 回補在較好的開盤價（如實反映）
+                exit_raw, exit_kind = min(o, tp_level), "take_profit"
+
+            if exit_raw is not None:
+                eff = exit_raw * (1 + slippage_rate)         # 回補＝買入，滑到更高價（不利）
+                qty = -position
+                gross = qty * eff
+                commission = gross * commission_rate
+                profit = qty * (entry_price - eff) - commission
+                total_cost += commission + qty * (eff - exit_raw)
+                cash -= gross + commission
+                risk_exit_counts[exit_kind] += 1
+                trades.append(
+                    {"date": date, "side": "cover", "price": round(eff, 2),
+                     "qty": round(qty, 4),
+                     "reason": f"風控出場：{exit_kind} 觸價 {exit_raw:.2f}",
+                     "profit": round(profit, 2), "exit_reason": exit_kind}
+                )
+                position = 0.0
+                entry_price = 0.0
+                trough_price = 0.0
+            else:
+                # 檢查完才把當根 low 併入 trough（當根檢查只用「前面 bar 為止」的 trough，不偷看）
+                trough_price = min(trough_price, lo)
+
         # --- 2. 記錄當根收盤後的總資產（連同真實日期，供報表用真年月）---
         equity_curve.append(cash + position * price)
         equity_dates.append(date)
@@ -245,10 +327,16 @@ def _simulate_from_signals(
         # --- 3. 依當根 close 的訊號，決定「下一根」要不要換手（隔日成交）---
         signal = signals[i]
         reason = reasons[i] if reasons is not None else ""
-        if signal == Signal.BUY and position == 0 and cash > 0:
-            pending = ("buy", reason)
-        elif signal == Signal.SELL and position > 0:
-            pending = ("sell", reason)
+        if signal == Signal.BUY:
+            if position == 0 and cash > 0:
+                pending = ("buy", reason)
+            elif allow_short and position < 0:
+                pending = ("cover", reason)          # 持空遇 BUY → 回補平空
+        elif signal == Signal.SELL:
+            if position > 0:
+                pending = ("sell", reason)           # 平多優先（不直接翻倉）
+            elif allow_short and position == 0 and cash > 0:
+                pending = ("short", reason)          # 空手遇 SELL → 開空
         # 迴圈結束後 pending 仍有值 = 最後一根的訊號沒有次根可成交 → 誠實地不成交
 
     # --- 計算各項績效 ---
@@ -265,15 +353,16 @@ def _simulate_from_signals(
         if drawdown > max_dd:
             max_dd = drawdown
 
-    # 勝率：看每次「賣出」是賺還賠
-    sells = [t for t in trades if t["side"] == "sell"]
-    wins = [t for t in sells if t.get("profit", 0) > 0]
-    win_rate = (len(wins) / len(sells) * 100) if sells else 0.0
+    # 勝率：看每次「平倉」（賣出平多 / 回補平空）是賺還賠。
+    # 用「帶 profit 的筆」篩選（sell 與 cover 都帶 profit）——純多回測結果與舊版逐位元組相同。
+    closes = [t for t in trades if "profit" in t]
+    wins = [t for t in closes if t.get("profit", 0) > 0]
+    win_rate = (len(wins) / len(closes) * 100) if closes else 0.0
 
     # --- 期望值（EV）相關指標 ---
-    # 每筆「賣出」就是一次完整買賣（round trip），都帶 profit。
-    n_round_trips = len(sells)
-    profits = [t.get("profit", 0.0) for t in sells]
+    # 每筆「平倉」就是一次完整買賣（round trip），都帶 profit。
+    n_round_trips = len(closes)
+    profits = [t.get("profit", 0.0) for t in closes]
     win_profits = [p for p in profits if p > 0]   # 賺的筆（正值）
     loss_profits = [p for p in profits if p < 0]  # 賠的筆（負值）
 
@@ -298,7 +387,7 @@ def _simulate_from_signals(
 
     # 平均 R multiple（M4）：只彙總「進場時有 stop（有定義 R）」的交易；
     # 沒用出場政策或政策無 stop 時整體回 None（誠實缺值，不填 0 假裝有）。
-    r_multiples = [t["r_multiple"] for t in sells if "r_multiple" in t]
+    r_multiples = [t["r_multiple"] for t in closes if "r_multiple" in t]
     avg_r_multiple = (sum(r_multiples) / len(r_multiples)) if r_multiples else None
 
     # Buy & Hold 對照：第一天買進、最後一天才賣的報酬率
@@ -346,6 +435,7 @@ def _run_on_df(
     stop_loss_pct: float | None = None,
     take_profit_pct: float | None = None,
     trailing_stop_pct: float | None = None,
+    allow_short: bool = False,
     exit_policy: ExitPolicy | None = None,
     entry_filters: list | None = None,
 ) -> dict:
@@ -386,7 +476,8 @@ def _run_on_df(
         signals, df, initial_cash, reasons=reasons,
         commission_bps=commission_bps, slippage_bps=slippage_bps,
         stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
-        trailing_stop_pct=trailing_stop_pct, exit_policy=exit_policy,
+        trailing_stop_pct=trailing_stop_pct,
+        allow_short=allow_short, exit_policy=exit_policy,
     )
 
 
@@ -404,6 +495,7 @@ def run_backtest(
     take_profit_pct: float | None = None,
     trailing_stop_pct: float | None = None,
     timeframe: str = "1Day",
+    allow_short: bool = False,
     exit_policy_key: str | None = None,
     exit_policy_params: dict | None = None,
 ) -> dict:
@@ -426,6 +518,8 @@ def run_backtest(
     :param timeframe: K 線時間框架（"1Min"~"1Day"，預設日 K —— 既有呼叫行為不變）。
         「訊號於次根 bar 開盤成交」的誠實語意在任何框架下都成立（日 K = 隔日開盤、
         5 分 K = 下一根 5 分 bar 開盤），_simulate_from_signals 零改動。
+    :param allow_short: 做空開關（預設 False＝SELL 只平多，行為不變）。
+        True 時 SELL 空手開空、BUY 持空回補——**僅供回測評估，實盤 Bot 只做多**。
     :param exit_policy_key / exit_policy_params: 可插拔出場政策（M4）。
         key 見 exit_policies.EXIT_POLICY_REGISTRY（fixed_pct/atr/swing/vwap）；
         僅日內政策（vwap）配日 K 會誠實拋錯。與 stop_loss_pct 等 % 參數互斥。
@@ -458,7 +552,8 @@ def run_backtest(
         commission_bps=commission_bps, slippage_bps=slippage_bps,
         features=features,
         stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
-        trailing_stop_pct=trailing_stop_pct, exit_policy=exit_policy,
+        trailing_stop_pct=trailing_stop_pct,
+        allow_short=allow_short, exit_policy=exit_policy,
     )
 
     # 補上這次回測的基本資訊

@@ -15,6 +15,28 @@
 
 ## [未發布]
 
+### 新增 (Added) — SNR 3.0 供需區策略 + 回測引擎做空支援 + 策略開發合約（2026-07-03）
+
+- **新策略 `snr_3_0`（SNR 3.0 供需區）**：Fresh Zone（swing±ATR 寬度、觸碰群計數 ≤ max_touches）
+  + 左側爆發驗證（Expansion/Engulfing）+ 進場序列（Rejection→Confirmation→Structure Break
+  於當根收尾才發訊）。13 參數入 `STRATEGY_PARAM_SPECS`、`lookback.py` 補回看門檻、
+  前端清單同步。v1 單一 OHLCV 日線可回測、不做真 H4/M30/M1 多時間框架；
+  疊圖與向量化 v1 豁免（比照 composite，走事件式）。規格文件
+  [`docs/reference/strategies/snr_3_0.md`](docs/reference/strategies/snr_3_0.md)、
+  測試 `tests/test_snr_3_0.py` 9 個（含鏡像 SELL + stale touch 計數陷阱鎖定）。
+- **回測引擎做空支援 `allow_short`**（預設 False＝行為零改變，既有測試全綠護欄）：
+  SELL 空手開空（side="short"）、BUY 持空回補（side="cover"）、持多 SELL 仍只平多
+  （兩段式不翻倉）；position 負股數、equity 公式自動正確；空單風控鏡像
+  （停損=價漲、停利=價跌、追蹤用持倉最低價 trough）；滑價/手續費方向對己不利；
+  統計 round-trip 改依「帶 profit 的平倉筆」（純多路徑逐位元組相同）。
+  `POST /backtest` 與 agent API 加 `allow_short` 欄位；BacktestPanel 交易明細
+  補「開空/回補」標籤。⚠️ 無保證金模型（空單 equity 可為負）、
+  **僅回測評估用，實盤 Bot 只做多**。測試 `tests/test_backtest.py` +7 個。
+- **`backend/strategies/CLAUDE.md` 策略開發合約**：進資料夾自動載入的速查合約
+  （BaseStrategy 合約、防偷看未來鐵則、6 落地點表、SPY/QQQ 大盤 ETF 實跑驗證流程、
+  做空語意）；strategy-builder skill 步驟 2 補正 `__init__.py` 四處註冊
+  （REGISTRY+LABELS+PARAM_SPECS）。
+
 ### 新增 (Added) — 報酬率期望檢討書（2026-07-03）
 
 - 新 `docs/reference/return-expectation-review-2026-07.md`：回應「半年翻一倍」期望——
