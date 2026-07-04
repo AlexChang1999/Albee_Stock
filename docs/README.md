@@ -8,7 +8,7 @@
 | 檔案 | 用途 |
 |------|------|
 | [`ai-implementation-guardrails.md`](ai-implementation-guardrails.md) | **開工前必讀**：AI／人拿藍圖自己 coding 的防偏離合約（反 slop、對齊原目標、DoD）。 |
-| [`remaining-work-backlog.md`](remaining-work-backlog.md) | 進行中的未完成工作盤點（A~G 七項，含詳細 step，可餵 AI 實作）。 |
+| [`remaining-work-backlog.md`](remaining-work-backlog.md) | 進行中的未完成工作盤點（A~H 八項，含詳細 step，可餵 AI 實作）。 |
 
 ## history/ — 開發歷史藍圖（做歷史歷程報告的主素材）
 
@@ -25,7 +25,7 @@
 | [`history/phase-12-strategy-discovery/`](history/phase-12-strategy-discovery/README.md) | 策略自動探勘入庫管線**藍圖**（收料→LLM 產候選→自動 OOS 閘→人在迴路晉升，step-01~05，未開工）。 |
 | [`history/phase-14-company-operability/`](history/phase-14-company-operability/README.md) | 公司可操作化 + 漏斗透明 + 個股策略擂台（每角色「跑一次」鈕 / 文字→策略橋可見 / FunnelPage 看淘汰理由 / 個股多策略擂台 + 部署）。 |
 | [`history/phase-15-fleet-and-lessons/`](history/phase-15-fleet-and-lessons/README.md) | 每股多策略艦隊落地（個股擂台一鍵部署前 N 名）+ 決策教訓 Log（量/股數/指標快照 + LLM 讀教訓）+ 「300 秒」結論。 |
-| [`history/phase-16-intraday-swing/`](history/phase-16-intraday-swing/README.md) | 短線 swing/intraday 轉型 M1~M12 藍圖 + 進度（M1 選主鎖租約制 ✅ / M2 多 timeframe 地基 ✅ / M3 optimizer walk-forward ✅；M4~M12 計畫書可直接餵下個 session）。 |
+| [`history/phase-16-intraday-swing/`](history/phase-16-intraday-swing/README.md) | 短線 swing/intraday 轉型 M1~M12 藍圖 + 進度（M1~M10、M12 ✅ 完成；僅 M11 資金流因子等 60 天滿期，約 2026-09 驗證；研究報表見 `reference/analysis-2026-07-03/`）。 |
 | [`history/redesign/`](history/redesign/README.md) | 「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化，P1~P4）。 |
 
 ## guides/ — 操作與教學
@@ -54,7 +54,7 @@
 | 檔案 | 用途 |
 |------|------|
 | [`reference/workflow-diagrams.md`](reference/workflow-diagrams.md) | 系統工作流圖（Mermaid 6 張：全景/決策流水線/回測 EV/層驗證/知識庫→AI 公司軌含 Phase 12 探勘管線/手工新增策略）。 |
-| [`reference/frontend-pages-map.md`](reference/frontend-pages-map.md) | 前端 17 頁地圖（Mermaid 小圖×6）：四條工作流 + 開第一隻 Bot 步驟 + When/What/Why 對照 + 各頁資料由誰產生。 |
+| [`reference/frontend-pages-map.md`](reference/frontend-pages-map.md) | 前端 20 頁地圖（Mermaid 小圖×6）：四條工作流 + 開第一隻 Bot 步驟 + When/What/Why 對照 + 各頁資料由誰產生。 |
 | [`reference/strategy-pipeline-workflow.md`](reference/strategy-pipeline-workflow.md) | **11 模組策略探勘工作流**（操作者視角）：蒐集員→AI探勘→進化實驗室→知識庫→自動化主水管 + 政治員煞車 + 5 條旁路；人只在「晉升 curated／跑真錢」出手 + 品質地基（參數 schema 漏洞修補）。 |
 | [`reference/roadmap-strategy-workbench.md`](reference/roadmap-strategy-workbench.md) | 策略工作台 roadmap（Phase 5）。 |
 | [`reference/human-vs-ai-operation.md`](reference/human-vs-ai-operation.md) | 人機操作落差 + 分階段上線（跑真錢前必讀）。 |
@@ -65,6 +65,7 @@
 | [`reference/dev-pitfalls-log.md`](reference/dev-pitfalls-log.md) | 開發踩坑紀錄：歷來實際炸過、用 commit 修掉的坑（症狀/根因/修法/出處），CLAUDE.md 鐵則的完整史料版。 |
 | [`reference/strategies/`](reference/strategies/) | 個別策略筆記（如 `williams_r.md`、`snr_3_0.md` 供需區策略規格）。 |
 | [`reference/analysis-2026-07-02/`](reference/analysis-2026-07-02/README.md) | **回測驗證日總報告**：38 檔全池回測（OOS 排名 + 蒙地卡羅）／掃頻研究（結論：維持 300s）／股票池分層（已證實核心 6 檔）／資金流分析 + 原始 CSV。重跑腳本：`scripts/{full_backtest_report,scan_frequency_study,stock_pool_report,fund_flow_report}.py`。 |
+| [`reference/analysis-2026-07-03/`](reference/analysis-2026-07-03/final-report.md) | **Phase 16 研究矩陣總報告**（M6/M10/M12）：四輪漏斗 264 格（timeframe × stop × R:R × filter）＋最終上線組合建議（`final-report.md`）＋各輪原始矩陣＋warm cache 品質檢查。重跑腳本：`scripts/{research_matrix,final_report}.py`。 |
 
 ## ux/ — 前端 UX
 

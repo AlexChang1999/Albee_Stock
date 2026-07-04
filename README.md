@@ -9,7 +9,7 @@
 
 - **後端**：Python 3.13 + FastAPI
 - **前端**：React (Vite) + Material UI + 左側 sidebar 多頁路由（react-router）+ 原生圖表 `lightweight-charts`
-- **資料庫**：SQLite（用 **Alembic** 做版本化遷移，未來可換 PostgreSQL）
+- **資料庫**：Neon 雲端 PostgreSQL（2026-06 起正式使用，多機共用；`.env` 沒填 `DATABASE_URL` 自動退回本機 SQLite；**Alembic** 版本化遷移）
 - **交易/資料 API**：[Alpaca Markets](https://alpaca.markets)（`alpaca-py` 官方 SDK）
 - **回測**：自製 walk-forward 回測引擎（含**期望值 EV** 指標）
 - **排程**：APScheduler
@@ -30,10 +30,15 @@
 | Phase 8 | 策略知識庫 + 組合進化（蒐集多策略→整合組合→驗證→人在迴路策展） | ✅ 完成（step-01~06） |
 | Phase 9 | 專業前端工作站（左側導覽 + 多頁面：交易/回測/方案/探討/決策/進化/知識庫） | ✅ 完成（step-01~08） |
 | Phase 10 | AI 交易公司（編排層 + 戰情頁 + 市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07） |
+| Phase 11 | 總經 + 籌碼資料地基（FRED 序列入庫 + macro 特徵 + orderflow proxy） | ✅ 完成（macro 層 OOS 無加分、2026-06 誠實砍除；資料地基保留） |
+| Phase 12 | 策略自動探勘入庫管線（collector → LLM 探勘橋 → 自動 OOS 驗證 → 人在迴路晉升） | 🔶 step-01~04 完成；step-05 兩週觀察待跑滿（預設全關） |
+| Phase 14 | 公司可操作化 + 漏斗透明 + 個股策略擂台（FunnelPage / StockArena；編號跳過 13） | ✅ 完成 |
+| Phase 15 | 每股多策略艦隊 + 決策教訓 Log | ✅ 完成 |
+| Phase 16 | 短線 swing/intraday 轉型（多 timeframe / walk-forward / ExitPolicy / 研究矩陣 / AI Decision Layer） | 🔶 M1~M10、M12 完成；M11 等 2026-09 資料滿期驗證 |
 
 > 另有「改版子軌（redesign）」Phase 1–4，是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），✅ 已落地，與上表主線編號不同（詳見下方說明與 [`docs/history/redesign/`](docs/history/redesign/README.md)）。
 
-**已完成**：專案骨架、**9 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標／ADX 趨勢）、
+**已完成**：專案骨架、**12 種策略**（均線交叉／RSI／MACD／布林通道／唐奇安通道／KD 隨機指標／動量／威廉指標／ADX 趨勢／策略組合／突破續抱／SNR 3.0 供需區）、
 Bot CRUD + 啟停、績效指標（勝率/報酬率/交易次數/最大回撤）、walk-forward 回測引擎、
 **風控出場**（止盈/止損/追蹤止損，最高價持久化）、**開市判斷**、**實盤雙閘安全閥**、
 **監聽狀態可視化**（最後檢查時間/持倉峰值）、Alembic 遷移、分頁式 React 前端（模組化）、
@@ -97,8 +102,8 @@ Phase 2~4 的視覺/自動化子軌（編號與主線不同）：
 - **深藍主題**（P3）：深海軍藍沉浸金融風，移除手填「建立 Bot」表單，儀表板改純監控
 - **模式 B 全自動護欄**（P4）：EV 閾值排程自動建 Bot（總開關預設關、與實盤雙閘獨立、全程 Paper），前端 `AutomationPanel` 唯讀規則 + 手動試跑
 
-> 系統工作流全貌見 [`docs/reference/workflow-diagrams.md`](docs/reference/workflow-diagrams.md)（Mermaid 畫的 4 張圖：
-> 高層全景 / 決策流水線 / 回測 EV / 層驗證）。
+> 系統工作流全貌見 [`docs/reference/workflow-diagrams.md`](docs/reference/workflow-diagrams.md)（Mermaid 畫的 6 張圖：
+> 高層全景 / 決策流水線 / 回測 EV / 層驗證 / 知識庫→AI 公司軌 / 手工新增策略）。
 
 **後續 / 未竟（非阻塞，未承諾時程）**：
 - **Phase 10 通電前置**（機制已落地，僅待「接上真資料來源」才生效，預設安全關閉）：
@@ -249,7 +254,7 @@ cd frontend && npm run dev
 }
 ```
 
-可用的 `strategy`：`ma_crossover`、`rsi`、`macd`、`bollinger`、`donchian`、`stochastic`、`momentum`、`williams_r`、`adx_trend`
+可用的 `strategy`：`ma_crossover`、`rsi`、`macd`、`bollinger`、`donchian`、`stochastic`、`momentum`、`williams_r`、`adx_trend`、`composite`、`script_breakout`、`snr_3_0`
 （完整清單以 `GET /strategies` 為準）
 
 > 風控欄位（`take_profit_pct`／`stop_loss_pct`／`trailing_stop_pct`）皆為小數百分比、可不填（None=不啟用）。
@@ -260,7 +265,7 @@ cd frontend && npm run dev
 Albee_Stock/
 ├── backend/
 │   ├── config.py            # 設定管理（讀 .env，含實盤安全閥）
-│   ├── database.py          # SQLite 連線
+│   ├── database.py          # 資料庫連線（Neon PG；沒填 DATABASE_URL 退回 SQLite）
 │   ├── main.py              # FastAPI 入口（CORS + 掛 router + lifespan 恢復排程）
 │   ├── test_connection.py   # Alpaca 連線測試
 │   ├── routers/             # API 路由（bots / backtest / orders / presets / chat / automation / strategies /
@@ -271,7 +276,7 @@ Albee_Stock/
 │   │                        #   回撤熔斷 circuit_breaker、績效、風控、通知、LLM、探討檔案記憶；
 │   │                        #   Phase 7：regime_features/regime/strategy_selector/meta_label/
 │   │                        #   sizing(凱利)/event_risk/validation/layer_validation
-│   ├── strategies/          # 9 種交易策略 + 註冊表 + 顯示名（list_strategies 單一來源）
+│   ├── strategies/          # 12 種交易策略 + 註冊表 + 顯示名（list_strategies 單一來源）+ CLAUDE.md 開發合約
 │   └── bots/                # Bot 管理器（執行 + 排程；每輪用 bot_id 重查最新設定）+
 │                            #   political_watcher 獨立常駐 runner（python -m backend.bots.political_watcher）
 ├── frontend/                # React 前端（Vite，模組化；左側 sidebar + react-router 多頁）
