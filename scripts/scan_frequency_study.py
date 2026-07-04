@@ -31,7 +31,7 @@ import argparse
 import csv
 import statistics
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,7 +47,10 @@ import pandas as pd  # noqa: E402
 
 from backend.config import settings  # noqa: E402
 
-OUT_DIR = ROOT / "docs" / "reference" / "analysis-2026-07-02"
+def default_out_dir() -> Path:
+    """報告輸出夾：docs/reference/analysis-<今天>（M9 週跑每次落在當日夾）。"""
+    return ROOT / "docs" / "reference" / f"analysis-{date.today().isoformat()}"
+
 
 INTERVALS = [30, 60, 120, 180, 300, 600]  # 待比較的掃描間隔（秒）
 STOP_LOSS = 0.07    # 模擬用風控參數（與 full_backtest_report 的對照組一致）
@@ -116,18 +119,16 @@ def simulate_day(day_df: pd.DataFrame) -> list[dict]:
     return events
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="掃盤頻率研究（分鐘 K 模擬出場延遲 + API 用量）")
-    ap.add_argument("--days", type=int, default=30)
-    ap.add_argument("--symbols", type=str, default=settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS)
-    ap.add_argument("--bots", type=int, default=190, help="啟用中的 Bot 數（算 API 用量）")
-    args = ap.parse_args()
+def run(days: int = 30, symbols: str | None = None, bots: int = 190,
+        out_dir: Path | None = None) -> str:
+    """跑掃頻研究，落 CSV/markdown 到 out_dir，回傳 markdown 全文（M9 排程用）。"""
+    out_dir = Path(out_dir) if out_dir else default_out_dir()
+    symbols = [s.strip().upper()
+               for s in (symbols or settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS).split(",") if s.strip()]
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    print(f"抓 {len(symbols)} 檔近 {args.days} 天分鐘 K…", flush=True)
-    df = fetch_minute_bars(symbols, args.days)
+    print(f"抓 {len(symbols)} 檔近 {days} 天分鐘 K…", flush=True)
+    df = fetch_minute_bars(symbols, days)
     print(f"共 {len(df)} 根分鐘 K", flush=True)
 
     # 只留正常時段（13:30–20:00 UTC ≈ 美東 9:30–16:00，忽略 DST 邊界誤差——研究用足夠）
@@ -159,7 +160,7 @@ def main() -> int:
 
         sl_mean, sl_med, sl_p95 = stats_of(sl_events)
         tp_mean, tp_med, tp_p95 = stats_of(tp_events)
-        req_per_min = args.bots * 60 / iv  # 每 Bot 每輪至少 1 次資料請求
+        req_per_min = bots * 60 / iv  # 每 Bot 每輪至少 1 次資料請求
         rows.append({
             "interval_sec": iv,
             "sl_events": len(sl_events),
@@ -171,7 +172,7 @@ def main() -> int:
             if settings.ALPACA_RATE_LIMIT_PER_MIN else None,
         })
 
-    with open(OUT_DIR / "scan-frequency.csv", "w", newline="", encoding="utf-8-sig") as f:
+    with open(out_dir / "scan-frequency.csv", "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
@@ -183,7 +184,7 @@ def main() -> int:
         "",
         "- 本系統策略吃**日 K**，訊號一天只變一次 → **掃頻不影響進場時機**。",
         "- 掃頻只影響：(1) 風控出場延遲（觸價後等下一輪檢查的額外滑價）(2) API 用量。",
-        f"- 樣本：{len(symbols)} 檔 × 近 {args.days} 天分鐘 K，共 {n_days} 個 symbol-日、",
+        f"- 樣本：{len(symbols)} 檔 × 近 {days} 天分鐘 K，共 {n_days} 個 symbol-日、",
         f"  停損情境觸發 {len(sl_events)} 次、停利情境觸發 {len(tp_events)} 次",
         f"  （模擬開盤進場、停損 -{STOP_LOSS:.0%} / 停利 +{TAKE_PROFIT:.0%}）。",
         "- ⚠️ 艦隊現況 190 個 Bot **全部沒設停損/停利** → 現況下掃頻對出場也幾乎無影響，",
@@ -198,8 +199,20 @@ def main() -> int:
             f"| {r['tp_slip_bps_mean']} / {r['tp_slip_bps_median']} / {r['tp_slip_bps_p95']} "
             f"| {r['api_req_per_min']} | {r['api_headroom_pct']}% |"
         )
-    (OUT_DIR / "scan-frequency.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"完成：報告在 {OUT_DIR}")
+    md = "\n".join(lines)
+    (out_dir / "scan-frequency.md").write_text(md, encoding="utf-8")
+    print(f"完成：報告在 {out_dir}")
+    return md
+
+
+def main() -> int:
+    """CLI 殼：參數解析後呼叫 run()（M9 排程走 run()，CLI 行為不變）。"""
+    ap = argparse.ArgumentParser(description="掃盤頻率研究（分鐘 K 模擬出場延遲 + API 用量）")
+    ap.add_argument("--days", type=int, default=30)
+    ap.add_argument("--symbols", type=str, default=settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS)
+    ap.add_argument("--bots", type=int, default=190, help="啟用中的 Bot 數（算 API 用量）")
+    args = ap.parse_args()
+    run(days=args.days, symbols=args.symbols, bots=args.bots)
     return 0
 
 

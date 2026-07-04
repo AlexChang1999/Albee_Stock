@@ -29,7 +29,7 @@ import {
   CircularProgress,
 } from "@mui/material";
 import { api } from "../api";
-import { strategyLabel } from "../constants";
+import { strategyLabel, TIMEFRAMES, DEFAULT_TIMEFRAME } from "../constants";
 import { signOf, signedMoney } from "../utils/number";
 import { NEON } from "../theme";
 
@@ -88,6 +88,7 @@ export default function AutoBacktestPanel() {
     days: 365,
     initial_cash: 10000,
     source: "alpaca",
+    timeframe: DEFAULT_TIMEFRAME, // M3.5：K 線時間框架（M2 起後端支援 1Min~1Day）
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -126,6 +127,10 @@ export default function AutoBacktestPanel() {
     { key: "win_rate_pct", label: "勝率%" },
     { key: "max_drawdown_pct", label: "回撤%" },
     { key: "num_round_trips", label: "交易" },
+    // M3.5：walk-forward OOS 診斷欄（舊資料 null 一律沉底）
+    { key: "oos_expected_value", label: "OOS EV" },
+    { key: "overfit_gap", label: "Gap" },
+    { key: "oos_num_round_trips", label: "OOS 交易" },
   ];
 
   async function handleScan() {
@@ -138,6 +143,7 @@ export default function AutoBacktestPanel() {
         days: Number(form.days),
         initial_cash: Number(form.initial_cash),
         source: form.source,
+        timeframe: form.timeframe,
       });
       setResult(r);
     } catch (e) {
@@ -206,6 +212,16 @@ export default function AutoBacktestPanel() {
           >
             <MenuItem value="alpaca">Alpaca</MenuItem>
             <MenuItem value="yfinance">yfinance（免費）</MenuItem>
+          </TextField>
+          <TextField
+            select
+            label="K 線時間框架"
+            value={form.timeframe}
+            onChange={(e) => setForm({ ...form, timeframe: e.target.value })}
+          >
+            {TIMEFRAMES.map((tf) => (
+              <MenuItem key={tf} value={tf}>{tf}</MenuItem>
+            ))}
           </TextField>
         </Box>
 
@@ -377,6 +393,24 @@ export default function AutoBacktestPanel() {
                       </TableCell>
                       <TableCell align="right" sx={MONO}>
                         {e.num_round_trips}
+                      </TableCell>
+                      {/* M3.5：walk-forward OOS 診斷欄（舊資料/未跑 walk-forward 顯示 —） */}
+                      <TableCell align="right" sx={{ ...MONO, color: signColor(e.oos_expected_value) }}>
+                        {e.oos_expected_value ?? "—"}
+                      </TableCell>
+                      {/* 過擬合 Gap =(IS−OOS)/|IS|；>0.5 紅色警示（排名守門會把它沉底） */}
+                      <TableCell
+                        align="right"
+                        sx={{
+                          ...MONO,
+                          color: (e.overfit_gap ?? 0) > 0.5 ? NEON.red : "text.secondary",
+                          fontWeight: (e.overfit_gap ?? 0) > 0.5 ? 700 : 400,
+                        }}
+                      >
+                        {e.overfit_gap ?? "—"}
+                      </TableCell>
+                      <TableCell align="right" sx={MONO}>
+                        {e.oos_num_round_trips ?? "—"}
                       </TableCell>
                     </TableRow>
                     );

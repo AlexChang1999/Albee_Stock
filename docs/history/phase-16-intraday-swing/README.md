@@ -20,16 +20,16 @@
 | M1 | 選主鎖修復（租約制 + 定期驗鎖 + 下單第三閘 + 自動升降級） | ✅ 2026-07-02 完成 |
 | M2 | 多 timeframe 資料地基（1Min~1Day 全鏈貫穿，預設 1Day 零改動相容） | ✅ 2026-07-02 完成 |
 | M3 | Optimizer walk-forward 聚合 OOS + 排行榜擴充 + 排名守門 | ✅ 2026-07-02 完成（前端欄位顯示留 M3.5） |
-| M3.5 | 前端 BacktestRuns / StockArena 顯示新欄位 | ⬜ 未開工 |
-| M4 | 可插拔 ExitPolicy（ATR / Swing / VWAP stop + R:R） | ⬜ 未開工 |
-| M5 | 進場趨勢過濾器框架（EMA 排列 / VWAP / ADX / HH-HL / BOS / regime） | ⬜ 未開工 |
-| M6 | 大型研究矩陣批跑（timeframe × stop × R:R × filter 全比較） | ⬜ 未開工（長跑任務） |
-| M7 | RS 模組 + 股票池 38→15~20 瘦身 | ⬜ 未開工 |
-| M8 | Scanner 30 秒改造（單一掃描迴圈批次抓全池） | ⬜ 未開工（依賴 M6 定案 timeframe） |
-| M9 | 4 支報告腳本進 scheduler（每週一自動健康檢查） | ⬜ 未開工 |
-| M10 | AI Decision Layer（規則式可回測 entry gate + 動態出場） | ⬜ 未開工 |
+| M3.5 | 前端 BacktestRuns / StockArena 顯示新欄位 | ✅ 2026-07-02 完成 |
+| M4 | 可插拔 ExitPolicy（ATR / Swing / VWAP stop + R:R） | ✅ 2026-07-02 完成（Volume Profile 依約延後） |
+| M5 | 進場趨勢過濾器框架（EMA 排列 / VWAP / ADX / HH-HL / BOS / regime） | ✅ 2026-07-02 完成（框架+測試；上線與否等 M6 OOS 判定） |
+| M6 | 大型研究矩陣批跑（timeframe × stop × R:R × filter 全比較） | ✅ 2026-07-03 完成（四輪漏斗 264 格：甜蜜點 30Min~4Hour；出場政策多數輸 baseline；vwap_side 唯一普遍加分 filter。報表 `docs/reference/analysis-2026-07-03/`） |
+| M7 | RS 模組 + 股票池 38→15~20 瘦身 | ✅ 2026-07-02 完成（建議 38→20 檔已產出，等人核准改 .env） |
+| M8 | Scanner 30 秒改造（單一掃描迴圈批次抓全池） | ✅ 2026-07-03 完成（run_intraday_scan + 預取快取 + start_bot 分流；INTRADAY_SCAN_INTERVAL_SEC 預設 30、0=關；單輪耗時實測待盤中） |
+| M9 | 4 支報告腳本進 scheduler（每週一自動健康檢查） | ✅ 2026-07-02 完成（週一 08:00 台北，leader-only） |
+| M10 | AI Decision Layer（規則式可回測 entry gate + 動態出場） | ✅ 2026-07-03 完成（框架 + OOS 驗證：adaptive_exit 僅 1Day worth 4/6、日內全滅；decision_gate 無加分證據——**除 1Day 外全不掛實盤**，框架保留） |
 | M11 | 資金流因子 60 天滿期 OOS 驗證（無加分即砍） | ⬜ 等收集滿（起算 2026-07-02 前後，約 2026-09 初到期） |
-| M12 | 最終報告（timeframe/stop/R:R 比較 + 過擬合分析 + 上線組合建議） | ⬜ 未開工 |
+| M12 | 最終報告（timeframe/stop/R:R 比較 + 過擬合分析 + 上線組合建議） | ✅ 2026-07-03 完成（`scripts/final_report.py` 聚合 13 節；報告 `docs/reference/analysis-2026-07-03/final-report.md`） |
 
 ---
 

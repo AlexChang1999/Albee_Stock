@@ -34,6 +34,9 @@ desktop.ini
 # 本機 OHLCV 快取（Phase 11 step-02：parquet + meta，少打外部 API，不進版控）
 data/cache/
 
+# 研究矩陣 checkpoint（M6：斷點續跑用的中間產物；正式報表在 docs/reference/）
+data/research/
+
 # 測試 / 覆蓋率
 .coverage
 htmlcov/

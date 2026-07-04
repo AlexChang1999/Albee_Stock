@@ -25,6 +25,7 @@ Phase 6 設計重點：
 
 import math
 import threading
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -47,9 +48,11 @@ from backend.services.alpaca_client import alpaca_client
 from backend.services.bot_activity import emit as emit_activity, safe_float
 from backend.services.circuit_breaker import check_breaker
 from backend.services.notifier import notify
+from backend.services.exit_policies import ExitPlan, get_exit_policy
 from backend.services.protective_orders import (
     order_matches_plan,
     plan_protective_order,
+    protective_order_from_exit_plan,
     whole_share_qty,
 )
 from backend.services.decision_context import (
@@ -58,7 +61,7 @@ from backend.services.decision_context import (
     compute_market_snapshot,
 )
 from backend.services.indicator_overlays import compute_overlays
-from backend.services.risk_manager import check_exit
+from backend.services.risk_manager import check_exit, check_exit_plan
 from backend.strategies import get_strategy, Signal
 from backend.strategies.lookback import required_lookback_days
 
@@ -110,6 +113,114 @@ _ET = ZoneInfo("America/New_York")
 # 幾乎同時觸發買進時可能各自查到「購買力足夠」而一起送單，實際總曝險超過預期。
 _buy_lock = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# M8：日內單一掃描迴圈的「批次預取快取」
+# ---------------------------------------------------------------------------
+# run_intraday_scan 每輪先批次抓好（K 線 / 最新價 / 持倉），逐 bot 派發時
+# run_bot_once / _run_strategy 優先吃這份快取 → 38 bot 一輪只打 ~3 次 API。
+# 快取過期（非掃描迴圈觸發，例如 1Day bot 的 per-bot job / 手動 /run）→
+# 自動退回原本的單檔 REST 路徑，行為與 M8 之前完全一致。
+_scan_lock = threading.Lock()
+_scan_prefetch: dict = {"bars": {}, "prices": {}, "positions": None, "at": 0.0}
+
+
+def _prefetch_fresh() -> bool:
+    """預取快取還新鮮嗎（掃描間隔的 2 倍內；掃描關閉時恆 False）。"""
+    interval = settings.INTRADAY_SCAN_INTERVAL_SEC
+    if interval <= 0:
+        return False
+    return (time.monotonic() - _scan_prefetch["at"]) <= interval * 2
+
+
+def _prefetched_bars(symbol: str, timeframe: str):
+    """掃描迴圈剛抓的 K 線（無 / 過期 → None，呼叫端走單檔舊路徑）。"""
+    with _scan_lock:
+        if not _prefetch_fresh():
+            return None
+        return _scan_prefetch["bars"].get((symbol.upper(), timeframe))
+
+
+def _prefetched_price(symbol: str):
+    """掃描迴圈剛抓的最新價（無 / 過期 → None）。"""
+    with _scan_lock:
+        if not _prefetch_fresh():
+            return None
+        return _scan_prefetch["prices"].get(symbol.upper())
+
+
+def _prefetched_position(symbol: str) -> tuple[bool, object]:
+    """掃描迴圈剛抓的持倉。回 (命中, 持倉物件或 None)——
+    positions 是「整包」快照，命中且查無此檔＝真的空手（None 是有效答案）。"""
+    with _scan_lock:
+        positions = _scan_prefetch["positions"]
+        if not _prefetch_fresh() or positions is None:
+            return False, None
+        return True, positions.get(symbol.upper())
+
+
+def run_intraday_scan() -> None:
+    """M8 單一掃描迴圈：批次抓全池 → 逐 bot 派發（僅日內 timeframe 的啟用 Bot）。
+
+    請求數：每輪「每個 timeframe 1 次 get_bars_multi + 1 次 latest_prices +
+    1 次 list_positions」——38 bot × 30 秒從 76+ req/min 降到 ~6 req/min。
+    休市直接返回（不逐 bot 記 DecisionLog：每 30 秒 × N bot 會灌爆審計表；
+    1Day bot 的 per-bot job 照舊記休市，審計語意不變）。
+    """
+    db = SessionLocal()
+    try:
+        bots = db.query(Bot).filter(Bot.is_active.is_(True)).all()
+    finally:
+        db.close()
+    intraday = [b for b in bots if (getattr(b, "timeframe", None) or "1Day") != "1Day"]
+    if not intraday:
+        return
+    if not alpaca_client.is_market_open():
+        return
+
+    t0 = time.monotonic()
+    # 1) K 線：同 timeframe 一桶、回看天數取該桶最大值（批次一次抓齊）
+    bars: dict = {}
+    groups: dict[str, list] = {}
+    for b in intraday:
+        groups.setdefault(b.timeframe, []).append(b)
+    for tf, group in groups.items():
+        days = max(required_lookback_days(b.strategy, b.params or {}, timeframe=tf)
+                   for b in group)
+        symbols = sorted({b.symbol.upper() for b in group})
+        try:
+            fetched = market_data.get_bars_multi(
+                symbols, days=days, source=settings.DATA_SOURCE, timeframe=tf)
+        except Exception:
+            fetched = {}  # 批次失敗 → 這輪快取留空，逐 bot 退回單檔路徑（不全滅）
+        for sym, df in fetched.items():
+            bars[(sym.upper(), tf)] = df
+
+    # 2) 最新價 + 持倉：各一次批次請求（失敗 → 逐 bot 自查）
+    all_symbols = sorted({b.symbol.upper() for b in intraday})
+    try:
+        prices = alpaca_client.get_latest_prices(all_symbols)
+    except Exception:
+        prices = {}
+    try:
+        positions = {str(p.symbol).upper(): p for p in alpaca_client.list_positions()}
+    except Exception:
+        positions = None  # None = 整包不可信，_prefetched_position 回未命中
+
+    with _scan_lock:
+        _scan_prefetch.update(
+            {"bars": bars, "prices": prices, "positions": positions, "at": time.monotonic()})
+
+    # 3) 逐 bot 派發（run_bot_once 內部優先吃預取快取；訊號只用已收完 bar——
+    #    _drop_unclosed_today_bar 的日內分支會砍掉最後一根未收完的 bar）
+    for b in intraday:
+        run_bot_once(b.id)
+
+    elapsed = time.monotonic() - t0
+    print(f"[M8] 日內掃描 {len(intraday)} bot 完成，耗時 {elapsed:.1f}s")
+    if elapsed > max(settings.INTRADAY_SCAN_INTERVAL_SEC, 1):
+        notify(f"⚠️ 日內掃描單輪耗時 {elapsed:.1f}s 已超過間隔 "
+               f"{settings.INTRADAY_SCAN_INTERVAL_SEC}s，考慮加大間隔或縮池。")
+
 
 def _drop_unclosed_today_bar(df, market_is_open: bool, timeframe: str = "1Day"):
     """live 交易只信「已收完」的 K 棒。
@@ -156,6 +267,75 @@ def _persist_peak(bot: Bot, peak: float | None) -> None:
     bot.peak_price = peak
 
 
+def _persist_exit_plan(bot: Bot, plan: dict | None) -> None:
+    """把某 Bot 的「出場計畫」（ExitPlan.to_dict()）寫回資料庫（None 代表清除）。
+
+    與 _persist_peak 同款：ATR/swing 的 stop 是進場當下算的，存 DB 後端重啟
+    才不會用「現在的指標」重算而漂移。查不到列（測試假物件）就靜默跳過。
+    """
+    db = SessionLocal()
+    try:
+        row = db.query(Bot).filter(Bot.id == bot.id).first()
+        if row is not None:
+            row.exit_plan = plan
+            db.commit()
+    finally:
+        db.close()
+    bot.exit_plan = plan
+
+
+def _compute_entry_plan(bot: Bot, df, entry_price: float) -> ExitPlan | None:
+    """進場當下用 Bot 的出場政策算 ExitPlan（M4）。
+
+    df 用「這一輪跑訊號的同一份 K 線」（回測=實盤鐵則：同資料算 stop）。
+    沒設政策 / 沒 df / 政策算不出來 → None（呼叫端退回舊 % 欄位路徑或不掛保護）。
+    """
+    key = getattr(bot, "exit_policy_key", None)
+    if not key:
+        return None
+    if df is None or getattr(df, "empty", True):
+        notify(f"⚠️ [{bot.name}] 出場政策 {key} 拿不到 K 線算 stop，本輪僅靠券商端/舊風控守備。")
+        return None
+    try:
+        policy = get_exit_policy(key, getattr(bot, "exit_policy_params", None))
+        return policy.on_entry(df, len(df) - 1, entry_price)
+    except Exception as e:
+        notify(f"⚠️ [{bot.name}] 出場政策 {key} 計算失敗（{e}），本輪不設政策出場。")
+        return None
+
+
+def _update_exit_plan_on_bar(bot: Bot, df) -> None:
+    """持倉中逐輪讓動態政策（如 vwap）更新出場計畫；靜態政策 on_bar 回原 plan、零寫入。
+
+    注意時序：本輪的出場檢查用「上一輪存的 plan」、檢查完才更新——
+    與回測引擎「當根檢查用前面 bar 為止的資訊」同精神，慢一輪但不偷看。
+    """
+    key = getattr(bot, "exit_policy_key", None)
+    plan_dict = getattr(bot, "exit_plan", None)
+    if not key or not plan_dict or df is None or getattr(df, "empty", True):
+        return
+    try:
+        policy = get_exit_policy(key, getattr(bot, "exit_policy_params", None))
+        plan = ExitPlan.from_dict(plan_dict)
+        new_plan = policy.on_bar(df, len(df) - 1, plan,
+                                 {"entry_price": None, "peak_price": bot.peak_price})
+        if new_plan.to_dict() != plan_dict:
+            _persist_exit_plan(bot, new_plan.to_dict())
+    except Exception:
+        pass  # 更新失敗沿用舊 plan（保護不中斷），下一輪再試
+
+
+def _broker_plan_for(bot: Bot, entry_price: float) -> dict | None:
+    """算「券商端該掛什麼保護單」：有出場政策走 ExitPlan、沒有走舊 % 欄位。"""
+    if getattr(bot, "exit_policy_key", None):
+        return protective_order_from_exit_plan(getattr(bot, "exit_plan", None))
+    return plan_protective_order(
+        entry_price,
+        stop_loss_pct=bot.stop_loss_pct,
+        trailing_stop_pct=bot.trailing_stop_pct,
+    )
+
+
 def _persist_protective_order_id(bot: Bot, order_id: str | None) -> None:
     """把某 Bot 的「券商端保護單 id」寫回資料庫（None 代表清除）。
 
@@ -193,11 +373,7 @@ def _place_protective_order(bot: Bot, qty: float, entry_price: float) -> None:
     """
     if not settings.BROKER_STOP_ENABLED:
         return
-    plan = plan_protective_order(
-        entry_price,
-        stop_loss_pct=bot.stop_loss_pct,
-        trailing_stop_pct=bot.trailing_stop_pct,
-    )
+    plan = _broker_plan_for(bot, entry_price)  # 出場政策走 ExitPlan、否則舊 % 欄位
     if plan is None:
         return  # 沒設止損/追蹤止損 → 不掛（止盈 v1 仍走本機輪詢）
     try:
@@ -226,11 +402,7 @@ def _ensure_protective_order(bot: Bot, position) -> None:
         return
     try:
         entry_price = float(position.avg_entry_price)
-        plan = plan_protective_order(
-            entry_price,
-            stop_loss_pct=bot.stop_loss_pct,
-            trailing_stop_pct=bot.trailing_stop_pct,
-        )
+        plan = _broker_plan_for(bot, entry_price)  # 出場政策走 ExitPlan、否則舊 % 欄位
         if plan is None:
             # 風控設定被拿掉 → 不需要保護單；還掛著就撤
             if bot.protective_order_id:
@@ -303,6 +475,8 @@ def _settle_broker_exit(bot: Bot) -> bool:
                              total_amount=qty * price, position_after=_position_after(bot))
             _persist_peak(bot, None)
             _persist_protective_order_id(bot, None)
+            if getattr(bot, "exit_plan", None) is not None:
+                _persist_exit_plan(bot, None)  # 券商端已出場，出場計畫一併清
             return True
         # 沒成交卻空手（撤單/過期/人工平倉）：保護單已無意義，撤掉 + 清 id
         alpaca_client.cancel_order(order_id)
@@ -310,6 +484,37 @@ def _settle_broker_exit(bot: Bot) -> bool:
     except Exception:
         pass  # 查不到先不動，下一輪再試（best-effort）
     return False
+
+
+def run_weekly_reports() -> None:
+    """每週一報告批跑（Phase 16 M9）：4 支報告依序 run()，摘要推播、全文落當日 analysis 夾。
+
+    順序有依賴：full_backtest 先產 backtest-champions.csv，stock_pool 體檢要讀它。
+    單支失敗不擋後面的（各自 try），失敗也推播——沉默的失敗比失敗本身更危險。
+    延遲 import：scripts 各檔 import 很重（pandas/alpaca），別拖慢後端開機。
+    """
+    from scripts import (  # noqa: PLC0415
+        full_backtest_report,
+        fund_flow_report,
+        scan_frequency_study,
+        stock_pool_report,
+    )
+
+    out_dir = full_backtest_report.default_out_dir()  # 四支落同一個當日夾
+    jobs = [
+        ("全池回測", lambda: full_backtest_report.run(out_dir=out_dir)),
+        ("資金流分析", lambda: fund_flow_report.run(out_dir=out_dir)),
+        ("股票池體檢+瘦身建議", lambda: stock_pool_report.run(out_dir=out_dir)),
+        ("掃頻研究", lambda: scan_frequency_study.run(out_dir=out_dir)),
+    ]
+    for name, fn in jobs:
+        try:
+            md = fn()
+            # 推播只帶摘要頭（前 12 行）；全文在報告檔，通知塞全文會被平台截爛
+            digest = "\n".join(md.splitlines()[:12])
+            notify(f"📊 週報「{name}」完成（全文：docs/reference/{out_dir.name}/）\n{digest}")
+        except Exception as e:
+            notify(f"⚠️ 週報「{name}」失敗：{e}")
 
 
 def _mark_checked(bot: Bot) -> None:
@@ -497,10 +702,14 @@ def run_bot_once(bot_id: int, ignore_market_hours: bool = False) -> None:
             _emit_cycle_end(bot, "skipped_market_closed")
             return
 
-        # --- 2. 查目前持倉與現價 ---
+        # --- 2. 查目前持倉與現價（M8：掃描迴圈剛批次抓過就吃快取，過期退回單檔 REST）---
         emit_activity(bot, "fetch_data", f"查詢 {bot.symbol} 持倉與現價")
-        position = alpaca_client.get_position(bot.symbol)
-        current_price = alpaca_client.get_latest_price(bot.symbol)
+        hit, position = _prefetched_position(bot.symbol)
+        if not hit:
+            position = alpaca_client.get_position(bot.symbol)
+        current_price = _prefetched_price(bot.symbol)
+        if current_price is None:
+            current_price = alpaca_client.get_latest_price(bot.symbol)
 
         # 空手但 DB 記著券商端保護單 id → 多半是託管止損在本機不在場時成交了，
         # 先回填交易/決策紀錄（維運安全軌 H1），再照常走空手分支。
@@ -552,14 +761,26 @@ def _handle_holding(bot: Bot, position, current_price: float, market_is_open: bo
 
     # --- 風控出場判斷（止損 → 追蹤止損 → 止盈）---
     emit_activity(bot, "risk_check", "風控檢查中（止損→追蹤止損→止盈）")
-    should_exit, exit_reason = check_exit(
-        entry_price=entry_price,
-        current_price=current_price,
-        peak_price=peak,
-        take_profit_pct=bot.take_profit_pct,
-        stop_loss_pct=bot.stop_loss_pct,
-        trailing_stop_pct=bot.trailing_stop_pct,
-    )
+    exit_plan = getattr(bot, "exit_plan", None)
+    if getattr(bot, "exit_policy_key", None) and exit_plan:
+        # M4 出場政策路徑：吃進場當下持久化的 ExitPlan（絕對觸價，不隨現在的指標漂移）
+        should_exit, exit_reason = check_exit_plan(
+            entry_price=entry_price,
+            current_price=current_price,
+            peak_price=peak,
+            stop_price=exit_plan.get("stop_price"),
+            target_price=exit_plan.get("target_price"),
+            trailing_pct=exit_plan.get("trailing_pct"),
+        )
+    else:
+        should_exit, exit_reason = check_exit(
+            entry_price=entry_price,
+            current_price=current_price,
+            peak_price=peak,
+            take_profit_pct=bot.take_profit_pct,
+            stop_loss_pct=bot.stop_loss_pct,
+            trailing_stop_pct=bot.trailing_stop_pct,
+        )
     if should_exit:
         # 本機出場前先撤券商端保護單（掛著的 stop 會保留股數，不撤市價賣會被拒）。
         # 撤不掉 = 券商端剛好已成交 → 放棄本機賣出，下一輪由 _settle_broker_exit 回填帳。
@@ -575,6 +796,8 @@ def _handle_holding(bot: Bot, position, current_price: float, market_is_open: bo
                          exit_kind=exit_kind, thesis_breach=thesis,
                          total_amount=qty * current_price, position_after=_position_after(bot))
         _persist_peak(bot, None)  # 已平倉，清掉最高價紀錄
+        if getattr(bot, "exit_plan", None) is not None:
+            _persist_exit_plan(bot, None)  # 出場計畫跟著持倉走，平倉即清
         return
 
     # --- 風控沒觸發 → 看策略要不要賣 ---
@@ -601,8 +824,12 @@ def _handle_holding(bot: Bot, position, current_price: float, market_is_open: bo
                          exit_kind=exit_kind, thesis_breach=thesis,
                          total_amount=qty * current_price, position_after=_position_after(bot))
         _persist_peak(bot, None)
+        if getattr(bot, "exit_plan", None) is not None:
+            _persist_exit_plan(bot, None)  # 出場計畫跟著持倉走，平倉即清
     else:
         # 策略買進/觀望且風控未觸發 → 續抱（不重複買進）
+        # 動態出場政策（如 vwap）用這一輪的 K 線更新計畫（下一輪檢查吃新 stop，不偷看）
+        _update_exit_plan_on_bar(bot, ctx.get("df"))
         print(f"[{bot.name}] 續抱 {bot.symbol}：{reason}")
         _record_decision(bot, signal, reason, current_price, ACTION_HOLD,
                          volume=vol, indicators=inds, market_snapshot=snap, strategy=strat)
@@ -610,9 +837,11 @@ def _handle_holding(bot: Bot, position, current_price: float, market_is_open: bo
 
 def _handle_flat(bot: Bot, current_price: float, market_is_open: bool) -> None:
     """空手中：跑策略，出現買進訊號 → 先過組合層守門（熔斷 / 購買力）才進場。"""
-    # 沒持倉，確保沒有殘留的最高價（只在原本有值時才寫 DB，省一次無謂的 commit）
+    # 沒持倉，確保沒有殘留的最高價 / 出場計畫（只在原本有值時才寫 DB，省無謂的 commit）
     if bot.peak_price is not None:
         _persist_peak(bot, None)
+    if getattr(bot, "exit_plan", None) is not None:
+        _persist_exit_plan(bot, None)
 
     # ctx（量 + 指標快照）是選用第三元素，沿用容錯：測試 monkeypatch 回 2-tuple 時 ctx 為空
     signal, reason, *rest = _run_strategy(bot, market_is_open)
@@ -633,14 +862,22 @@ def _handle_flat(bot: Bot, current_price: float, market_is_open: bool) -> None:
                          market_snapshot=snap, strategy=strat)
         return
 
+    # 出場政策（M4）：進場前先用「這一輪跑訊號的同一份 K 線」算好出場計畫
+    # （market order 實際成交價未知，與舊路徑同樣以 current_price 當進場價近似）。
+    entry_plan = _compute_entry_plan(bot, ctx.get("df"), current_price)
+
     # 用設定金額換算要買幾股。
     # 會掛券商端保護單的 Bot 必須買「整股」（Alpaca 的 stop/trailing 單不支援碎股）；
     # 沒掛保護單需求的維持碎股（保留 4 位小數），行為與舊版一致。
-    needs_protection = settings.BROKER_STOP_ENABLED and plan_protective_order(
-        current_price,
-        stop_loss_pct=bot.stop_loss_pct,
-        trailing_stop_pct=bot.trailing_stop_pct,
-    ) is not None
+    if getattr(bot, "exit_policy_key", None):
+        broker_plan = protective_order_from_exit_plan(entry_plan.to_dict() if entry_plan else None)
+    else:
+        broker_plan = plan_protective_order(
+            current_price,
+            stop_loss_pct=bot.stop_loss_pct,
+            trailing_stop_pct=bot.trailing_stop_pct,
+        )
+    needs_protection = settings.BROKER_STOP_ENABLED and broker_plan is not None
     if needs_protection:
         qty = whole_share_qty(bot.trade_amount, current_price)
         if qty <= 0:
@@ -684,6 +921,9 @@ def _handle_flat(bot: Bot, current_price: float, market_is_open: bool) -> None:
                      target_price=target_price, stop_price=stop_price,
                      total_amount=qty * current_price, position_after=_position_after(bot))
     _persist_peak(bot, current_price)  # 進場價當作最高價的起點
+    if entry_plan is not None:
+        # 出場計畫持久化（要在掛保護單前寫入：_broker_plan_for 讀的是 bot.exit_plan）
+        _persist_exit_plan(bot, entry_plan.to_dict())
     if needs_protection:
         # 把止損託管到券商端（失敗不擋主流程，下一輪自癒補掛）
         _place_protective_order(bot, qty, current_price)
@@ -715,8 +955,12 @@ def _run_strategy(bot: Bot, market_is_open: bool):
     # 回測=實盤鐵則：抓資料用 Bot 自己的 timeframe（與回測驗證同一粒度，不可分岔）
     tf = getattr(bot, "timeframe", None) or "1Day"
     days = required_lookback_days(bot.strategy, bot.params or {}, timeframe=tf)
-    emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 {tf} K 線")
-    df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE, timeframe=tf)
+    # M8：掃描迴圈剛批次抓過同 (symbol, timeframe) 就直接用（回看天數是該桶最大值，必夠）；
+    # 快取過期 / 非掃描觸發 → 原本的單檔路徑，行為不變。
+    df = _prefetched_bars(bot.symbol, tf)
+    if df is None:
+        emit_activity(bot, "fetch_data", f"抓取 {bot.symbol} 最近 {days} 天 {tf} K 線")
+        df = market_data.get_bars(bot.symbol, days=days, source=settings.DATA_SOURCE, timeframe=tf)
     df = _drop_unclosed_today_bar(df, market_is_open, timeframe=tf)
     if df.empty:
         return Signal.HOLD, f"抓不到 {bot.symbol} 的資料", {}
@@ -731,7 +975,9 @@ def _run_strategy(bot: Bot, market_is_open: bool):
     ctx = {"volume": _bar_volume(df),
            "indicators": _indicator_snapshot(bot.strategy, bot.params or {}, df),
            "market_snapshot": compute_market_snapshot(df),
-           "strategy": bot.strategy}
+           "strategy": bot.strategy,
+           # M4 出場政策要用同一份 K 線算 stop（回測=實盤：同資料同 stop）
+           "df": df}
 
     # meta 二級過濾：只把關進場（BUY）。流程與 layer_validation.MetaFilteredStrategy
     # 一致，線上行為才等於樣本外驗證量到的那條（+27.8 OOS EV）。SELL/HOLD 不受影響。
@@ -866,6 +1112,13 @@ class BotManager:
         # 若已存在同 id 的工作，先移除避免重複
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
+        # M8：日內 timeframe 的 Bot 併入單一掃描迴圈（不各掛 per-bot job，省 API 配額）；
+        # 1Day Bot 照舊 per-bot job（300s 甜蜜點不變）。掃描關閉（interval=0）時退回舊行為。
+        tf = getattr(bot, "timeframe", None) or "1Day"
+        if tf != "1Day" and settings.INTRADAY_SCAN_INTERVAL_SEC > 0:
+            notify(f"▶️ Bot 已啟動：{bot.name}（日內 {tf}，併入 "
+                   f"{settings.INTRADAY_SCAN_INTERVAL_SEC} 秒單一掃描迴圈）")
+            return
         self.scheduler.add_job(
             run_bot_once,
             "interval",
@@ -942,6 +1195,48 @@ class BotManager:
             "interval",
             minutes=interval_minutes,
             id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_intraday_scan(self, interval_seconds: int) -> None:
+        """
+        掛上「日內單一掃描迴圈」的週期工作（Phase 16 M8）。
+
+        每 interval_seconds 秒跑一次 run_intraday_scan：批次抓全池 K 線/報價/持倉
+        → 逐 bot 派發。interval_seconds <= 0 代表關閉：移除既有 job（若有）並返回
+        （日內 Bot 會在 start_bot 退回 per-bot job）。只在 leader 掛
+        （main.py _promote_to_leader），降級時隨 unschedule_outbound_jobs 卸下。
+        """
+        job_id = "intraday_scan"
+        if interval_seconds <= 0:
+            if self.scheduler.get_job(job_id):
+                self.scheduler.remove_job(job_id)
+            return
+        self.scheduler.add_job(
+            run_intraday_scan,
+            "interval",
+            seconds=interval_seconds,
+            id=job_id,
+            replace_existing=True,
+        )
+
+    def schedule_weekly_reports(self) -> None:
+        """
+        掛上「每週一 08:00（台北）自動跑 4 支報告腳本」的定時工作（Phase 16 M9）。
+
+        依序跑 full_backtest_report → fund_flow_report → stock_pool_report →
+        scan_frequency_study（順序有依賴：股票池體檢要讀全池回測的冠軍檔）。
+        摘要走 notify 推播、全文落 docs/reference/analysis-<當日>/。
+        只在 leader 掛（main.py _promote_to_leader），降級時隨 unschedule_outbound_jobs 卸下。
+        """
+        self.scheduler.add_job(
+            run_weekly_reports,
+            "cron",
+            day_of_week="mon",
+            hour=8,
+            minute=0,
+            timezone="Asia/Taipei",
+            id="weekly_reports",
             replace_existing=True,
         )
 

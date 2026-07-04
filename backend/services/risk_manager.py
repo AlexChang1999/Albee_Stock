@@ -69,3 +69,47 @@ def check_exit(
 
     # 三條都沒成立 → 續抱
     return False, None
+
+
+def check_exit_plan(
+    entry_price: float,
+    current_price: float,
+    peak_price: float | None = None,
+    *,
+    stop_price: float | None = None,
+    target_price: float | None = None,
+    trailing_pct: float | None = None,
+) -> tuple[bool, str | None]:
+    """
+    依「出場計畫（ExitPlan）」判斷是否平倉——M4 可插拔出場政策的實盤側。
+
+    與 check_exit 的差別：check_exit 吃「百分比門檻」現場算觸價；
+    這裡吃「絕對觸價」（政策在進場當下算好、持久化在 bot.exit_plan），
+    ATR/swing 的 stop 才不會被「現在的指標值」重算而漂移。
+    判斷順序與回測引擎、check_exit 完全一致：停損 → 追蹤止損 → 停利（回測=實盤鐵則）。
+
+    :param stop_price: 停損觸價（絕對價位；None = 不啟用）
+    :param target_price: 停利觸價（絕對價位；None = 不啟用）
+    :param trailing_pct: 追蹤止損回檔比例（小數；None = 不啟用）
+    """
+    if not entry_price or not current_price or entry_price <= 0:
+        return False, None
+
+    # 1) 停損：跌破計畫觸價（保本優先，最先判）
+    if stop_price is not None and current_price <= stop_price:
+        return True, f"政策停損（現價 {current_price:.2f} ≤ 計畫 stop {stop_price:.2f}）"
+
+    # 2) 追蹤止損：從持倉最高價回落超過門檻
+    if trailing_pct is not None and peak_price:
+        trail_price = peak_price * (1 - trailing_pct)
+        if current_price <= trail_price:
+            return True, (
+                f"政策追蹤止損 -{trailing_pct * 100:.1f}%"
+                f"（最高 {peak_price:.2f} → 現價 {current_price:.2f} ≤ {trail_price:.2f}）"
+            )
+
+    # 3) 停利：漲到計畫觸價
+    if target_price is not None and current_price >= target_price:
+        return True, f"政策停利（現價 {current_price:.2f} ≥ 計畫 target {target_price:.2f}）"
+
+    return False, None

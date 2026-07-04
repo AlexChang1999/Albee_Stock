@@ -30,7 +30,7 @@
 import csv
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,18 +50,34 @@ from backend.database import SessionLocal  # noqa: E402
 from backend.services import bar_cache  # noqa: E402
 from backend.services.backtest_engine import run_backtest  # noqa: E402
 from backend.services.regime_features import compute_features  # noqa: E402
+from backend.services.relative_strength import rs_scores  # noqa: E402
+from backend.services.sectors import sector_label, sector_of  # noqa: E402
 
-OUT_DIR = ROOT / "docs" / "reference" / "analysis-2026-07-02"
-CHAMPIONS_CSV = OUT_DIR / "backtest-champions.csv"
 FALSE_BREAKOUT_MAX_BARS = 3  # 進場後 ≤N 根就虧損出場 = 假突破
 
+# M7 瘦身參數（透明、可調）：同 sector 只留 RS 綜合分最強前 N 檔；整體上限
+RS_KEEP_PER_SECTOR = 3
+POOL_TARGET_MAX = 20
+RS_BENCHMARK = "SPY"
 
-def load_champions() -> dict[str, dict]:
-    if not CHAMPIONS_CSV.exists():
-        print(f"找不到 {CHAMPIONS_CSV}，請先跑 scripts/full_backtest_report.py")
-        sys.exit(1)
+
+def default_out_dir() -> Path:
+    """報告輸出夾：docs/reference/analysis-<今天>（M9 週跑每次落在當日夾）。"""
+    return ROOT / "docs" / "reference" / f"analysis-{date.today().isoformat()}"
+
+
+def load_champions(champions_csv: Path) -> dict[str, dict]:
+    if not champions_csv.exists():
+        # 找不到當日的 → 退回最近一份 analysis-*/backtest-champions.csv（週跑順序保險）
+        candidates = sorted((ROOT / "docs" / "reference").glob("analysis-*/backtest-champions.csv"))
+        if not candidates:
+            raise FileNotFoundError(
+                f"找不到 {champions_csv}（也無任何歷史 backtest-champions.csv），"
+                "請先跑 scripts/full_backtest_report.py")
+        champions_csv = candidates[-1]
+        print(f"（用最近一份冠軍檔：{champions_csv}）")
     out = {}
-    with open(CHAMPIONS_CSV, encoding="utf-8-sig") as f:
+    with open(champions_csv, encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
             out[row["symbol"]] = row
     return out
@@ -117,10 +133,12 @@ def fit_verdicts(db) -> dict[str, dict]:
     return out
 
 
-def main() -> int:
+def run(out_dir: Path | None = None, champions_csv: Path | None = None) -> str:
+    """跑股票池體檢 + M7 RS 瘦身建議，落檔到 out_dir，回傳 markdown 全文（M9 排程用）。"""
+    out_dir = Path(out_dir) if out_dir else default_out_dir()
     symbols = [s.strip().upper() for s in settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS.split(",") if s.strip()]
-    champions = load_champions()
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    champions = load_champions(Path(champions_csv) if champions_csv else out_dir / "backtest-champions.csv")
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     db = SessionLocal()
     try:
@@ -128,6 +146,12 @@ def main() -> int:
         fits = fit_verdicts(db)
     finally:
         db.close()
+
+    # M7 相對強度基準（SPY 日 K）；抓不到就整批 RS 缺值（誠實 None，不擋體檢主流程）
+    try:
+        bench_df = bar_cache.get_bars_cached(RS_BENCHMARK, days=120, source=settings.DATA_SOURCE)
+    except Exception:
+        bench_df = None
 
     rows = []
     for i, sym in enumerate(symbols, 1):
@@ -148,11 +172,14 @@ def main() -> int:
             except Exception as e:
                 print(f"  ⚠️ 重跑失敗：{e}")
 
-        # 市場狀態特徵（近 120 天）
+        # 市場狀態特徵（近 120 天）+ M7 相對強度（vs SPY，1/5/20 日多窗口）
         feats = {}
+        rs = {"rs_1": None, "rs_5": None, "rs_20": None, "rs_composite": None}
         try:
             df = bar_cache.get_bars_cached(sym, days=120, source=settings.DATA_SOURCE)
             feats = compute_features(df)
+            if bench_df is not None:
+                rs = rs_scores(df, bench_df)
         except Exception:
             pass
 
@@ -174,6 +201,9 @@ def main() -> int:
 
         rows.append({
             "symbol": sym, "tier": tier,
+            "sector": sector_of(sym),
+            "rs_1": rs.get("rs_1"), "rs_5": rs.get("rs_5"),
+            "rs_20": rs.get("rs_20"), "rs_composite": rs.get("rs_composite"),
             "champion": c["strategy"] if c else None,
             "oos_ev": oos_ev,
             "oos_round_trips": oos_rts,
@@ -190,7 +220,7 @@ def main() -> int:
             "trend_strength": feats.get("trend_strength"),
         })
 
-    with open(OUT_DIR / "stock-pool.csv", "w", newline="", encoding="utf-8-sig") as fh:
+    with open(out_dir / "stock-pool.csv", "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
@@ -198,6 +228,28 @@ def main() -> int:
     tiers: dict[str, list] = {}
     for r in rows:
         tiers.setdefault(r["tier"], []).append(r["symbol"])
+
+    # ---------- M7 池瘦身建議（同 sector 只留 RS 綜合分最強前 N）----------
+    # 規則（透明、可調）：
+    #   1. 候選 = OOS EV > 0（核心池 + 觀察池；樣本外沒有正期望的不值得佔名額）
+    #   2. 指數 ETF（sector=index）直接進候選、不佔個股 sector 名額（市場基準要留著）
+    #   3. 個股依 sector 分組，各組依 rs_composite 由高到低留前 RS_KEEP_PER_SECTOR 檔
+    #   4. 合併後超過 POOL_TARGET_MAX → 核心池優先、再依 rs_composite 高者優先截斷
+    eligible = [r for r in rows if (r["oos_ev"] or 0) > 0]
+    index_keep = [r for r in eligible if r["sector"] == "index"]
+    by_sector: dict[str, list] = {}
+    for r in eligible:
+        if r["sector"] != "index":
+            by_sector.setdefault(r["sector"], []).append(r)
+    sector_keep: list[dict] = []
+    for sec, group in by_sector.items():
+        group.sort(key=lambda x: (x["rs_composite"] is None, -(x["rs_composite"] or 0)))
+        sector_keep += group[:RS_KEEP_PER_SECTOR]
+    suggested = index_keep + sector_keep
+    suggested.sort(key=lambda x: (0 if x["tier"] == "核心池" else 1,
+                                  x["rs_composite"] is None, -(x["rs_composite"] or 0)))
+    suggested = suggested[:POOL_TARGET_MAX]
+    suggested_symbols = [r["symbol"] for r in suggested]
 
     lines = [
         "# 股票池體檢報告",
@@ -210,19 +262,54 @@ def main() -> int:
         "分層規則：核心 = OOS EV>0 **且 OOS round trips ≥ 3**（1~2 筆的 100% 勝率是小樣本噪音）"
         "且假突破率<40% 且有訊號活動；觀察 = OOS EV>0 其餘不滿足；剔除 = OOS EV≤0（樣本外無正期望）。",
         "",
-        "| symbol | 分層 | 冠軍策略 | OOS EV | OOS交易數 | OOS勝率% | 年交易次數 | 假突破率% | 30天實盤 buy/sell | fit good/poor | 量比 | 波動20d |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| symbol | 分層 | 產業 | RS綜合 | RS 1/5/20日 | 冠軍策略 | OOS EV | OOS交易數 | OOS勝率% | 年交易次數 | 假突破率% | 30天實盤 buy/sell | 量比 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in sorted(rows, key=lambda x: (x["oos_ev"] is None, -(x["oos_ev"] or 0))):
         vr = f"{r['volume_ratio']:.2f}" if r["volume_ratio"] is not None else "-"
-        vol = f"{r['volatility_20d']:.2f}" if r["volatility_20d"] is not None else "-"
         lines.append(
-            f"| {r['symbol']} | {r['tier']} | {r['champion']} | {r['oos_ev']} | {r['oos_round_trips']} "
+            f"| {r['symbol']} | {r['tier']} | {sector_label(r['sector'])} | {r['rs_composite']} "
+            f"| {r['rs_1']}/{r['rs_5']}/{r['rs_20']} | {r['champion']} | {r['oos_ev']} | {r['oos_round_trips']} "
             f"| {r['oos_win_rate_pct']} | {r['trades_per_year']} | {r['false_breakout_pct']} "
-            f"| {r['live_buy_30d']}/{r['live_sell_30d']} | {r['fit_good']}/{r['fit_poor']} | {vr} | {vol} |"
+            f"| {r['live_buy_30d']}/{r['live_sell_30d']} | {vr} |"
         )
-    (OUT_DIR / "stock-pool.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"完成：報告在 {OUT_DIR}")
+
+    lines += [
+        "",
+        f"## M7 池瘦身建議（{len(symbols)} → {len(suggested_symbols)} 檔）",
+        "",
+        f"規則：OOS EV>0 才有資格；指數 ETF 保留；個股**同 sector 只留 RS 綜合分前 "
+        f"{RS_KEEP_PER_SECTOR} 檔**（RS = 1/5/20 日「報酬 − SPY 報酬」的平均）；"
+        f"總數上限 {POOL_TARGET_MAX}（核心池優先）。",
+        "",
+        "| symbol | 分層 | 產業 | RS綜合 | OOS EV | 入選理由 |",
+        "|---|---|---|---|---|---|",
+    ] + [
+        f"| {r['symbol']} | {r['tier']} | {sector_label(r['sector'])} | {r['rs_composite']} "
+        f"| {r['oos_ev']} | {'指數ETF保留' if r['sector'] == 'index' else f'{sector_label(r['sector'])} RS 前 {RS_KEEP_PER_SECTOR}'} |"
+        for r in suggested
+    ] + [
+        "",
+        "建議的 `.env` 值（**⚠️ 人在迴路：本報告只產建議，請人工確認後自行更新，"
+        "程式不會自動改 .env**）：",
+        "",
+        "```",
+        f"AUTO_DEPLOY_KNOWLEDGE_SYMBOLS={','.join(suggested_symbols)}",
+        "```",
+    ]
+    md = "\n".join(lines)
+    (out_dir / "stock-pool.md").write_text(md, encoding="utf-8")
+    print(f"完成：報告在 {out_dir}（瘦身建議 {len(suggested_symbols)} 檔）")
+    return md
+
+
+def main() -> int:
+    """CLI 殼：呼叫 run()（M9 排程走 run()，CLI 行為不變）。"""
+    try:
+        run()
+    except FileNotFoundError as e:
+        print(e)
+        return 1
     return 0
 
 

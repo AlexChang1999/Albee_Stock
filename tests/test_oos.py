@@ -59,7 +59,7 @@ def test_auto_backtest_ranks_by_oos(monkeypatch):
     """冠軍依『樣本外 EV』排名；排行榜每筆都帶 oos / is 指標且依 OOS 由高到低。"""
     # 資料抓取已改走 bar_cache（Phase 11 step-04）；patch 新 seam 注入合成資料、免連網免落盤。
     monkeypatch.setattr(optimizer.bar_cache, "get_bars_cached",
-                        lambda symbol, days=60, source="alpaca", today=None: _regime_ohlc())
+                        lambda symbol, days=60, source="alpaca", today=None, timeframe="1Day": _regime_ohlc())
 
     scan = run_auto_backtest("TEST")
     lb = scan["leaderboard"]
@@ -82,7 +82,7 @@ def test_overfitting_visible(monkeypatch):
     """過擬合可見：上行訓練段下，至少有組合『樣本內 EV > 樣本外 EV』（樣本外掉下來）。"""
     # 資料抓取已改走 bar_cache（Phase 11 step-04）；patch 新 seam 注入合成資料、免連網免落盤。
     monkeypatch.setattr(optimizer.bar_cache, "get_bars_cached",
-                        lambda symbol, days=60, source="alpaca", today=None: _regime_ohlc())
+                        lambda symbol, days=60, source="alpaca", today=None, timeframe="1Day": _regime_ohlc())
 
     scan = run_auto_backtest("TEST")
     lb = scan["leaderboard"]

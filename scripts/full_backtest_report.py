@@ -21,6 +21,7 @@ import argparse
 import csv
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -39,7 +40,10 @@ from backend.services.backtest_engine import run_backtest  # noqa: E402
 from backend.services.monte_carlo import stress_summary  # noqa: E402
 from backend.services.optimizer import run_auto_backtest  # noqa: E402
 
-OUT_DIR = ROOT / "docs" / "reference" / "analysis-2026-07-02"
+def default_out_dir() -> Path:
+    """報告輸出夾：docs/reference/analysis-<今天>（M9 週跑每次落在當日夾）。"""
+    return ROOT / "docs" / "reference" / f"analysis-{date.today().isoformat()}"
+
 
 # 「加風控」對照組參數（艦隊目前全 None；此組合僅為對照實驗，非最佳化結果——
 # 取 docs/reference/human-vs-ai 一貫的保守量級：停損 7%、停利 15%、追蹤 10%）
@@ -52,16 +56,12 @@ def parse_symbols(raw: str) -> list[str]:
     return [s.strip().upper() for s in raw.split(",") if s.strip()]
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="全池完整回測報告（OOS 排名 + 壓力測試）")
-    ap.add_argument("--days", type=int, default=1095, help="回測區間天數（預設 3 年）")
-    ap.add_argument("--symbols", type=str, default=settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS,
-                    help="逗號分隔股票清單（預設 = AUTO_DEPLOY_KNOWLEDGE_SYMBOLS）")
-    ap.add_argument("--cash", type=float, default=10000.0)
-    args = ap.parse_args()
-
-    symbols = parse_symbols(args.symbols)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def run(days: int = 1095, symbols: str | None = None, cash: float = 10000.0,
+        out_dir: Path | None = None) -> str:
+    """跑全池回測報告，落 CSV/markdown 到 out_dir，回傳 markdown 全文（M9 排程用）。"""
+    out_dir = Path(out_dir) if out_dir else default_out_dir()
+    symbols = parse_symbols(symbols or settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     champions: list[dict] = []
     leaderboard_rows: list[dict] = []
@@ -70,7 +70,7 @@ def main() -> int:
     for i, sym in enumerate(symbols, 1):
         print(f"[{i}/{len(symbols)}] {sym} 掃描中…", flush=True)
         try:
-            scan = run_auto_backtest(sym, days=args.days, initial_cash=args.cash)
+            scan = run_auto_backtest(sym, days=days, initial_cash=cash)
         except Exception as e:
             errors.append(f"{sym}: {e}")
             print(f"  ⚠️ {sym} 失敗：{e}", flush=True)
@@ -96,14 +96,14 @@ def main() -> int:
 
         # 冠軍重跑：拿完整 trades / equity + 延伸指標；再跑「加風控」對照組
         base = run_backtest(best["strategy_key"], sym, params=best["params"],
-                            days=args.days, initial_cash=args.cash)
+                            days=days, initial_cash=cash)
         risk = run_backtest(best["strategy_key"], sym, params=best["params"],
-                            days=args.days, initial_cash=args.cash, **RISK_VARIANT)
+                            days=days, initial_cash=cash, **RISK_VARIANT)
         ext = base.get("extended") or {}
         # 蒙地卡羅壓力測試：以冠軍整段日報酬 bootstrap（固定 seed 可重現）
         try:
             stress = stress_summary(returns_from_equity(base["equity_curve"]),
-                                    initial_equity=args.cash, n_paths=500, seed=42)
+                                    initial_equity=cash, n_paths=500, seed=42)
         except Exception:
             stress = {}
 
@@ -149,12 +149,12 @@ def main() -> int:
 
     # ---------- 落檔 ----------
     if champions:
-        with open(OUT_DIR / "backtest-champions.csv", "w", newline="", encoding="utf-8-sig") as f:
+        with open(out_dir / "backtest-champions.csv", "w", newline="", encoding="utf-8-sig") as f:
             w = csv.DictWriter(f, fieldnames=list(champions[0].keys()))
             w.writeheader()
             w.writerows(champions)
     if leaderboard_rows:
-        with open(OUT_DIR / "backtest-leaderboard.csv", "w", newline="", encoding="utf-8-sig") as f:
+        with open(out_dir / "backtest-leaderboard.csv", "w", newline="", encoding="utf-8-sig") as f:
             w = csv.DictWriter(f, fieldnames=list(leaderboard_rows[0].keys()))
             w.writeheader()
             w.writerows(leaderboard_rows)
@@ -163,7 +163,7 @@ def main() -> int:
     lines = [
         "# 全池完整回測報告",
         "",
-        f"- 期間：近 {args.days} 天（日 K、含成本 {settings.BACKTEST_COMMISSION_BPS}bps 手續費 + "
+        f"- 期間：近 {days} 天（日 K、含成本 {settings.BACKTEST_COMMISSION_BPS}bps 手續費 + "
         f"{settings.BACKTEST_SLIPPAGE_BPS}bps 滑價、隔日開盤成交）",
         f"- 股票池：{len(symbols)} 檔；成功 {len(champions)}、失敗 {len(errors)}",
         f"- 排名依據：**樣本外（OOS，後 {int(settings.OOS_TEST_RATIO*100)}%）期望值**，非整段最佳（防過擬合）",
@@ -181,9 +181,22 @@ def main() -> int:
         )
     if errors:
         lines += ["", "## 失敗清單", ""] + [f"- {e}" for e in errors]
-    (OUT_DIR / "backtest-report.md").write_text("\n".join(lines), encoding="utf-8")
+    md = "\n".join(lines)
+    (out_dir / "backtest-report.md").write_text(md, encoding="utf-8")
 
-    print(f"完成：{len(champions)} 檔冠軍，報告在 {OUT_DIR}")
+    print(f"完成：{len(champions)} 檔冠軍，報告在 {out_dir}")
+    return md
+
+
+def main() -> int:
+    """CLI 殼：參數解析後呼叫 run()（M9 排程走 run()，CLI 行為不變）。"""
+    ap = argparse.ArgumentParser(description="全池完整回測報告（OOS 排名 + 壓力測試）")
+    ap.add_argument("--days", type=int, default=1095, help="回測區間天數（預設 3 年）")
+    ap.add_argument("--symbols", type=str, default=settings.AUTO_DEPLOY_KNOWLEDGE_SYMBOLS,
+                    help="逗號分隔股票清單（預設 = AUTO_DEPLOY_KNOWLEDGE_SYMBOLS）")
+    ap.add_argument("--cash", type=float, default=10000.0)
+    args = ap.parse_args()
+    run(days=args.days, symbols=args.symbols, cash=args.cash)
     return 0
 
 

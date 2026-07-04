@@ -44,16 +44,21 @@ def _resume_active_bots() -> None:
     若不在這裡重掛，重啟後那些「顯示啟用中」的 Bot 其實不會再跑，
     狀態與實際行為會對不上。這裡用各 Bot 自己的 check_interval_sec 重建排程。
     """
+    # 先查完就把 session 還回池子：Bot 一多（上百個）重掛迴圈要跑好幾分鐘，
+    # 若整段抱著同一條 Neon 連線，中途會被雲端掐斷（SSL connection closed），
+    # db.close() 的 rollback 直接炸掉 lifespan、後端啟動失敗。
+    # start_bot 只讀 bot.id / bot.name / check_interval_sec（查詢時已載入），
+    # detached 物件用起來安全。
     db = SessionLocal()
     try:
         active = db.query(Bot).filter(Bot.is_active.is_(True)).all()
-        for bot in active:
-            seconds = bot.check_interval_sec or 60
-            bot_manager.start_bot(bot, interval_seconds=seconds)
-        if active:
-            print(f"♻️  已恢復 {len(active)} 個啟用中的 Bot 排程")
     finally:
         db.close()
+    for bot in active:
+        seconds = bot.check_interval_sec or 60
+        bot_manager.start_bot(bot, interval_seconds=seconds)
+    if active:
+        print(f"♻️  已恢復 {len(active)} 個啟用中的 Bot 排程")
 
 
 def _promote_to_leader() -> None:
@@ -90,6 +95,8 @@ def _promote_to_leader() -> None:
         # Phase 13：bot 汰弱審查員（排在自動部署之後，先建 Bot 再有得審）。考核 paper 艦隊、
         # 記 fit、軟汰弱不及格 Bot（★只碰 paper；BOT_REVIEW_ENABLED=false = 完全不掛）
         bot_manager.schedule_bot_review(settings.BOT_REVIEW_HOUR)
+        # Phase 16 M8：日內單一掃描迴圈（批次抓全池再逐 bot 派發；0=關，日內 Bot 退回 per-bot job）
+        bot_manager.schedule_intraday_scan(settings.INTRADAY_SCAN_INTERVAL_SEC)
         # 維運安全軌 H2：每日心跳日報 + dead-man ping（URL 沒設 = ping 關，日報照發）
         bot_manager.schedule_heartbeat(settings.HEARTBEAT_HOUR)
         bot_manager.schedule_deadman_ping(settings.HEARTBEAT_PING_INTERVAL_MIN)
@@ -99,6 +106,8 @@ def _promote_to_leader() -> None:
         bot_manager.schedule_leader_backtest(settings.LEADER_BACKTEST_HOUR)
         # AI 每日交易事後檢討（收盤後 LLM 分析決策 → explorations/ + 推播；TRADE_REVIEW_ENABLED=false = 不掛）
         bot_manager.schedule_trade_review(settings.TRADE_REVIEW_HOUR)
+        # Phase 16 M9：每週一 08:00（台北）自動跑 4 支報告腳本（摘要推播 + 全文落當日 analysis 夾）
+        bot_manager.schedule_weekly_reports()
         # 開機補跑：家用電腦不是 24/7——啟動時把「時刻已過 + 今天還沒跑」的每日 job
         # 依管線順序立刻補跑（必須排在所有 schedule_* 之後，設定才齊）。
         bot_manager.schedule_catchup_on_boot()

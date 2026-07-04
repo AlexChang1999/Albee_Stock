@@ -139,6 +139,7 @@ def _wf_aggregate(strategy_key: str, params: dict, df, initial_cash: float,
     total_loss_amt = 0.0   # Σ 虧損交易總額絕對值（分母）
     worst_dd = 0.0         # 各 fold 最大回撤取最差（保守）
     stitched_returns = []  # 各 fold 報酬序列串接（算聚合 Sharpe/Sortino 用）
+    r_multiples = []       # 各 fold 有定義 R 的交易 r_multiple（M4 exit_policy 開了才有）
 
     for fold in folds:
         test_df = df.iloc[fold["test_start"]: fold["test_end"]].reset_index(drop=True)
@@ -157,6 +158,10 @@ def _wf_aggregate(strategy_key: str, params: dict, df, initial_cash: float,
         dd = m.get("max_drawdown_pct")
         if isinstance(dd, (int, float)):
             worst_dd = max(worst_dd, dd)
+        # 每筆帶 r_multiple 的賣出（進場時有 stop 才有定義 R）收進聚合
+        for t in m.get("trades") or []:
+            if t.get("side") == "sell" and "r_multiple" in t:
+                r_multiples.append(t["r_multiple"])
         # equity → 報酬序列（fold 各自從 initial_cash 起跑，pct_change 消掉水位差）
         eq = m.get("equity_curve") or []
         for prev, cur in zip(eq, eq[1:]):
@@ -185,8 +190,8 @@ def _wf_aggregate(strategy_key: str, params: dict, df, initial_cash: float,
         "oos_max_drawdown_pct": round(worst_dd, 2),
         "oos_sharpe": sharpe,
         "oos_sortino": sortino,
-        # 平均 R multiple 需要「每筆交易的初始風險 R」——等 M4 ExitPolicy 落地後回填
-        "oos_avg_r_multiple": None,
+        # 平均 R multiple（M4 回填）：只有交易帶 r_multiple（exit_policy 有 stop）才算得出
+        "oos_avg_r_multiple": round(sum(r_multiples) / len(r_multiples), 3) if r_multiples else None,
     }
 
 

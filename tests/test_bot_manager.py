@@ -268,7 +268,7 @@ def test_run_strategy_uses_unified_data_path(monkeypatch):
     帶『依策略參數推算』的回看天數——不再寫死 60、不再直接打 alpaca_client.get_bars。"""
     captured = {}
 
-    def fake_get_bars(symbol, days, source):
+    def fake_get_bars(symbol, days, source, timeframe="1Day"):
         captured["symbol"] = symbol
         captured["days"] = days
         captured["source"] = source
