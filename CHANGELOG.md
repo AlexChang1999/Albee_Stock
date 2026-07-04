@@ -15,6 +15,34 @@
 
 ## [未發布]
 
+### 新增 (Added) — doc-chain-sync 文件全鏈健檢 skill（2026-07-04）
+
+- 新 skill `.claude/skills/doc-chain-sync/`：把「文件全鏈同步健檢」流程固化——
+  讀檔順序（主規範→索引→SOP→skill→explorations）、四類問題（缺漏/衝突/過期/斷鏈）
+  分級處置（衝突停下出裁定題，禁擅修）、舊關鍵字掃殘留驗證、固定格式報告。
+  `references/checklist.md` 收歷次漂移熱點（含曾炸紀錄）與「同套規則多副本」對照表。
+  結果落地：CHANGELOG + `explorations/doc-sync-<日期>.md` + INDEX 路標（跨對話記憶，
+  下次健檢先讀上次紀錄）。本次健檢報告已存 `explorations/doc-sync-2026-07-04.md`。
+
+### 變更 (Changed) — 系統文件健檢：過期/斷鏈同步修正（2026-07-04）
+
+- 文件全鏈健檢（規範/索引/SOP/skill），修正 7 處過期與斷鏈，程式零改動：
+  - `CLAUDE.md`：開發階段表補 Phase 14/15/16（編號跳過 13）；結構樹補 Phase 14~16
+    services（scheduler_lock/timeframes/exit_policies/trend_filters/decision_layer/
+    relative_strength/sectors/catchup/daily_watch/bot_review 等）與 strategies
+    （composite/script_breakout/snr_3_0/indicators/context + 資料夾 CLAUDE.md）；
+    前端頁清單補 Funnel/StockArena/BotReview；雙閘註記補第三閘 leader lock；backlog「A~G」→「A~H」。
+  - `README.md`：資料庫改 Neon PG 現況、進度表補 Phase 11~16、策略數 9→12、
+    工作流圖 4→6 張、可用 strategy 清單補齊。
+  - `docs/README.md`：backlog「A~G 七項」→「A~H 八項」、Phase 16 進度（M1~M10+M12 完成）、
+    前端 17→20 頁、索引補 `reference/analysis-2026-07-03/`。
+  - `docs/remaining-work-backlog.md`：頭部「最後更新/剩餘建議」對齊現況（剩 H 人工驗收 + D step-05）。
+  - `docs/reference/frontend-pages-map.md`：17→20 頁，工作流圖與資料來源表補
+    Funnel/StockArena/BotReview 三頁。
+  - `.claude/skills/strategy-builder/references/how-to-register.md`：`__init__.py` 註冊
+    「兩處」→「四處」（+LABELS/+PARAM_SPECS 範本）、落地點表對齊 `backend/strategies/CLAUDE.md` 的 6 落地點。
+  - `explorations/INDEX.md`：補 `review-2026-07-02.md` 路標（實檔在、索引漏）。
+
 ### 新增 (Added) — SNR 3.0 供需區策略 + 回測引擎做空支援 + 策略開發合約（2026-07-03）
 
 - **新策略 `snr_3_0`（SNR 3.0 供需區）**：Fresh Zone（swing±ATR 寬度、觸碰群計數 ≤ max_touches）

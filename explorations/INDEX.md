@@ -14,3 +14,7 @@
 - [knowledge#19 · 2026-06-22 · adx_trend · deploy](knowledge-0019-adx_trend.md) — 由知識庫（status=curated）自動排程部署成 38 個 Paper Bot：SPY, QQQ, DIA, IW…
 
 - [knowledge#29 · 2026-06-23 · stochastic · deploy](knowledge-0029-stochastic.md) — 由知識庫（status=curated）自動排程部署成 38 個 Paper Bot：SPY, QQQ, DIA, IW…
+
+- [review-2026-07-02.md](review-2026-07-02.md) — 每日交易檢討 2026-07-02：36 隻 Bot 合計 P&L $148；多數探勘候選 0 回合，CVX momentum 兩回合皆訊號反轉快進快出。
+
+- [doc-sync-2026-07-04.md](doc-sync-2026-07-04.md) — 文件全鏈健檢：缺漏 3＋過期斷鏈 7 全修（Phase 14~16 補進上層、頁數/策略數/圖數對齊實檔、skill reference 兩處→四處）；建立 doc-chain-sync skill。
