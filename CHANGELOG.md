@@ -15,6 +15,14 @@
 
 ## [未發布]
 
+### 新增 (Added) — 給 AI Agent 的專案規格書（2026-07-07）
+
+- 新文件 `docs/reference/project-spec-for-ai-agents.md`：一頁式規格書，讓任何 AI agent
+  讀完即知 (1) 架構怎麼設計（分層/資料流/三道安全閘）、(2) 雷區地圖（按致命度分級：
+  look-ahead/樣本內挑冠軍/繞雙閘/Alembic/cp950…）、(3) Claude Code subagent 分工實作
+  （`.claude/agents/*.md` 格式 + dev-coder/code-reviewer/qa-tester/ui-ux/devops/
+  frontend-dev 六角色守則 + pipeline 協作流程）。`docs/README.md` 索引同步補列。
+
 ### 新增 (Added) — doc-chain-sync 文件全鏈健檢 skill（2026-07-04）
 
 - 新 skill `.claude/skills/doc-chain-sync/`：把「文件全鏈同步健檢」流程固化——
