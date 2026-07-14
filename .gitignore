@@ -1,5 +1,6 @@
 # 環境變數（含 API Key，絕對不可提交）
 .env
+.env.docker
 .env.bak
 *.bak
 

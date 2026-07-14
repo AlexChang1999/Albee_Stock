@@ -33,6 +33,7 @@
 | 檔案 | 用途 |
 |------|------|
 | [`guides/setup.md`](guides/setup.md) | 環境設置（換新電腦一鍵建好開發環境）。 |
+| [`guides/docker-quickstart.md`](guides/docker-quickstart.md) | Docker 一鍵起後端+前端 + smoketest；沙盒 `.env.docker` 為何與正式 `.env`（Neon）隔離。 |
 | [`guides/home-boot-checklist.md`](guides/home-boot-checklist.md) | 回家開機測試 checklist（`.env` 最小必填、雲端 PG 方案 A/B、step-01 驗收、缺口盤點）。 |
 | [`guides/free-vm-deployment.md`](guides/free-vm-deployment.md) | 免費 VM 常駐部署（Oracle A1 開通、Linux 裝機、時區/systemd 坑、政治員 Discord bridge service、雲端 LLM 備援；Phase 12 觀察期用）。 |
 | [`guides/cloud-local-division.md`](guides/cloud-local-division.md) | **雲端／地端工作劃分**：誰在哪跑、不可雙開排程的紅線、功能對照表、本機前端連雲端、Micro 健康監控。 |
