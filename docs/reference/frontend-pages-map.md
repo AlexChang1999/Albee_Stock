@@ -1,10 +1,10 @@
 # 前端頁面地圖與操作順序
 
-> 左側 sidebar 共 17 頁，乍看很多，其實分四條「工作流」+ 兩個總覽頁。
+> 左側 sidebar 共 20 頁，乍看很多，其實分四條「工作流」+ 兩個總覽頁。
 > 本文：① 鳥瞰圖 ② 四條工作流各一張小圖 ③ 開第一隻 Bot 的步驟 ④ When/What/Why 對照
 > ⑤ 進階管線通電（Ollama／蒐集員／探勘橋／政治員） ⑥ 各頁資料來源。
 >
-> 圖刻意拆小張、用橫向排版——一張塞 17 個節點瀏覽器會縮到看不清。
+> 圖刻意拆小張、用橫向排版——一張塞 20 個節點瀏覽器會縮到看不清。
 
 ## ① 鳥瞰：四條工作流怎麼接
 
@@ -33,9 +33,12 @@ flowchart LR
     evolution["進化實驗室<br/>/evolution<br/>候選跑 OOS 驗證"]
     library["策略知識庫<br/>/library<br/>人工策展晉升"]
 
+    funnel["探勘漏斗<br/>/funnel<br/>各階段數量+淘汰理由"]
+
     collector -->|"LLM triage<br/>產候選"| evolution
     aiexplore -->|"好機會提案"| evolution
     evolution -->|"OOS 過閘"| library
+    funnel -.->|"透明監看整條漏斗"| evolution
 ```
 
 ### 工作流 2：研究回測（驗證點子值不值得）
@@ -50,10 +53,12 @@ flowchart LR
     presets["策略方案<br/>/presets<br/>調參+一鍵回測"]
     backtesttools["回測工具<br/>/backtest<br/>全自動掃描+壓測"]
     backtestrun["回測歷史<br/>/backtest-runs<br/>OOS EV 排名"]
+    stockarena["個股擂台<br/>/stock-arena<br/>單股多策略排位+一鍵部署"]
 
     info -.-> presets
     presets -->|"一鍵回測"| backtestrun
     backtesttools -->|"掃描冠軍落紀錄"| backtestrun
+    stockarena -->|"擂台結果落紀錄"| backtestrun
 ```
 
 ### 工作流 3：上線執行（讓 Bot 跑起來）
@@ -78,10 +83,12 @@ flowchart LR
 flowchart LR
     political["政治專討員<br/>/political<br/>事件流+風險煞車"]
     explorations["探討檢討<br/>/explorations<br/>LLM 助手檔案記憶"]
+    botreview["Bot 汰弱審查<br/>/bot-review<br/>表現排名+汰弱建議"]
     trades["交易紀錄/決策審計"]
 
     political -.->|"煞車擋新進場"| trades
     trades -.->|"事後檢討素材"| explorations
+    trades -.->|"表現數據"| botreview
 ```
 
 ## ③ 開第一隻 Bot（模擬交易，step by step）
@@ -202,3 +209,6 @@ venv\Scripts\python.exe -m backend.bots.political_watcher
 | 交易紀錄 | `trade_logs` 表 | Bot 真的成交才寫 |
 | 市場蒐集員 | `raw_strategy_finds` 表 | RSS 爬蟲（`COLLECTOR_RSS_FEEDS` 填了才動） |
 | 政治專討員 | `political_events` 表 | Discord bridge（`POLITICAL_*` 填了才動） |
+| 探勘漏斗 | `/company/overview` 的 `discovery_funnel` | collector/discovery/auto_validate 各段計數（Phase 12/14） |
+| 個股擂台 | `backtest_runs` 表（依 symbol 聚合） | 擂台頁「跑一輪」對單股掃全策略（Phase 14） |
+| Bot 汰弱審查 | `bots` + `trade_logs` 彙整（`bot_review.py`） | 每日排程/手動跑一次產審查建議（Phase 15） |

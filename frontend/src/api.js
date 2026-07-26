@@ -174,6 +174,13 @@ export const api = {
   getBotChartData: (botId, days = 120) =>
     request(`/bots/${botId}/chart-data?days=${days}`),
 
+  // Phase 15：讀某 Bot 的決策史，請本機 LLM 產一段「教訓摘要」（回 { bot_id, lessons, stub }）
+  getBotLessons: (botId) =>
+    request("/chat/bot-lessons", {
+      method: "POST",
+      body: JSON.stringify({ bot_id: botId }),
+    }),
+
   // ===== Phase 9：探討/檢討檔案記憶（唯讀）=====
   // 路標清單（每筆 run_id / file / strategy / symbol / summary）
   getExplorations: () => request("/explorations"),

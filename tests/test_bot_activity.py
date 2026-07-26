@@ -202,7 +202,7 @@ def test_flat_hold_emits_full_sequence(tmp_path, monkeypatch):
     orders = []
     _patch_trading(monkeypatch, position=None, price=50.0, orders=orders)
     events = _collect_events(monkeypatch)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.HOLD, "無交叉訊號"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.HOLD, "無交叉訊號"))
 
     bm.run_bot_once(_create_bot(TestSession))
 
@@ -225,7 +225,7 @@ def test_buy_emits_order_event(tmp_path, monkeypatch):
     orders = []
     _patch_trading(monkeypatch, position=None, price=50.0, orders=orders)
     events = _collect_events(monkeypatch)
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
 
     bm.run_bot_once(_create_bot(TestSession))
 
@@ -282,7 +282,7 @@ def test_broken_hub_does_not_break_trading(tmp_path, monkeypatch):
         ba.hub, "publish",
         lambda event: (_ for _ in ()).throw(RuntimeError("可視化壞了")),
     )
-    monkeypatch.setattr(bm, "_run_strategy", lambda bot: (Signal.BUY, "黃金交叉"))
+    monkeypatch.setattr(bm, "_run_strategy", lambda bot, market_is_open: (Signal.BUY, "黃金交叉"))
 
     bm.run_bot_once(_create_bot(TestSession))
 

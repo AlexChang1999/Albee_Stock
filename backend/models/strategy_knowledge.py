@@ -57,6 +57,14 @@ class StrategyKnowledge(Base):
     # 自動 / 手動部署成功後戳上時間，避免排程重複對同一筆知識建 Bot。
     deployed_at = Column(DateTime, nullable=True)
 
+    # 進化血緣（Phase 13 反饋迴圈）
+    # origin：策略來源；"manual"=人工建立、"paper_feedback"=Paper Bot 實跑失效後 AI 提案、"discovery"=爬蟲探勘橋
+    origin = Column(String, nullable=True, default="manual")
+    # parent_id：前一版本的 knowledge.id（語義自我參照，不加 DB FK constraint 保持 SQLite 相容）
+    parent_id = Column(Integer, nullable=True)
+    # evolution_note：AI 分析文字（說明這版為何從 parent 演化過來）
+    evolution_note = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

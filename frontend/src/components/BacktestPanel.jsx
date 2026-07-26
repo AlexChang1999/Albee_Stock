@@ -196,7 +196,10 @@ export default function BacktestPanel({
                       <TableRow key={idx}>
                         <TableCell>{t.date}</TableCell>
                         <TableCell>
-                          {t.side === "buy" ? "買進" : "賣出"}
+                          {/* 做空回測會出現 short（開空）/ cover（回補）兩種新 side */}
+                          {{ buy: "買進", sell: "賣出", short: "開空", cover: "回補" }[
+                            t.side
+                          ] || t.side}
                         </TableCell>
                         <TableCell>${t.price}</TableCell>
                         <TableCell

@@ -233,6 +233,28 @@ def test_adx_flat_should_hold():
     print(f"✅ ADX 盤整測試通過：{reason}")
 
 
+def test_script_breakout_registered_and_runs():
+    """事件式 ScriptStrategy 範例：有註冊、是 ScriptStrategy 子類、produce_signals 能跑出突破買訊。"""
+    from backend.strategies import get_strategy, STRATEGY_REGISTRY, list_strategies
+    from backend.strategies.base import ScriptStrategy
+
+    assert "script_breakout" in STRATEGY_REGISTRY
+    assert any(s["value"] == "script_breakout" for s in list_strategies())
+
+    strat = get_strategy("script_breakout", {"lookback": 5, "exit_lookback": 3})
+    assert isinstance(strat, ScriptStrategy)
+
+    # 構造一段「先盤整、後突破」的收盤序列，突破當根應登記 buy
+    closes = [10, 10, 10, 10, 10, 10, 11, 12]  # 第 7 根(>前5根高點)應觸發突破買
+    df = pd.DataFrame({
+        "open": closes, "high": [c + 0.5 for c in closes],
+        "low": [c - 0.5 for c in closes], "close": closes, "volume": 1000,
+    })
+    signals, _ = strat.produce_signals(df)
+    assert Signal.BUY in signals, f"預期出現突破買訊，實際 {signals}"
+    print(f"✅ ScriptStrategy 範例註冊 + 突破買訊測試通過：{signals}")
+
+
 if __name__ == "__main__":
     # 直接用 python 執行時，把所有測試都跑一遍
     # 均線交叉
@@ -262,4 +284,6 @@ if __name__ == "__main__":
     test_adx_downtrend_should_sell()
     test_adx_not_enough_data_should_hold()
     test_adx_flat_should_hold()
+    # 事件式 ScriptStrategy
+    test_script_breakout_registered_and_runs()
     print("\n🎉 全部策略測試通過！")

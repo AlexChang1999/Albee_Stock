@@ -37,7 +37,7 @@ from alpaca.trading.requests import (
 from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockLatestTradeRequest
-from alpaca.data.timeframe import TimeFrame
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
 from backend.config import settings
 
@@ -181,6 +181,12 @@ class AlpacaClient:
                 "拒絕下單：目前連到『實盤(真錢)』環境，但安全閥未開啟。"
                 "若確定要用真錢交易，請在 .env 設定 ALLOW_LIVE_TRADING=true。"
             )
+        # 第三閘：選主租約檢查（防雙 leader 重複下單的最後防線）。
+        # 多實例（地端 + VM 同連 Neon）時，只有持有租約的 leader 可以下單；
+        # 租約失效（Neon 掐線、被其他實例接手）→ 即使排程還沒卸完，這裡也會擋下。
+        # SQLite 單機恆通過，行為不變。延遲 import 避免循環依賴。
+        from backend.services.scheduler_lock import assert_leader
+        assert_leader()
 
     @staticmethod
     def _to_tif(time_in_force: str) -> TimeInForce:
@@ -327,19 +333,34 @@ class AlpacaClient:
         trades = self.data.get_stock_latest_trade(request)
         return {sym: float(trade.price) for sym, trade in trades.items()}
 
-    def get_bars(self, symbol: str, days: int = 60) -> pd.DataFrame:
+    @staticmethod
+    def _to_timeframe(timeframe: str) -> TimeFrame:
         """
-        取得最近 N 天的「日 K 線」資料，回傳 pandas DataFrame。
+        把全系統統一的 timeframe 字串（"5Min"/"1Hour"/"1Day"…）映射成
+        alpaca-py 的 TimeFrame 物件。合法清單見 services/timeframes.py（單一事實來源）。
+        """
+        from backend.services import timeframes
+
+        amount, unit_name = timeframes.amount_unit(timeframe)
+        return TimeFrame(amount, getattr(TimeFrameUnit, unit_name))
+
+    def get_bars(self, symbol: str, days: int = 60, timeframe: str = "1Day") -> pd.DataFrame:
+        """
+        取得最近 N 天的 K 線資料，回傳 pandas DataFrame。
         策略會用這份資料來計算指標（例如均線）。
 
         :param symbol: 股票代號
-        :param days: 往前抓幾天
+        :param days: 往前抓幾天（日曆天）
+        :param timeframe: K 線時間框架（"1Min"~"1Day"，預設日 K —— 既有呼叫行為不變）
         :return: 含 open/high/low/close/volume 欄位的 DataFrame
+
+        注意（免費方案）：日內資料走 IEX feed，最新 15 分鐘的 SIP 資料拿不到；
+        策略一律只用「已收完的 bar」產訊號（實盤端會濾掉未收完的最後一根）。
         """
         self._limiter.acquire()
         request = StockBarsRequest(
             symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Day,  # 日 K
+            timeframe=self._to_timeframe(timeframe),
             start=datetime.now() - timedelta(days=days),
         )
         bars = self.data.get_stock_bars(request)
@@ -350,14 +371,18 @@ class AlpacaClient:
             df = df.reset_index()
         return df
 
-    def get_bars_multi(self, symbols: list[str], days: int = 60) -> dict[str, pd.DataFrame]:
+    def get_bars_multi(
+        self, symbols: list[str], days: int = 60, timeframe: str = "1Day"
+    ) -> dict[str, pd.DataFrame]:
         """
-        一次 HTTP 請求抓「多檔」日 K，回 {symbol: DataFrame}。
+        一次 HTTP 請求抓「多檔」K 線，回 {symbol: DataFrame}。
 
         N 檔 N 次往返 → 1 次（StockBarsRequest 的 symbol_or_symbols 原生吃 list）。
         每檔 DataFrame 的欄位 / 排序 / 索引契約與 get_bars() 完全一致
         （reset_index 後同樣保留 symbol + timestamp 欄）。
         查無資料的檔回「空 DataFrame」——key 仍在，呼叫端不用接 KeyError。
+
+        :param timeframe: K 線時間框架（"1Min"~"1Day"，預設日 K —— 既有呼叫行為不變）
         """
         # 大寫正規化 + 保序去重；空清單直接回空 dict，不打 API
         symbols = list(dict.fromkeys(s.upper() for s in symbols))
@@ -367,7 +392,7 @@ class AlpacaClient:
         self._limiter.acquire()
         request = StockBarsRequest(
             symbol_or_symbols=symbols,
-            timeframe=TimeFrame.Day,
+            timeframe=self._to_timeframe(timeframe),
             start=datetime.now() - timedelta(days=days),
         )
         df = self.data.get_stock_bars(request).df

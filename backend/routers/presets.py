@@ -108,6 +108,11 @@ def _run_summary(run: BacktestRun) -> dict:
         "total_return_pct": m.get("total_return_pct"),
         "max_drawdown_pct": m.get("max_drawdown_pct"),
         "num_round_trips": m.get("num_round_trips"),
+        # ★M3 walk-forward OOS 診斷欄位（舊紀錄沒跑 walk-forward 就是 None，前端顯示 "—"）
+        "oos_expected_value": m.get("oos_expected_value"),
+        "overfit_gap": m.get("overfit_gap"),
+        "oos_num_round_trips": m.get("oos_num_round_trips"),
+        "timeframe": m.get("timeframe"),
     }
 
 

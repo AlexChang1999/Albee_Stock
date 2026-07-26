@@ -17,7 +17,7 @@
 排程旗標（DISCOVERY_ENABLED 等）維持預設關；本路由不改任何設定。
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -79,13 +79,15 @@ def triage_one_find(find_id: int, db: Session = Depends(get_db)):
     return result
 
 
-@router.post("/validate-batch")
-def run_validate_batch(db: Session = Depends(get_db)):
+@router.post("/validate-batch", status_code=202)
+def run_validate_batch(background_tasks: BackgroundTasks):
     """
-    自動驗證跑一次：取知識庫 status=candidate，逐筆送既有 OOS 閘（38 籃子 walk-forward）。
-    判準零修改，只是 force 略過排程旗標。回 {"processed", "validated", "rejected", "failed"}。
+    自動驗證跑一次（非同步）：任務在背景執行，立刻回 202。
+    進度透過輪詢 /company/overview discovery_funnel 觀察 candidate 數字變動。
+    run_auto_validate(db=None) 內部自建 session，不需要注入。
     """
-    return run_auto_validate(db, force=True)
+    background_tasks.add_task(run_auto_validate, None, True)
+    return {"status": "started", "note": "驗證批次已在背景啟動（38 籃子 walk-forward），完成後 /company/overview 的 knowledge 數字會更新。"}
 
 
 @router.post("/auto-deploy")

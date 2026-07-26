@@ -17,6 +17,8 @@ export const STRATEGIES = [
   { value: "williams_r", label: "威廉指標" },
   { value: "adx_trend", label: "ADX 趨勢" },
   { value: "composite", label: "策略組合" },
+  { value: "script_breakout", label: "突破續抱（事件式）" },
+  { value: "snr_3_0", label: "SNR 3.0 供需區" },
 ];
 
 // 策略代號 → 中文標籤的單一來源（找不到就回原代號，不會壞畫面）。
@@ -24,6 +26,13 @@ export const STRATEGIES = [
 export function strategyLabel(key) {
   return STRATEGIES.find((s) => s.value === key)?.label || key;
 }
+
+// K 線時間框架清單（M2/M3.5）——與後端 `backend/services/timeframes.py` 的
+// ALL_TIMEFRAMES 同一份清單，後端加減框架時兩邊要一起改。
+export const TIMEFRAMES = [
+  "1Min", "5Min", "15Min", "30Min", "1Hour", "2Hour", "4Hour", "1Day",
+];
+export const DEFAULT_TIMEFRAME = "1Day";
 
 // 回測區間快捷選項（天數）。選「最長」送 ~26 年（2000→2026），後端會自動改用
 // yfinance 抓長歷史（Alpaca 免費版抓不到那麼久）。選了會填進「回測天數」欄。

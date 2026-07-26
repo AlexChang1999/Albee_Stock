@@ -54,7 +54,7 @@ Albee_Stock/
 ├── docs/                  # 文件（依用途分四夾；打開先看 README.md 索引）
 │   ├── README.md              # 文件地圖（四大分組 + 各檔用途）
 │   ├── ai-implementation-guardrails.md  # 開工前必讀：反 slop / 對齊原目標合約
-│   ├── remaining-work-backlog.md        # 進行中未完成工作盤點（A~G，可餵 AI）
+│   ├── remaining-work-backlog.md        # 進行中未完成工作盤點（A~H，可餵 AI）
 │   ├── history/               # 完成過的開發藍圖（phase-6~11 + redesign，歷史報告素材）
 │   ├── guides/                # 操作教學（setup / 使用說明 / how-to-add-strategy / skill 守則…）
 │   ├── reference/             # 概念規格（workflow-diagrams / roadmap / human-vs-ai / strategies…）
@@ -116,6 +116,7 @@ Albee_Stock/
 │   │   ├── capital.py         # 組合層資金/購買力守門（Phase 6 step-05，純函式 plan_capital）
 │   │   ├── circuit_breaker.py # 組合回撤熔斷（Phase 6 step-09，只擋進不擋出）
 │   │   ├── risk_manager.py    # Bot 層止盈/止損/追蹤止損出場（Phase 4）
+│   │   ├── decision_context.py # 決策脈絡：市場快照/出場分類/買入假設失效回填（結構化交易日誌）
 │   │   ├── protective_orders.py # 券商端 GTC 保護單規劃（backlog H1）
 │   │   ├── heartbeat.py       # 每日心跳日報 + dead-man ping（backlog H2）
 │   │   ├── tracking.py        # tracking error 對帳 + 自動降級（backlog H3）
@@ -140,9 +141,20 @@ Albee_Stock/
 │   │   ├── fred_client.py / macro_data.py / macro_features.py # FRED 總經資料地基（Phase 11）
 │   │   ├── orderflow_proxy.py # 籌碼面 proxy 特徵（Phase 11）
 │   │   ├── discovery.py       # 探勘橋：raw find → LLM 產候選（Phase 12 step-02，預設關）
-│   │   └── auto_validate.py   # 候選自動批次 OOS 驗證（Phase 12 step-03，判準零修改，預設關）
-│   ├── strategies/        # 交易策略模組（每個策略一個檔案）
-│   │   ├── base.py        # 策略基底類別
+│   │   ├── auto_validate.py   # 候選自動批次 OOS 驗證（Phase 12 step-03，判準零修改，預設關）
+│   │   ├── catchup.py / daily_watch.py # 開機補跑當日漏排程 / 每日領導股回測（Phase 14）
+│   │   ├── bot_activity.py / bot_review.py / trade_review.py / strategy_feedback.py # Bot 活動彙整/汰弱審查/每日交易檢討/教訓回饋（Phase 15）
+│   │   ├── auto_deploy_knowledge.py / knowledge_deploy.py # 知識庫 curated 自動/一鍵部署成 Bot（Phase 14~15）
+│   │   ├── scheduler_lock.py  # 選主鎖租約制（Phase 16 M1：TTL 續約 + 失鎖擋單 + 自動升降級）
+│   │   ├── timeframes.py      # 多 timeframe 單一事實來源（Phase 16 M2：1Min~1Day）
+│   │   ├── exit_policies.py   # 可插拔出場政策（Phase 16 M4：fixed_pct/ATR/swing/VWAP + R:R）
+│   │   ├── trend_filters.py   # 進場趨勢過濾器框架（Phase 16 M5；上線與否看 OOS）
+│   │   ├── relative_strength.py / sectors.py # RS 分數 + sector 對照（Phase 16 M7 股票池瘦身）
+│   │   ├── decision_layer.py  # 規則式 AI Decision Layer（Phase 16 M10；僅 1Day 掛實盤）
+│   │   └── indicator_overlays.py # 圖表指標疊圖
+│   ├── strategies/        # 交易策略模組（每個策略一個檔案；進夾必讀 strategies/CLAUDE.md 開發合約）
+│   │   ├── CLAUDE.md      # 策略開發合約（BaseStrategy 合約/防偷看未來/6 落地點/驗證流程）
+│   │   ├── base.py        # 策略基底類別（含 ScriptStrategy 有狀態進出場）
 │   │   ├── ma_crossover.py    # 均線交叉
 │   │   ├── rsi.py             # RSI
 │   │   ├── macd.py            # MACD
@@ -152,7 +164,12 @@ Albee_Stock/
 │   │   ├── stochastic.py      # KD 隨機指標
 │   │   ├── williams_r.py      # 威廉指標 %R
 │   │   ├── adx_trend.py       # ADX 趨勢
-│   │   └── lookback.py        # 依策略參數推算回看天數（回測=實盤共用，Phase 6 step-01）
+│   │   ├── composite.py       # 策略組合（多子策略合成，Phase 8）
+│   │   ├── script_breakout.py # 突破續抱（事件式，ScriptStrategy）
+│   │   ├── snr_3_0.py         # SNR 3.0 供需區（Fresh Zone + 多重確認，2026-07）
+│   │   ├── indicators.py      # 共用指標函式（ADX/swing 高低點等，策略與 filter 共用）
+│   │   ├── context.py         # ScriptStrategy 執行脈絡
+│   │   └── lookback.py        # 依策略參數推算回看根數/天數（回測=實盤共用，Phase 6 step-01）
 │   └── bots/
 │       └── bot_manager.py # 管理所有 Bot 的啟停/執行/排程（Phase 6：每輪用 bot_id 重查最新設定）
 ├── explorations/         # 思考助手「探討/檢討」檔案記憶（INDEX.md 路標 + 每筆一檔，進 git）
@@ -167,7 +184,8 @@ Albee_Stock/
 │       ├── LightweightChart.jsx  # 原生 K 線圖（lightweight-charts，取代舊 TradingView iframe，redesign P1）
 │       ├── pages/             # 各路由頁（Dashboard/Trades/BacktestRuns/Presets/Explorations/
 │       │                      #   Decisions/Evolution/Library/AiExplore/Charts/Fundamentals/BacktestTools/
-│       │                      #   Company/Opportunities→戰情頁內/Factors/Collector/Political/Promotion，Phase 10）
+│       │                      #   Company/Opportunities→戰情頁內/Factors/Collector/Political/Promotion（Phase 10）/
+│       │                      #   Funnel 漏斗透明/StockArena 個股擂台（Phase 14）/BotReview 汰弱審查（Phase 15））
 │       ├── components/        # 畫面區塊元件
 │       │   ├── SidebarLayout  # 左側導覽外殼（Phase 9 step-01）
 │       │   ├── AssistantDrawer  # 思考助手全站抽屜（Phase 9 step-08，右下浮動鈕）
@@ -238,6 +256,9 @@ Albee_Stock/
 | Phase 10 | AI 交易公司（編排層 + 戰情頁：市場蒐集員/政治員/常駐探勘/因子報表/董事會核准 Bot 上真錢） | ✅ 完成（step-01~07：戰情頁/常駐機會清單/因子表/爬蟲蒐集員/Discord 政治員/董事會核准頁/開機常駐化，藍圖 [`docs/history/phase-10-ai-company/`](docs/history/phase-10-ai-company/README.md)；step-05 政治員為「煞車」且 bridge 預設關，連真 Discord 需先有同步川普貼文的鏡像頻道） |
 | Phase 11 | 總經 + 籌碼資料地基（FRED 序列入庫 + macro 特徵 + orderflow proxy，餵 Phase 7 狀態機） | ✅ 完成（藍圖 [`docs/history/phase-11-macro-data/`](docs/history/phase-11-macro-data/README.md)；macro 層真資料 OOS 驗證無加分，2026-06-11 誠實砍除——資料地基留著、層不上線） |
 | Phase 12 | 策略自動探勘入庫管線（collector 收料 → LLM 探勘橋產候選 → 自動 OOS 驗證 → 漏斗報表 + 人在迴路晉升） | 🔶 step-01~04 已實作（collector 通電 guide/探勘橋 `discovery.py`/自動驗證 `auto_validate.py`/戰情漏斗卡 + 心跳待審行，藍圖 [`docs/history/phase-12-strategy-discovery/`](docs/history/phase-12-strategy-discovery/README.md)）；step-05 兩週觀察待常駐機器開跑（模板 [`review-e2e.md`](docs/history/phase-12-strategy-discovery/review-e2e.md)），跑滿後留/降級/砍三選一。預設全關（`DISCOVERY_ENABLED`/`AUTO_VALIDATE_ENABLED`=false）；晉升 curated 仍只能由人觸發 |
+| Phase 14 | 公司可操作化 + 漏斗透明 + 個股策略擂台（每角色「跑一次」鈕 / FunnelPage 看淘汰理由 / StockArena 個股多策略擂台 + 部署） | ✅ 完成（藍圖 [`docs/history/phase-14-company-operability/`](docs/history/phase-14-company-operability/README.md)；編號跳過 13） |
+| Phase 15 | 每股多策略艦隊落地（擂台一鍵部署前 N 名）+ 決策教訓 Log（LLM 讀教訓）+「300 秒」掃頻結論 | ✅ 完成（藍圖 [`docs/history/phase-15-fleet-and-lessons/`](docs/history/phase-15-fleet-and-lessons/README.md)） |
+| Phase 16 | 短線 swing/intraday 轉型（M1~M12：選主鎖租約制/多 timeframe/walk-forward optimizer/ExitPolicy/趨勢過濾/研究矩陣/RS 瘦身/30 秒 scanner/週報排程/AI Decision Layer/最終報告） | 🔶 M1~M10、M12 完成（2026-07-02~03）；僅 M11 資金流因子等 60 天滿期（約 2026-09）驗證後留/砍（藍圖 [`docs/history/phase-16-intraday-swing/`](docs/history/phase-16-intraday-swing/README.md)；報表 [`docs/reference/analysis-2026-07-03/`](docs/reference/analysis-2026-07-03/final-report.md)） |
 
 > **改版子軌**：[`docs/history/redesign/`](docs/history/redesign/README.md) 的 Phase 1–4 是 Phase 2~4 的「AI 終端機改版」子軌（圖表/AI 推薦/深藍主題/自動化），與上表主線編號不同、勿混淆。
 > **跑真錢前必讀**：[`docs/reference/human-vs-ai-operation.md`](docs/reference/human-vs-ai-operation.md)（人機操作落差 + 分階段上線）。
@@ -253,7 +274,8 @@ Albee_Stock/
 - **絕對不要**把 `.env` 檔案提交到 Git（包含 API Key）
 - 所有交易先走 **Paper Trading**（模擬），除非使用者明確切換
 - 實盤下單有**雙閘安全閥**：須同時「`ALPACA_BASE_URL` 用實盤網址」+「`ALLOW_LIVE_TRADING=true`」
-  才會送真錢單，否則 `submit_market_order` 直接拒絕（防手滑燒錢）
+  才會送真錢單，否則 `submit_market_order` 直接拒絕（防手滑燒錢）。
+  另有**第三閘 leader lock**（Phase 16 M1）：多機共用 DB 時非 leader 一律拒單（防雙機重複下單）
 - 程式碼要加**中文註解**，幫助學習理解
 - 策略模組要**鬆耦合**，能獨立新增/修改/停用
 - **每次有意義的變更都要更新 `CHANGELOG.md`**（記到「未發布」區塊）
