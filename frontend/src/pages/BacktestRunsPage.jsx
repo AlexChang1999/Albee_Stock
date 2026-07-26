@@ -117,6 +117,9 @@ export default function BacktestRunsPage() {
             <TableRow>
               <TableCell>★</TableCell>
               <TableCell>EV／筆</TableCell>
+              <TableCell>OOS EV</TableCell>
+              <TableCell>Gap</TableCell>
+              <TableCell>K線</TableCell>
               <TableCell>策略 · 標的</TableCell>
               <TableCell>勝率</TableCell>
               <TableCell>報酬</TableCell>
@@ -129,7 +132,7 @@ export default function BacktestRunsPage() {
           <TableBody>
             {runs.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={12}>
                   <Typography variant="caption" color="text.secondary">
                     還沒有回測紀錄。
                   </Typography>
@@ -157,6 +160,23 @@ export default function BacktestRunsPage() {
                     }}
                   >
                     {ev ?? "—"}
+                  </TableCell>
+                  {/* M3.5：walk-forward OOS EV + 過擬合 Gap（>0.5 紅色警示＝排名已被守門沉底） */}
+                  <TableCell
+                    sx={{ color: (run.oos_expected_value ?? 0) >= 0 ? NEON.green : NEON.red }}
+                  >
+                    {run.oos_expected_value ?? "—"}
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      color: (run.overfit_gap ?? 0) > 0.5 ? NEON.red : "text.secondary",
+                      fontWeight: (run.overfit_gap ?? 0) > 0.5 ? 700 : 400,
+                    }}
+                  >
+                    {run.overfit_gap ?? "—"}
+                  </TableCell>
+                  <TableCell sx={{ color: "text.secondary" }}>
+                    {run.timeframe ?? "—"}
                   </TableCell>
                   <TableCell>
                     {strategyLabel(run.strategy_key)} · {run.symbol}

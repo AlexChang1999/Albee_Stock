@@ -148,7 +148,7 @@ def test_market_data_multi_rejects_unknown_source():
 def test_yfinance_multi_single_symbol_uses_single_path(monkeypatch):
     """單檔走單檔路徑（yf.download 單檔回非 MultiIndex 形狀的坑，繞開）。"""
     sentinel = _fake_bars(5)
-    monkeypatch.setattr(yfinance_client, "get_bars", lambda s, days=60: sentinel)
+    monkeypatch.setattr(yfinance_client, "get_bars", lambda s, days=60, timeframe="1Day": sentinel)
     monkeypatch.setattr(
         yfinance_client.yf, "download",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("單檔不該呼叫 yf.download")),
@@ -165,11 +165,11 @@ def _patch_cache_env(monkeypatch, tmp_path, calls: dict):
     """快取目錄指到 tmp、market_data 兩個抓取函式換成假資料 + 計數。"""
     monkeypatch.setattr(settings, "BAR_CACHE_DIR", str(tmp_path))
 
-    def fake_single(symbol, days=60, source="alpaca"):
+    def fake_single(symbol, days=60, source="alpaca", timeframe="1Day"):
         calls["single"] += 1
         return _fake_bars(days)
 
-    def fake_multi(symbols, days=60, source="alpaca"):
+    def fake_multi(symbols, days=60, source="alpaca", timeframe="1Day"):
         calls["multi"] += 1
         calls["multi_symbols"].append(sorted(symbols))
         return {s.upper(): _fake_bars(days) for s in symbols}

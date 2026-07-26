@@ -106,6 +106,7 @@ def _daily_steps():
     from backend.services.daily_watch import run_leader_backtest
     from backend.services.heartbeat import run_daily_heartbeat
     from backend.services.tracking import run_tracking_check
+    from backend.services.trade_review import run_daily_review_scheduled
 
     return [
         # (job 名（沿用排程器 job id）, enable 閘, 每日排定時刻, 函式)
@@ -116,6 +117,8 @@ def _daily_steps():
         ("leader_backtest", settings.LEADER_BACKTEST_ENABLED, settings.LEADER_BACKTEST_HOUR, run_leader_backtest),
         ("heartbeat_daily", True, settings.HEARTBEAT_HOUR, run_daily_heartbeat),
         ("tracking_check", True, settings.TRACKING_CHECK_HOUR, run_tracking_check),
+        # AI 每日交易事後檢討（收盤後分析，排在最後——需要 DecisionLog / TradeLog 都落完）
+        ("trade_review", settings.TRADE_REVIEW_ENABLED, settings.TRADE_REVIEW_HOUR, run_daily_review_scheduled),
     ]
 
 
@@ -167,5 +170,10 @@ def run_catchup(now: datetime | None = None) -> dict:
             # 一步失敗不中斷後續；不落紀錄 → 當天稍後 cron / 下次開機自然重試
             summary[job_name] = f"failed: {e}"
 
-    print(f"🩹 開機補跑完成：{summary}")
+    # Windows 主控台/管線可能是 cp950，emoji 印不出來會直接炸掉整個補跑 job（實測踩過），
+    # 摘要照印但編碼失敗時退回 ASCII 版本，不讓「印 log」毀掉「補跑本體」。
+    try:
+        print(f"🩹 開機補跑完成：{summary}")
+    except UnicodeEncodeError:
+        print(f"[catchup] done: {summary}")
     return summary

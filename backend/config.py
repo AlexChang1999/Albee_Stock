@@ -165,6 +165,15 @@ class Settings:
     SCAN_INTERVAL_MIN: int = int(os.getenv("SCAN_INTERVAL_MIN", "30"))
 
     # ========================================================
+    # 日內單一掃描迴圈（Phase 16 M8）
+    # ========================================================
+    # 日內 timeframe 的 Bot 不再各掛 interval job（38 bot × 各自抓 = 76+ req/min 撞限流），
+    # 改由「一個掃描 job」每 N 秒批次抓全池（1 req/scan ≈ 2 req/min）再逐 bot 派發。
+    # 1Day Bot 不受影響（per-bot job 保留，300s 甜蜜點不變）。0 = 關閉（日內 Bot 退回
+    # per-bot job，行為與 M8 之前一致）。
+    INTRADAY_SCAN_INTERVAL_SEC: int = int(os.getenv("INTRADAY_SCAN_INTERVAL_SEC", "30"))
+
+    # ========================================================
     # 市場蒐集員 — 爬蟲收料（Phase 10 step-04）
     # ========================================================
     # 定時從 RSS / 部落格收「策略描述文字」進收件匣（raw_strategy_finds），當人 /
@@ -311,6 +320,26 @@ class Settings:
     BOT_REVIEW_MAX_CULL_PER_RUN: int = int(os.getenv("BOT_REVIEW_MAX_CULL_PER_RUN", "20"))
 
     # ========================================================
+    # AI 每日交易事後檢討（trade_review）
+    # ========================================================
+    # 每天美股收盤後（UTC 20:00 = ET 16:00）自動觸發，讀取當日決策 → LLM 分析 → 寫 explorations/ → 推播。
+    #   - TRADE_REVIEW_ENABLED：總開關（預設開）。
+    #   - TRADE_REVIEW_HOUR：每日幾點跑（UTC；預設 20 = ET 16:00 收盤後）。
+    TRADE_REVIEW_ENABLED: bool = os.getenv("TRADE_REVIEW_ENABLED", "true").lower() in ("1", "true", "yes")
+    TRADE_REVIEW_HOUR: int = int(os.getenv("TRADE_REVIEW_HOUR", "20"))
+
+    # ========================================================
+    # 策略進化反饋迴圈（strategy_feedback）
+    # ========================================================
+    # Bot 被汰弱或降級後，自動分析失敗原因、由 LLM 提案新參數候選寫入知識庫。
+    #   - FEEDBACK_MIN_RATIO：實跑均值 / OOS 期望值 < 此比值才觸發（預設 0.6 = 低於 OOS 的 60%）。
+    #   - FEEDBACK_MIN_ROUND_TRIPS：觸發所需的最低完整買賣回合數（預設 5）。
+    #   - FEEDBACK_THESIS_LIMIT：傳給 LLM 分析的最近失敗案例數（預設 10）。
+    FEEDBACK_MIN_RATIO: float = float(os.getenv("FEEDBACK_MIN_RATIO", "0.6"))
+    FEEDBACK_MIN_ROUND_TRIPS: int = int(os.getenv("FEEDBACK_MIN_ROUND_TRIPS", "5"))
+    FEEDBACK_THESIS_LIMIT: int = int(os.getenv("FEEDBACK_THESIS_LIMIT", "10"))
+
+    # ========================================================
     # 開機補跑（catch-up on boot）— 維運安全軌
     # ========================================================
     # 家用電腦不是 24/7：每日 cron 時刻沒開機，那天管線整段跳過。
@@ -383,6 +412,14 @@ class Settings:
     # optimizer 海選挑冠軍時，把歷史切「訓練段 / 測試段」，冠軍看「測試段（樣本外 OOS）」的 EV，
     # 不看樣本內——避免挑到「最會擬合過去雜訊」的參數。test_ratio = 測試段佔比（時間軸後段）。
     OOS_TEST_RATIO: float = float(os.getenv("OOS_TEST_RATIO", "0.3"))
+
+    # M3：optimizer 排名守門（walk-forward 聚合 OOS 之後的硬約束）
+    # - MIN_OOS_TRIPS：OOS 交易樣本數低於此值的組合直接沉底（1~2 筆的「冠軍」是噪音，
+    #   stock_pool 體檢已用 38 檔驗證過這個教訓）。
+    # - MAX_OVERFIT_GAP：過擬合差距 (IS−OOS)/|IS| 超過此值的組合沉底
+    #   （0.5 = 樣本外掉超過一半，樣本內再漂亮也不可信）。
+    OPTIMIZER_MIN_OOS_TRIPS: int = int(os.getenv("OPTIMIZER_MIN_OOS_TRIPS", "20"))
+    OPTIMIZER_MAX_OVERFIT_GAP: float = float(os.getenv("OPTIMIZER_MAX_OVERFIT_GAP", "0.5"))
 
     # ========================================================
     # AI 情緒閘（Phase 6 step-07）
@@ -526,6 +563,19 @@ class Settings:
     # 後端每隔幾秒向 Alpaca 拉一次最新成交價，再透過 WebSocket 推給前端。
     # 數字越小越即時、但越耗 Alpaca 的 REST 額度；5 秒對學習/觀察很夠用。
     QUOTE_POLL_INTERVAL_SEC: float = float(os.getenv("QUOTE_POLL_INTERVAL_SEC", "5"))
+
+    # ========================================================
+    # Agent Gateway — 外部 AI agent 受限存取（採納自 QuantDinger）
+    # ========================================================
+    # 讓 Claude / Cursor 等外部 AI 透過 /api/agent/v1/* 驅動我們的回測 / 策略 / 知識庫查詢，
+    # 並可下「預設 paper」的單。沿用實盤雙閘的精神，再加一道 agent 專屬閘：
+    #   - AGENT_API_TOKEN：bearer 驗證用的密鑰。留空＝整個 Gateway 關閉（端點一律回 503）。
+    #     ★ 絕不 commit，只放 .env；自己用 `python -c "import secrets;print(secrets.token_urlsafe(32))"` 產一把。
+    #   - AGENT_LIVE_TRADING_ENABLED：agent 下單能否碰真錢的「第三道閘」（鏡像 ALLOW_LIVE_TRADING）。
+    #     預設 false＝agent 只能下 paper 單。要 agent 動真錢須三者齊開：實盤網址 + ALLOW_LIVE_TRADING
+    #     + 本閘，且仍由 alpaca_client.submit_market_order 的雙閘把關（本閘只是再多一層拒絕）。
+    AGENT_API_TOKEN: str = os.getenv("AGENT_API_TOKEN", "")
+    AGENT_LIVE_TRADING_ENABLED: bool = os.getenv("AGENT_LIVE_TRADING_ENABLED", "false").lower() in ("1", "true", "yes")
 
     # ========================================================
     # 探討（檢討）檔案記憶（Phase 5）

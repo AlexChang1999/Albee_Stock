@@ -65,39 +65,75 @@ def _normalize(raw: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_bars(symbol: str, days: int = 60) -> pd.DataFrame:
+# timeframe → yfinance interval 映射 + 各 interval 的歷史上限（日曆天）。
+# yfinance 的分鐘級資料只保留很短的歷史：1m 只有最近 30 天（單次請求最多 8 天）、
+# 5m~1h 只有最近 60/730 天；2h/4h 根本不支援。超限直接拋錯（誠實失敗），
+# 別默默回空資料害回測「看起來跑完了但其實沒資料」。分鐘級回測請改用 alpaca 源。
+_INTERVAL_MAP: dict[str, tuple[str, int]] = {
+    "1Min": ("1m", 7),      # yfinance 1m 單次請求上限 8 天，保守取 7
+    "5Min": ("5m", 60),
+    "15Min": ("15m", 60),
+    "30Min": ("30m", 60),
+    "1Hour": ("1h", 730),
+    "1Day": ("1d", 10**9),  # 日 K 無上限（可回溯數十年）
+}
+
+
+def _to_interval(timeframe: str, days: int) -> str:
+    """把統一 timeframe 字串轉成 yfinance interval，並檢查歷史範圍限制。"""
+    from backend.services import timeframes
+
+    tf = timeframes.validate(timeframe)
+    if tf not in _INTERVAL_MAP:
+        raise ValueError(f"yfinance 不支援 {tf} K 線（2h/4h 無此 interval），分鐘級請改用 alpaca 資料源")
+    interval, max_days = _INTERVAL_MAP[tf]
+    if days > max_days:
+        raise ValueError(
+            f"yfinance 的 {tf} K 線最多只能回溯 {max_days} 天（要求 {days} 天）；"
+            f"更長的日內歷史請改用 alpaca 資料源"
+        )
+    return interval
+
+
+def get_bars(symbol: str, days: int = 60, timeframe: str = "1Day") -> pd.DataFrame:
     """
-    取得最近 N 天的日 K 線資料，回傳格式與 alpaca_client.get_bars 一致。
+    取得最近 N 天的 K 線資料，回傳格式與 alpaca_client.get_bars 一致。
 
     :param symbol: 股票代號，例如 "AAPL"
     :param days: 往前抓幾天（日曆天；實際回傳的是這段期間內的交易日）
+    :param timeframe: K 線時間框架（預設日 K；日內框架有歷史範圍限制，超限拋錯）
     :return: 含 open/high/low/close/volume/timestamp 的 DataFrame
     """
+    interval = _to_interval(timeframe, days)
     ticker = yf.Ticker(symbol)
     # period="60d" 代表抓最近 60 天；auto_adjust=False 讓 open/high/low/close
     # 維持「原始未還原」價格，行為比較貼近 Alpaca 的原始 K 線。
-    raw = ticker.history(period=f"{days}d", auto_adjust=False)
+    raw = ticker.history(period=f"{days}d", interval=interval, auto_adjust=False)
     return _normalize(raw)
 
 
-def get_bars_multi(symbols: list[str], days: int = 60) -> dict[str, pd.DataFrame]:
+def get_bars_multi(
+    symbols: list[str], days: int = 60, timeframe: str = "1Day"
+) -> dict[str, pd.DataFrame]:
     """
-    一次抓「多檔」日 K（yf.download 批次下載），回 {symbol: DataFrame}。
+    一次抓「多檔」K 線（yf.download 批次下載），回 {symbol: DataFrame}。
 
     每檔格式與 get_bars() 完全一致（重用同一個 _normalize 轉換）。
     抓不到的檔回空 DataFrame——key 仍在，呼叫端不用接 KeyError。
     """
+    interval = _to_interval(timeframe, days)
     # 大寫正規化 + 保序去重；空清單直接回空 dict，不打網路
     symbols = list(dict.fromkeys(s.upper() for s in symbols))
     if not symbols:
         return {}
     # 單檔時 yf.download 不回多層欄位（形狀與多檔不同，是個坑）→ 直接走單檔路徑
     if len(symbols) == 1:
-        return {symbols[0]: get_bars(symbols[0], days=days)}
+        return {symbols[0]: get_bars(symbols[0], days=days, timeframe=timeframe)}
 
     raw = yf.download(
         tickers=symbols,
         period=f"{days}d",
+        interval=interval,
         auto_adjust=False,
         group_by="ticker",   # 欄位按 (ticker, 欄名) 分層，好逐檔切出來
         progress=False,

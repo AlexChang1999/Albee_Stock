@@ -32,19 +32,28 @@ from backend.config import settings
 from backend.services import market_data
 
 
-def _cache_paths(source: str, symbol: str) -> Tuple[Path, Path]:
-    """回 (parquet 路徑, meta.json 路徑)。按 {source}/{symbol} 分開存，不混存。"""
+def _cache_paths(source: str, symbol: str, timeframe: str = "1Day") -> Tuple[Path, Path]:
+    """
+    回 (parquet 路徑, meta.json 路徑)。不同 source / timeframe 不混存：
+    - 1Day 沿用舊路徑 {source}/{symbol}.parquet —— 既有日線快取零遷移直接沿用。
+    - 日內框架放 {source}/{timeframe}/{symbol}.parquet —— 與日 K 檔案徹底分開，
+      不會互撞（5Min 與 1Day 同 symbol 值完全不同）。
+    """
     base = Path(settings.BAR_CACHE_DIR) / source.lower()
+    if timeframe != "1Day":
+        base = base / timeframe
     symbol = symbol.upper()
     return base / f"{symbol}.parquet", base / f"{symbol}.meta.json"
 
 
-def _read_cache(source: str, symbol: str) -> Tuple[Optional[pd.DataFrame], Optional[dict]]:
+def _read_cache(
+    source: str, symbol: str, timeframe: str = "1Day"
+) -> Tuple[Optional[pd.DataFrame], Optional[dict]]:
     """
     讀本機快取。回 (bars, cov)；沒有快取（parquet 或 meta 任一缺）→ (None, None)。
     cov = {"covered_start": date, "covered_end": date}（已涵蓋的請求區間）。
     """
-    parquet_path, meta_path = _cache_paths(source, symbol)
+    parquet_path, meta_path = _cache_paths(source, symbol, timeframe)
     if not parquet_path.exists() or not meta_path.exists():
         return None, None
     bars = pd.read_parquet(parquet_path)
@@ -57,10 +66,11 @@ def _read_cache(source: str, symbol: str) -> Tuple[Optional[pd.DataFrame], Optio
 
 
 def _write_cache(
-    source: str, symbol: str, bars: pd.DataFrame, cov_start: date, cov_end: date
+    source: str, symbol: str, bars: pd.DataFrame, cov_start: date, cov_end: date,
+    timeframe: str = "1Day",
 ) -> None:
     """寫回 parquet + meta.json（自動建目錄）。"""
-    parquet_path, meta_path = _cache_paths(source, symbol)
+    parquet_path, meta_path = _cache_paths(source, symbol, timeframe)
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
     bars.to_parquet(parquet_path, index=False)
     meta_path.write_text(
@@ -105,33 +115,43 @@ def _slice(df: pd.DataFrame, req_start: date, req_end: date) -> pd.DataFrame:
 
 
 def get_bars_cached(
-    symbol: str, days: int = 60, source: str = "alpaca", today: Optional[date] = None
+    symbol: str, days: int = 60, source: str = "alpaca", today: Optional[date] = None,
+    timeframe: str = "1Day",
 ) -> pd.DataFrame:
     """
-    帶本機快取版的 get_bars：請求最近 `days` 天的日 K，缺口才補抓、其餘命中快取。
+    帶本機快取版的 get_bars：請求最近 `days` 天的 K 線，缺口才補抓、其餘命中快取。
 
     :param symbol: 股票代號
     :param days: 往前抓幾天（日曆天）
     :param source: 資料源（"alpaca" / "yfinance"），快取按 source 分開存
     :param today: 「今天」基準（測試可注入固定日期；預設 date.today()）
+    :param timeframe: K 線時間框架（預設日 K；日內框架另存 {source}/{timeframe}/ 目錄）
     :return: 含 open/high/low/close/volume/timestamp 的 DataFrame（嚴格落在請求區間內、升冪）
+
+    日內框架的新鮮度注意：覆蓋區間以「日期」為粒度。若 covered_end 已含今天，
+    盤中再請求會把「今天」視為尾缺口重抓 1 天——否則早上抓過一次後，
+    下午的新 bar 永遠進不了快取（日 K 沒這問題：一天只有一根，收盤前那根本來就不算數）。
     """
     today = today or date.today()
     req_start = today - timedelta(days=days)
     req_end = today
 
-    bars, cov = _read_cache(source, symbol)
+    bars, cov = _read_cache(source, symbol, timeframe)
 
     # 1) 完全沒有快取 → 抓一次、寫出、回切片
     if bars is None:
-        fetched = market_data.get_bars(symbol, days=days, source=source)
-        _write_cache(source, symbol, fetched, req_start, req_end)
+        fetched = market_data.get_bars(symbol, days=days, source=source, timeframe=timeframe)
+        _write_cache(source, symbol, fetched, req_start, req_end, timeframe)
         return _slice(fetched, req_start, req_end)
 
     cov_start = cov["covered_start"]
     cov_end = cov["covered_end"]
     need_head = req_start < cov_start  # 請求比已涵蓋更早 → 頭缺口
     need_tail = req_end > cov_end      # 請求比已涵蓋更晚 → 尾缺口
+    # 日內框架：今天的 bar 盤中持續長出來，「涵蓋到今天」不代表拿到今天的全部 bar
+    # → 把今天當成永遠的尾缺口重抓（多 1 次輕量 API，換正確性）
+    if timeframe != "1Day" and cov_end >= req_end:
+        need_tail = True
 
     # 2) 請求區間已被涵蓋 → 全命中、0 次外部 API
     if not need_head and not need_tail:
@@ -140,22 +160,23 @@ def get_bars_cached(
     # 3) 補缺口（只補沒涵蓋到的那段）
     if need_tail:
         # 尾缺口：抓「已涵蓋結束日 → today」這段（days-API 由 today 往回抓，剛好蓋到）
-        tail_days = (req_end - cov_end).days
-        tail = market_data.get_bars(symbol, days=tail_days, source=source)
+        tail_days = max((req_end - cov_end).days, 1)
+        tail = market_data.get_bars(symbol, days=tail_days, source=source, timeframe=timeframe)
         bars = _merge(bars, tail)
     if need_head:
         # 頭缺口：days-API 只能由 today 往回抓 → 抓滿整段 days，新舊去重後即補上更早的列
-        head = market_data.get_bars(symbol, days=days, source=source)
+        head = market_data.get_bars(symbol, days=days, source=source, timeframe=timeframe)
         bars = _merge(bars, head)
 
     _write_cache(
-        source, symbol, bars, min(req_start, cov_start), max(req_end, cov_end)
+        source, symbol, bars, min(req_start, cov_start), max(req_end, cov_end), timeframe
     )
     return _slice(bars, req_start, req_end)
 
 
 def get_bars_cached_multi(
-    symbols: list[str], days: int = 60, source: str = "alpaca", today: Optional[date] = None
+    symbols: list[str], days: int = 60, source: str = "alpaca", today: Optional[date] = None,
+    timeframe: str = "1Day",
 ) -> dict[str, pd.DataFrame]:
     """
     批次版 get_bars_cached：逐檔查快取，只把「有缺口的檔」收集起來批次補抓
@@ -178,12 +199,15 @@ def get_bars_cached_multi(
 
     # 1) 逐檔讀快取、分桶（這段純磁碟、不打網路）
     for sym in dict.fromkeys(s.upper() for s in symbols):
-        bars, cov = _read_cache(source, sym)
+        bars, cov = _read_cache(source, sym, timeframe)
         if bars is None:
             need_full.append(sym)  # 完全沒快取 → 抓滿整段
             continue
         need_head = req_start < cov["covered_start"]
         has_tail_gap = req_end > cov["covered_end"]
+        # 日內框架：今天的 bar 盤中持續長出來 → 今天永遠當尾缺口（同單檔版）
+        if timeframe != "1Day" and cov["covered_end"] >= req_end:
+            has_tail_gap = True
         if not need_head and not has_tail_gap:
             result[sym] = _slice(bars, req_start, req_end)  # 全命中，0 次 API
         elif need_head:
@@ -191,21 +215,23 @@ def get_bars_cached_multi(
             need_full.append(sym)
             cached[sym] = (bars, cov)
         else:
-            need_tail[sym] = (req_end - cov["covered_end"]).days
+            need_tail[sym] = max((req_end - cov["covered_end"]).days, 1)
             cached[sym] = (bars, cov)
 
     def _finish(sym: str, fetched: Optional[pd.DataFrame]) -> None:
         """合併補抓結果、寫快取、放進 result。fetched=None ＝批次失敗 → 退單檔舊路徑。"""
         if fetched is None:
             try:
-                result[sym] = get_bars_cached(sym, days=days, source=source, today=today)
+                result[sym] = get_bars_cached(
+                    sym, days=days, source=source, today=today, timeframe=timeframe
+                )
             except Exception:
                 result[sym] = pd.DataFrame()  # 單檔也失敗 → 空 df，不拖垮整批
             return
         old = cached.get(sym)
         if old is None:
             # 完全沒快取的首抓：直接寫出（同單檔版分支 1）
-            _write_cache(source, sym, fetched, req_start, req_end)
+            _write_cache(source, sym, fetched, req_start, req_end, timeframe)
             result[sym] = _slice(fetched, req_start, req_end)
             return
         bars, cov = old
@@ -213,13 +239,16 @@ def get_bars_cached_multi(
         _write_cache(
             source, sym, merged,
             min(req_start, cov["covered_start"]), max(req_end, cov["covered_end"]),
+            timeframe,
         )
         result[sym] = _slice(merged, req_start, req_end)
 
     def _fetch_batch(syms: list[str], fetch_days: int) -> dict:
         """批次抓一桶；整批失敗回 {} → _finish 收到 None 走單檔 fallback。"""
         try:
-            return market_data.get_bars_multi(syms, days=fetch_days, source=source)
+            return market_data.get_bars_multi(
+                syms, days=fetch_days, source=source, timeframe=timeframe
+            )
         except Exception:
             return {}
 

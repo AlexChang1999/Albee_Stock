@@ -38,6 +38,11 @@ class Bot(Base):
     # 每次下單金額（美元），新手先用固定金額控制風險
     trade_amount = Column(Float, default=1000.0)
 
+    # K 線時間框架（M2 多 timeframe 地基）：策略吃哪種粒度的 K 線。
+    # 合法值見 services/timeframes.py（"1Min"~"1Day"）。預設 "1Day" = 舊行為不變。
+    # 回測=實盤鐵則：Bot 實盤抓資料與回測驗證必須用同一個 timeframe，不可分岔。
+    timeframe = Column(String, default="1Day", nullable=False, server_default="1Day")
+
     # ----- 風控（Phase 4 監聽系統用）-----
     # 以下三個百分比皆「可不填」(None)；填了才啟用該機制。
     # 用小數表示，例如 0.10 = 10%。
@@ -51,6 +56,20 @@ class Bot(Base):
     # 追蹤止損：從「持倉期間最高價」回落此比例就賣出。例：0.03 = 回落 3% 出場
     # 跟固定止損的差別：止損點會隨價格創新高而往上抬，鎖住已賺到的獲利
     trailing_stop_pct = Column(Float, nullable=True)
+
+    # ----- 可插拔出場政策（Phase 16 M4）-----
+    # exit_policy_key：出場政策代號（"fixed_pct"/"atr"/"swing"/"vwap"，
+    #   見 services/exit_policies.EXIT_POLICY_REGISTRY）。None = 沿用上面三個 % 欄位（舊行為）。
+    # 回測=實盤鐵則：Bot 實盤出場與回測驗證必須用同一個政策 + 參數，不可分岔。
+    exit_policy_key = Column(String, nullable=True)
+
+    # 出場政策參數（餵政策建構子的 kwargs，例：{"atr_len": 14, "atr_mult": 2, "rr_multiple": 2}）
+    exit_policy_params = Column(JSON, nullable=True)
+
+    # 目前持倉的出場計畫（ExitPlan.to_dict()；內部狀態非使用者設定，同 peak_price 的持久化理由：
+    # ATR/swing 的 stop 是「進場當下」算的，存 DB 後端重啟才不會用「現在的指標」重算而漂移）。
+    # None = 空手或沒用政策。
+    exit_plan = Column(JSON, nullable=True)
 
     # 監測頻率（秒）：啟動後每隔幾秒檢查一次行情。預設 60 秒
     check_interval_sec = Column(Integer, default=60)

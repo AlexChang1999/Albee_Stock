@@ -1,0 +1,433 @@
+symbol,timeframe,strategy,params,oos_ev,oos_trips,oos_folds,oos_win_rate_pct,oos_profit_factor,oos_sharpe,oos_max_drawdown_pct,overfit_gap,est_trades_per_year,pass
+AMD,1Min,momentum,"{""period"": 10, ""threshold"": 3}",247.8422,23,6,56.52,1.9231,1.0,26.67,0.3961,16.1,True
+AMD,1Min,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",0.8865,1551,6,30.11,1.0238,0.27,30.76,,1085.7,True
+AMD,1Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-1.0383,57853,6,12.46,0.2127,-45.2,99.99,,40497.8,False
+AMD,1Min,donchian,"{""period"": 30}",-2.5411,2217,6,33.11,0.9227,-0.5,42.36,,1551.9,False
+AMD,1Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-3.7592,13890,6,22.07,0.5076,-11.63,93.12,,9723.2,False
+AMD,1Min,williams_r,"{""period"": 10}",-3.9271,13501,6,34.23,0.3877,-14.24,90.5,,9450.9,False
+AMD,1Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",-4.12,1204,6,33.31,0.913,-0.54,42.35,,842.8,False
+AMD,1Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",-4.6141,1272,6,55.58,0.8839,-0.64,31.52,,890.4,False
+AMD,1Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",-5.4061,1821,6,57.5,0.8366,-1.12,30.01,,1274.7,False
+AVGO,1Min,momentum,"{""period"": 20, ""threshold"": 3}",246.0043,23,6,47.83,2.2374,0.94,18.21,-0.2748,16.1,True
+AVGO,1Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",1.8512,999,6,56.96,1.0514,0.29,24.58,,699.3,True
+AVGO,1Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-1.1833,50701,6,13.22,0.1902,-62.95,99.98,,35490.8,False
+AVGO,1Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",-4.1595,1550,6,58.0,0.8654,-0.83,25.81,,1085.0,False
+AVGO,1Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-4.2325,12295,6,21.57,0.4221,-16.27,89.16,,8606.5,False
+AVGO,1Min,williams_r,"{""period"": 10}",-4.2616,12051,6,33.13,0.34,-15.63,87.27,,8435.7,False
+AVGO,1Min,ma_crossover,"{""short_window"": 5, ""long_window"": 30}",-6.2033,6171,6,22.23,0.5105,-8.49,71.54,,4319.7,False
+AVGO,1Min,donchian,"{""period"": 10}",-6.3974,5313,6,26.44,0.5654,-6.91,67.11,,3719.1,False
+AVGO,1Min,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-7.6371,4188,6,26.74,0.5488,-6.46,64.85,,2931.6,False
+INTC,1Min,momentum,"{""period"": 10, ""threshold"": 3}",450.2358,38,6,55.26,3.2007,1.49,22.35,,26.6,True
+INTC,1Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-0.9866,60865,6,11.76,0.2668,-43.15,100.0,,42606.1,False
+INTC,1Min,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",-3.3874,1785,6,23.75,0.9074,-0.61,43.33,,1249.5,False
+INTC,1Min,williams_r,"{""period"": 10}",-3.533,15288,6,34.07,0.4166,-14.25,94.03,,10701.7,False
+INTC,1Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-3.5467,15339,6,20.38,0.5168,-13.84,94.94,,10737.4,False
+INTC,1Min,donchian,"{""period"": 30}",-4.0551,2196,6,30.46,0.8893,-0.85,43.6,,1537.2,False
+INTC,1Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",-4.7378,1421,6,55.31,0.8836,-0.67,34.58,,994.7,False
+INTC,1Min,rsi,"{""period"": 9, ""oversold"": 30, ""overbought"": 70}",-5.766,6236,6,45.75,0.6203,-5.54,70.4,,4365.3,False
+INTC,1Min,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-6.1843,5392,6,24.24,0.6685,-4.6,64.45,,3774.5,False
+ORCL,1Min,momentum,"{""period"": 20, ""threshold"": 3}",45.9396,27,6,25.93,1.132,0.37,32.82,0.3908,18.9,True
+ORCL,1Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-1.3533,44343,6,14.77,0.2138,-62.31,99.96,,31040.4,False
+ORCL,1Min,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",-1.9513,1187,6,28.64,0.9463,-0.31,37.32,,830.9,False
+ORCL,1Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-4.6351,10917,6,21.57,0.4406,-16.54,91.62,,7642.0,False
+ORCL,1Min,williams_r,"{""period"": 10}",-4.6981,10480,6,34.06,0.3826,-14.08,85.17,,7336.1,False
+ORCL,1Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",-5.3365,853,6,54.16,0.8873,-0.69,35.49,,597.1,False
+ORCL,1Min,donchian,"{""period"": 30}",-6.877,1676,6,31.5,0.7968,-2.01,40.58,,1173.2,False
+ORCL,1Min,rsi,"{""period"": 9, ""oversold"": 30, ""overbought"": 70}",-7.1489,4327,6,47.35,0.5676,-5.78,59.21,,3028.9,False
+ORCL,1Min,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-7.7715,3661,6,25.76,0.61,-6.03,65.19,,2562.7,False
+BAC,1Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-1.6919,29430,5,11.34,0.1116,-87.03,99.74,,24721.8,False
+BAC,1Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",-4.4377,580,5,52.24,0.8431,-0.74,24.74,,487.2,False
+BAC,1Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-5.2501,7265,5,19.55,0.3117,-22.2,78.63,,6102.8,False
+BAC,1Min,williams_r,"{""period"": 10}",-5.2699,7084,5,25.51,0.2202,-20.51,76.12,,5950.7,False
+BAC,1Min,ma_crossover,"{""short_window"": 5, ""long_window"": 30}",-7.0561,3615,5,20.61,0.4095,-11.66,54.82,,3036.7,False
+BAC,1Min,rsi,"{""period"": 9, ""oversold"": 30, ""overbought"": 70}",-7.1591,2977,5,39.37,0.413,-8.23,48.68,,2500.7,False
+BAC,1Min,donchian,"{""period"": 10}",-7.7261,3053,5,23.88,0.4299,-10.14,50.45,,2564.6,False
+BAC,1Min,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-8.134,2661,5,22.55,0.4371,-8.99,48.09,,2235.3,False
+BAC,1Min,momentum,"{""period"": 10, ""threshold"": 5}",0.0,0,5,0.0,,0.99,11.33,,0.0,False
+MS,1Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",-1.408,527,5,34.72,0.9571,-0.15,21.19,,442.7,False
+MS,1Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-1.992,24935,5,12.96,0.1716,-75.78,99.49,,20946.2,False
+MS,1Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",-4.0009,423,5,54.85,0.883,-0.61,24.5,,355.3,False
+MS,1Min,ma_crossover,"{""short_window"": 10, ""long_window"": 120}",-4.1247,923,5,25.35,0.8337,-1.16,20.13,,775.3,False
+MS,1Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-5.7669,6096,5,20.93,0.386,-18.65,76.39,,5120.8,False
+MS,1Min,williams_r,"{""period"": 10}",-5.801,5573,5,30.54,0.3355,-15.4,67.02,,4681.5,False
+MS,1Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",-5.9188,1013,5,55.77,0.7674,-1.73,25.9,,851.0,False
+MS,1Min,donchian,"{""period"": 30}",-6.8186,1043,5,31.16,0.7418,-2.3,21.16,,876.2,False
+MS,1Min,momentum,"{""period"": 10, ""threshold"": 3}",450.73,4,5,50.0,4.8028,0.87,10.0,0.07,3.4,False
+AMD,5Min,momentum,"{""period"": 10, ""threshold"": 3}",176.549,50,6,44.0,1.9035,1.25,21.41,-32.8216,35.0,True
+AMD,5Min,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",48.5912,326,6,34.05,1.5255,1.7,23.05,-2.8534,228.2,True
+AMD,5Min,donchian,"{""period"": 30}",16.6624,469,6,33.69,1.208,0.92,22.72,,328.3,True
+AMD,5Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",11.8498,430,6,37.44,1.1568,0.59,26.68,,301.0,True
+AMD,5Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",9.4388,362,6,61.05,1.1235,0.31,30.61,,253.4,True
+AMD,5Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 70}",-0.7488,585,6,62.74,0.9868,-0.06,31.17,,409.5,False
+AMD,5Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-3.8493,13182,6,23.24,0.5051,-11.87,90.62,,9228.1,False
+AMD,5Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-4.1507,2298,6,31.55,0.8645,-1.17,41.74,,1608.7,False
+AMD,5Min,williams_r,"{""period"": 10}",-7.5378,2891,6,48.43,0.6644,-2.94,48.28,,2023.9,False
+AVGO,5Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",10.2442,356,6,63.2,1.1588,0.47,23.49,,249.2,True
+AVGO,5Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",-0.2847,454,6,60.13,0.995,-0.02,23.34,,317.8,False
+AVGO,5Min,donchian,"{""period"": 20}",-0.5396,638,6,35.58,0.9896,0.01,30.72,,446.6,False
+AVGO,5Min,ma_crossover,"{""short_window"": 20, ""long_window"": 60}",-1.6197,557,6,34.65,0.971,-0.03,28.63,,389.9,False
+AVGO,5Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-4.1466,12626,6,22.52,0.4189,-16.45,88.75,,8839.0,False
+AVGO,5Min,williams_r,"{""period"": 21}",-5.9568,1399,6,58.33,0.7967,-1.13,31.44,,979.4,False
+AVGO,5Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-7.3833,2230,6,29.69,0.721,-2.59,40.58,,1561.1,False
+AVGO,5Min,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",-7.4523,668,6,32.49,0.8528,-0.63,29.79,,467.6,False
+AVGO,5Min,momentum,"{""period"": 10, ""threshold"": 5}",1394.88,2,6,100.0,,0.84,17.7,0.2763,1.4,False
+INTC,5Min,momentum,"{""period"": 20, ""threshold"": 5}",237.1138,21,6,52.38,1.9786,0.8,27.52,,14.7,True
+INTC,5Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",28.9829,347,6,62.82,1.3932,0.81,29.33,,242.9,True
+INTC,5Min,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",24.6597,359,6,33.15,1.2499,0.86,33.17,-35.8055,251.3,True
+INTC,5Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",16.1745,443,6,35.21,1.1794,0.69,32.35,,310.1,True
+INTC,5Min,donchian,"{""period"": 20}",15.5239,616,6,35.39,1.2138,1.0,26.55,,431.2,True
+INTC,5Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",15.3702,487,6,62.22,1.2005,0.62,24.9,,340.9,True
+INTC,5Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-3.8742,13311,6,23.0,0.5413,-10.66,91.47,,9317.7,False
+INTC,5Min,macd,"{""fast"": 12, ""slow"": 21, ""signal"": 9}",-4.2974,2530,6,29.21,0.8722,-1.09,41.78,,1771.0,False
+INTC,5Min,williams_r,"{""period"": 14}",-4.9035,2180,6,53.26,0.8429,-1.2,40.68,,1526.0,False
+ORCL,5Min,momentum,"{""period"": 20, ""threshold"": 3}",125.7355,40,6,42.5,1.6496,0.86,26.97,-0.4791,28.0,True
+ORCL,5Min,ma_crossover,"{""short_window"": 10, ""long_window"": 120}",11.2716,344,6,25.87,1.1582,0.56,25.19,0.3917,240.8,True
+ORCL,5Min,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-0.0269,968,6,32.54,0.9994,-0.05,22.6,,677.7,False
+ORCL,5Min,donchian,"{""period"": 10}",-2.6636,1033,6,33.49,0.9336,-0.44,30.07,,723.2,False
+ORCL,5Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-4.2785,1855,6,31.48,0.8577,-1.3,37.37,,1298.6,False
+ORCL,5Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-4.5611,10876,6,23.23,0.4477,-15.75,90.96,,7614.0,False
+ORCL,5Min,williams_r,"{""period"": 10}",-10.6955,2394,6,47.2,0.5361,-5.03,57.78,,1676.0,False
+ORCL,5Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",-11.105,378,6,60.32,0.85,-0.73,32.51,,264.6,False
+ORCL,5Min,bollinger,"{""period"": 14, ""num_std"": 2}",-12.4468,649,6,57.78,0.7664,-1.37,37.26,,454.3,False
+BAC,5Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",-1.7769,238,5,62.61,0.9574,-0.12,29.74,,199.9,False
+BAC,5Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-4.89,8135,5,20.0,0.2876,-23.55,81.67,,6833.9,False
+BAC,5Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 70}",-4.9032,418,5,60.77,0.8575,-0.66,19.8,,351.1,False
+BAC,5Min,donchian,"{""period"": 20}",-5.1618,441,5,31.75,0.8517,-0.63,25.44,,370.5,False
+BAC,5Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-7.2479,1923,5,26.42,0.5799,-4.82,32.08,,1615.4,False
+BAC,5Min,williams_r,"{""period"": 21}",-7.6283,952,5,51.37,0.6408,-2.37,25.83,,799.7,False
+BAC,5Min,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",-7.769,764,5,28.8,0.6957,-1.79,20.71,,641.8,False
+BAC,5Min,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",-9.0701,361,5,30.19,0.7634,-0.89,20.65,,303.3,False
+BAC,5Min,momentum,"{""period"": 10, ""threshold"": 5}",0.0,0,5,0.0,,1.0,11.0,,0.0,False
+MS,5Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",30.3694,135,5,60.74,1.6199,1.22,23.23,-0.7575,113.4,True
+MS,5Min,donchian,"{""period"": 30}",11.6554,256,5,41.02,1.2506,1.0,11.17,-0.0269,215.1,True
+MS,5Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",9.5244,114,5,47.37,1.1584,0.3,15.27,0.4585,95.8,True
+MS,5Min,ma_crossover,"{""short_window"": 10, ""long_window"": 60}",2.3127,321,5,31.78,1.0537,0.37,11.45,-0.1172,269.7,True
+MS,5Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",-4.1303,261,5,60.54,0.9169,-0.27,24.12,,219.3,False
+MS,5Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-5.7626,5673,5,24.96,0.4304,-15.56,68.42,,4766.0,False
+MS,5Min,williams_r,"{""period"": 10}",-6.3576,1372,5,50.44,0.6831,-2.74,26.81,,1152.6,False
+MS,5Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-8.1734,1114,5,31.24,0.6958,-2.8,26.47,,935.9,False
+MS,5Min,momentum,"{""period"": 10, ""threshold"": 5}",0.0,0,5,0.0,,0.48,13.53,1.0,0.0,False
+AMD,15Min,momentum,"{""period"": 20, ""threshold"": 5}",297.5335,20,6,50.0,1.9418,1.07,32.25,-7.733,14.0,True
+AMD,15Min,ma_crossover,"{""short_window"": 20, ""long_window"": 60}",100.5302,186,6,39.78,1.9408,1.64,23.04,-6.2376,130.2,True
+AMD,15Min,donchian,"{""period"": 30}",87.9485,163,6,43.56,1.7572,1.47,14.73,-2.453,114.1,True
+AMD,15Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",73.8962,167,6,44.31,1.7174,1.19,22.45,-3.0052,116.9,True
+AMD,15Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",12.4488,152,6,63.16,1.1079,0.15,35.88,,106.4,True
+AMD,15Min,williams_r,"{""period"": 14}",2.5709,693,6,64.21,1.0486,0.12,26.38,,485.1,True
+AMD,15Min,rsi,"{""period"": 9, ""oversold"": 30, ""overbought"": 75}",0.4739,442,6,62.44,1.0065,-0.04,31.84,,309.4,True
+AMD,15Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-4.6683,769,6,33.94,0.9207,-0.3,36.2,,538.4,False
+AMD,15Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-5.0891,4235,6,30.15,0.7538,-2.78,60.75,,2964.8,False
+AVGO,15Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",48.5849,160,6,69.38,1.5096,0.83,32.94,-3.5322,112.0,True
+AVGO,15Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",34.8114,241,6,68.46,1.5015,0.9,25.66,,168.7,True
+AVGO,15Min,ma_crossover,"{""short_window"": 20, ""long_window"": 60}",10.2839,193,6,36.79,1.1149,0.35,30.71,0.1598,135.1,True
+AVGO,15Min,williams_r,"{""period"": 21}",2.985,465,6,65.38,1.0561,0.18,27.11,,325.6,True
+AVGO,15Min,donchian,"{""period"": 30}",-4.3108,170,6,36.47,0.959,-0.11,33.54,,119.0,False
+AVGO,15Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-5.064,751,6,34.35,0.8963,-0.39,37.3,,525.8,False
+AVGO,15Min,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",-7.3577,298,6,36.91,0.8991,-0.23,23.7,,208.6,False
+AVGO,15Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-7.5598,4300,6,27.91,0.5714,-5.96,61.98,,3010.7,False
+AVGO,15Min,momentum,"{""period"": 10, ""threshold"": 3}",-26.8114,44,6,38.64,0.8702,0.24,20.7,1.1049,30.8,False
+INTC,15Min,momentum,"{""period"": 20, ""threshold"": 5}",174.16,30,6,50.0,1.6517,0.93,25.41,0.1044,21.0,True
+INTC,15Min,ma_crossover,"{""short_window"": 10, ""long_window"": 120}",83.2685,131,6,32.82,1.6205,1.31,21.37,-1.4004,91.7,True
+INTC,15Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",61.4096,197,6,65.99,1.5609,0.95,22.81,,137.9,True
+INTC,15Min,donchian,"{""period"": 20}",56.9207,214,6,38.79,1.4106,0.99,27.13,-2.7179,149.8,True
+INTC,15Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",55.448,144,6,58.33,1.4876,0.68,27.6,,100.8,True
+INTC,15Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",53.0845,160,6,45.0,1.3244,0.88,32.04,,112.0,True
+INTC,15Min,williams_r,"{""period"": 21}",13.9682,478,6,63.18,1.1855,0.56,29.69,,334.7,True
+INTC,15Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",5.115,754,6,34.35,1.0781,0.46,32.49,,527.9,True
+INTC,15Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-4.9426,4324,6,29.09,0.7861,-2.17,63.34,,3027.6,False
+ORCL,15Min,momentum,"{""period"": 10, ""threshold"": 3}",84.9365,43,6,46.51,1.4569,1.09,21.39,0.4256,30.1,True
+ORCL,15Min,ma_crossover,"{""short_window"": 10, ""long_window"": 120}",61.4272,111,6,33.33,1.5308,1.13,22.14,-0.2002,77.7,True
+ORCL,15Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",20.0399,126,6,39.68,1.1409,0.25,34.73,-5.0912,88.2,True
+ORCL,15Min,donchian,"{""period"": 10}",1.8449,381,6,32.55,1.0256,-0.11,38.05,0.2376,266.8,True
+ORCL,15Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",1.3022,669,6,35.43,1.025,0.08,26.82,,468.4,True
+ORCL,15Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",-4.9647,143,6,61.54,0.9621,-0.1,30.78,,100.1,False
+ORCL,15Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-6.9428,3884,6,30.05,0.6308,-4.94,63.03,,2719.6,False
+ORCL,15Min,rsi,"{""period"": 9, ""oversold"": 30, ""overbought"": 70}",-11.4504,451,6,57.87,0.8309,-0.7,35.43,,315.8,False
+ORCL,15Min,williams_r,"{""period"": 10}",-11.6083,878,6,56.38,0.754,-1.51,43.86,,614.8,False
+BAC,15Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",20.5841,116,5,68.97,1.3915,0.73,24.06,-7.5058,97.5,True
+BAC,15Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",2.8369,161,5,67.08,1.0481,0.18,21.68,-27.369,135.3,True
+BAC,15Min,ma_crossover,"{""short_window"": 20, ""long_window"": 60}",-1.6671,146,5,36.3,0.9719,0.06,12.48,,122.7,False
+BAC,15Min,williams_r,"{""period"": 21}",-4.0783,369,5,62.87,0.8767,-0.35,24.69,,310.1,False
+BAC,15Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-7.1114,3271,5,24.89,0.447,-8.16,52.46,,2748.5,False
+BAC,15Min,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-7.8482,722,5,33.38,0.7203,-1.54,22.9,,606.7,False
+BAC,15Min,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",-8.1398,173,5,39.31,0.8635,-0.32,16.06,,145.4,False
+BAC,15Min,donchian,"{""period"": 10}",-10.2017,345,5,32.17,0.7432,-0.97,25.5,,289.9,False
+BAC,15Min,momentum,"{""period"": 20, ""threshold"": 5}",58.57,1,5,100.0,,1.0,8.68,,0.8,False
+MS,15Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",60.8773,55,5,45.45,1.9042,0.87,12.94,0.1301,46.2,True
+MS,15Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",54.5618,71,5,69.01,1.789,1.15,24.2,-2.2731,59.6,True
+MS,15Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",18.5445,86,5,65.12,1.2712,0.48,19.32,0.0035,72.2,True
+MS,15Min,donchian,"{""period"": 30}",17.9586,100,5,42.0,1.2465,0.68,11.17,0.4173,84.0,True
+MS,15Min,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",12.1517,197,5,37.56,1.2252,0.83,12.55,0.222,165.5,True
+MS,15Min,williams_r,"{""period"": 21}",-3.4487,276,5,60.51,0.9146,-0.23,25.86,,231.9,False
+MS,15Min,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",-4.4416,512,5,35.35,0.8857,-0.54,17.85,,430.1,False
+MS,15Min,stochastic,"{""k_period"": 21, ""d_period"": 3}",-7.3106,2176,5,31.34,0.5931,-5.25,43.73,,1828.1,False
+MS,15Min,momentum,"{""period"": 10, ""threshold"": 3}",-63.33,10,5,40.0,0.7118,0.22,12.9,1.768,8.4,False
+AMD,30Min,momentum,"{""period"": 20, ""threshold"": 3}",233.1772,60,6,51.67,2.5279,1.77,15.03,-7.0295,42.0,True
+AMD,30Min,donchian,"{""period"": 20}",141.2833,112,6,47.32,2.0005,1.62,23.22,-1.2784,78.4,True
+AMD,30Min,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",108.3146,184,6,42.93,2.0101,1.78,18.47,-4.4429,128.8,True
+AMD,30Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",106.0249,74,6,66.22,1.6995,0.76,29.0,,51.8,True
+AMD,30Min,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",88.9548,123,6,47.15,1.6643,1.19,21.3,-23.5731,86.1,True
+AMD,30Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",47.4445,340,6,39.12,1.5049,1.52,26.36,-14.8677,238.1,True
+AMD,30Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",34.6793,106,6,64.15,1.2964,0.36,32.9,,74.2,True
+AMD,30Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-1.2152,2045,6,35.7,0.9641,-0.17,31.89,,1432.0,False
+AMD,30Min,williams_r,"{""period"": 10}",-3.9015,460,6,62.17,0.9401,-0.18,30.51,,322.1,False
+AVGO,30Min,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",75.8159,71,6,46.48,1.5661,0.83,23.7,-1.2578,49.7,True
+AVGO,30Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",66.7107,67,6,62.69,1.76,0.57,27.32,,46.9,True
+AVGO,30Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",48.6314,118,6,66.95,1.455,0.68,28.13,-0.9705,82.6,True
+AVGO,30Min,donchian,"{""period"": 30}",22.827,70,6,45.71,1.1681,0.54,20.69,-0.0334,49.0,True
+AVGO,30Min,williams_r,"{""period"": 21}",11.2303,238,6,67.65,1.1555,0.37,26.41,,166.6,True
+AVGO,30Min,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",3.1364,205,6,39.02,1.0373,0.16,26.53,,143.5,True
+AVGO,30Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",2.6034,385,6,35.84,1.0373,0.19,21.79,0.3491,269.5,True
+AVGO,30Min,stochastic,"{""k_period"": 9, ""d_period"": 3}",-7.3843,2117,6,32.55,0.7328,-2.31,40.08,,1482.0,False
+AVGO,30Min,momentum,"{""period"": 10, ""threshold"": 3}",-23.4268,50,6,30.0,0.8887,0.14,24.54,1.1135,35.0,False
+INTC,30Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",232.0599,70,6,64.29,3.2581,1.23,21.6,,49.0,True
+INTC,30Min,momentum,"{""period"": 20, ""threshold"": 5}",214.3071,31,6,29.03,1.6325,1.15,28.42,-2.9214,21.7,True
+INTC,30Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",118.1163,111,6,67.57,1.9194,1.1,19.07,,77.7,True
+INTC,30Min,ma_crossover,"{""short_window"": 10, ""long_window"": 120}",103.6763,71,6,29.58,1.5331,1.1,26.79,-5.7148,49.7,True
+INTC,30Min,donchian,"{""period"": 20}",76.2055,114,6,46.49,1.4724,1.09,26.66,-0.7847,79.8,True
+INTC,30Min,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",61.3466,160,6,41.88,1.4577,0.93,24.36,,112.0,True
+INTC,30Min,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",31.0656,367,6,37.33,1.3414,0.95,28.28,,257.0,True
+INTC,30Min,williams_r,"{""period"": 21}",9.0192,229,6,66.38,1.0905,0.27,24.58,,160.4,True
+INTC,30Min,stochastic,"{""k_period"": 14, ""d_period"": 3}",-2.5366,2052,6,32.7,0.9311,-0.52,46.24,,1436.9,False
+ORCL,30Min,momentum,"{""period"": 10, ""threshold"": 3}",99.0328,47,6,42.55,1.4496,0.77,25.86,0.3783,32.9,True
+ORCL,30Min,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",40.8485,131,6,45.04,1.4295,1.0,19.01,0.2122,91.7,True
+ORCL,30Min,donchian,"{""period"": 30}",37.8146,72,6,40.28,1.2163,0.6,24.38,-0.0446,50.4,True
+ORCL,30Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",-4.8615,74,6,64.86,0.9731,-0.11,33.53,,51.8,False
+ORCL,30Min,stochastic,"{""k_period"": 21, ""d_period"": 3}",-6.6135,1943,6,33.25,0.7754,-1.92,35.85,,1360.7,False
+ORCL,30Min,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",-13.5897,187,6,34.76,0.8819,-0.26,31.48,,131.0,False
+ORCL,30Min,williams_r,"{""period"": 10}",-19.4527,456,6,57.46,0.7047,-1.28,38.76,,319.3,False
+ORCL,30Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 70}",-23.2874,117,6,57.26,0.8288,-0.29,30.69,,81.9,False
+ORCL,30Min,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",-7.1149,432,6,33.1,0.9042,-0.4,34.53,1.7115,302.5,False
+BAC,30Min,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",36.2795,81,5,71.6,1.7258,0.76,21.85,-63.7848,68.1,True
+BAC,30Min,donchian,"{""period"": 30}",33.384,55,5,47.27,1.389,0.74,14.03,0.4771,46.2,True
+BAC,30Min,bollinger,"{""period"": 14, ""num_std"": 2.5}",30.1676,58,5,62.07,1.4326,0.49,23.15,-35.3465,48.7,True
+BAC,30Min,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",9.9689,38,5,36.84,1.0942,0.52,12.43,-0.0617,31.9,True
+BAC,30Min,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",9.9651,109,5,35.78,1.1668,0.39,15.45,-0.1682,91.6,True
+BAC,30Min,williams_r,"{""period"": 14}",-4.6724,300,5,63.0,0.8719,-0.4,25.87,,252.1,False
+BAC,30Min,stochastic,"{""k_period"": 21, ""d_period"": 3}",-7.6838,1692,5,25.95,0.5656,-4.09,30.84,,1421.8,False
+BAC,30Min,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",-9.0109,359,5,32.59,0.7578,-0.92,15.3,,301.7,False
+BAC,30Min,momentum,"{""period"": 10, ""threshold"": 5}",58.57,1,5,100.0,,0.92,8.68,0.9338,0.8,False
+MS,30Min,bollinger,"{""period"": 20, ""num_std"": 2.5}",164.9457,42,5,66.67,3.8946,1.83,12.18,-0.7054,35.3,True
+MS,30Min,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",46.5458,67,5,67.16,1.7078,0.91,19.78,-0.4938,56.3,True
+MS,30Min,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",40.0294,64,5,45.31,1.6487,0.85,13.9,0.3358,53.8,True
+MS,30Min,donchian,"{""period"": 10}",13.1362,139,5,39.57,1.2165,0.87,12.32,0.469,116.8,True
+MS,30Min,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",10.8364,111,5,43.24,1.1717,0.62,17.79,,93.2,True
+MS,30Min,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",2.2061,272,5,37.87,1.0467,0.29,18.51,-0.0074,228.5,True
+MS,30Min,williams_r,"{""period"": 21}",-3.9642,132,5,65.15,0.9361,-0.08,22.22,,110.9,False
+MS,30Min,stochastic,"{""k_period"": 14, ""d_period"": 3}",-5.5307,1262,5,37.24,0.761,-2.02,30.15,,1060.1,False
+MS,30Min,momentum,"{""period"": 20, ""threshold"": 3}",-55.4414,21,5,33.33,0.6367,0.24,17.07,1.5027,17.6,False
+AMD,1Hour,donchian,"{""period"": 30}",376.0451,35,6,54.29,3.1191,1.53,20.96,-0.5825,24.5,True
+AMD,1Hour,momentum,"{""period"": 10, ""threshold"": 5}",369.2068,22,6,45.45,2.1791,1.33,34.87,-0.1088,15.4,True
+AMD,1Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",337.0703,32,6,78.12,2.5556,1.13,28.15,-13.0446,22.4,True
+AMD,1Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",297.8261,23,6,39.13,2.3489,1.19,15.2,-0.3509,16.1,True
+AMD,1Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",182.9863,54,6,44.44,2.1995,1.24,19.17,-55.4773,37.8,True
+AMD,1Hour,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",169.8731,49,6,71.43,2.179,0.89,25.48,,34.3,True
+AMD,1Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",85.0098,173,6,42.77,1.6798,1.55,19.83,,121.2,True
+AMD,1Hour,williams_r,"{""period"": 21}",52.9345,111,6,71.17,1.4512,0.67,28.8,,77.8,True
+AMD,1Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",4.5611,986,6,36.51,1.0922,0.58,24.82,,690.9,True
+AVGO,1Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",195.9513,30,6,66.67,2.0688,0.68,22.9,,21.0,True
+AVGO,1Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",123.3541,22,6,36.36,1.7265,0.6,19.17,-0.1977,15.4,True
+AVGO,1Hour,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 70}",106.9743,56,6,75.0,1.8483,0.8,21.3,0.3295,39.2,True
+AVGO,1Hour,williams_r,"{""period"": 21}",26.7905,103,6,68.93,1.2716,0.41,26.1,,72.1,True
+AVGO,1Hour,stochastic,"{""k_period"": 9, ""d_period"": 3}",-0.4476,1033,6,36.4,0.9889,-0.03,30.64,,723.2,False
+AVGO,1Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-3.3612,202,6,35.15,0.964,-0.04,26.51,,141.4,False
+AVGO,1Hour,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",-19.1334,93,6,35.48,0.8467,0.05,22.53,,65.1,False
+AVGO,1Hour,donchian,"{""period"": 20}",19.784,52,6,36.54,1.1354,0.5,20.23,0.5756,36.4,False
+AVGO,1Hour,momentum,"{""period"": 20, ""threshold"": 3}",-54.6091,46,6,32.61,0.7129,0.18,20.96,2.5594,32.2,False
+INTC,1Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",327.8489,35,6,62.86,2.8062,1.05,23.37,-5.3672,24.5,True
+INTC,1Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",229.8514,28,6,25.0,1.6652,1.19,31.31,-0.3149,19.6,True
+INTC,1Hour,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",193.7802,54,6,68.52,2.3292,1.02,28.9,,37.8,True
+INTC,1Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",174.7271,34,6,47.06,1.8518,1.08,28.21,0.1277,23.8,True
+INTC,1Hour,momentum,"{""period"": 10, ""threshold"": 3}",161.3438,64,6,46.88,1.7393,1.31,18.62,-4.867,44.8,True
+INTC,1Hour,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",116.1407,200,6,43.0,1.9252,1.79,21.04,-7.043,140.1,True
+INTC,1Hour,donchian,"{""period"": 30}",110.7397,37,6,37.84,1.3511,0.91,31.34,-0.412,25.9,True
+INTC,1Hour,williams_r,"{""period"": 21}",61.7403,116,6,65.52,1.6346,0.87,17.59,,81.3,True
+INTC,1Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",-0.313,993,6,34.74,0.9942,0.13,27.73,,695.8,False
+ORCL,1Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",160.6893,29,6,41.38,1.6064,0.65,18.69,-0.9332,20.3,True
+ORCL,1Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",159.2603,31,6,77.42,1.7751,0.34,35.23,0.0991,21.7,True
+ORCL,1Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",129.3054,26,6,42.31,1.7138,0.63,16.49,0.1519,18.2,True
+ORCL,1Hour,momentum,"{""period"": 20, ""threshold"": 3}",74.9214,44,6,29.55,1.3089,0.61,24.03,-0.946,30.8,True
+ORCL,1Hour,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",11.327,53,6,60.38,1.0585,-0.35,35.02,-0.2406,37.1,True
+ORCL,1Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",-4.2726,987,6,35.66,0.9033,-0.46,34.71,,691.6,False
+ORCL,1Hour,williams_r,"{""period"": 10}",-24.6103,245,6,57.96,0.7348,-0.82,28.88,,171.7,False
+ORCL,1Hour,donchian,"{""period"": 30}",69.9984,38,6,42.11,1.3216,0.61,20.31,0.6407,26.6,False
+ORCL,1Hour,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",-3.3661,223,6,33.18,0.9677,-0.09,32.09,1.1785,156.3,False
+BAC,1Hour,ma_crossover,"{""short_window"": 5, ""long_window"": 120}",64.9209,23,5,39.13,1.8586,1.13,7.38,-0.1906,19.3,True
+BAC,1Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",55.0721,24,5,37.5,1.4824,0.52,12.36,0.2833,20.2,True
+BAC,1Hour,bollinger,"{""period"": 14, ""num_std"": 2.5}",18.7145,33,5,57.58,1.1468,0.22,21.93,0.3422,27.7,True
+BAC,1Hour,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 70}",17.6994,49,5,63.27,1.2454,0.29,19.64,-1.1611,41.2,True
+BAC,1Hour,williams_r,"{""period"": 14}",2.5797,145,5,68.97,1.0459,0.13,23.6,,121.9,True
+BAC,1Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-4.576,159,5,37.11,0.9187,-0.13,11.37,,133.7,False
+BAC,1Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",-6.7971,830,5,33.01,0.7194,-1.56,21.33,,697.7,False
+BAC,1Hour,momentum,"{""period"": 20, ""threshold"": 3}",50.6043,14,5,35.71,1.3188,0.56,14.4,,11.8,False
+BAC,1Hour,donchian,"{""period"": 20}",7.9914,44,5,40.91,1.0754,0.29,14.09,0.8658,37.0,False
+MS,1Hour,bollinger,"{""period"": 14, ""num_std"": 2.5}",224.2708,25,5,72.0,4.1805,1.36,11.09,-0.8516,21.0,True
+MS,1Hour,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",145.222,40,5,67.5,3.8476,1.36,18.38,-1.2158,33.6,True
+MS,1Hour,macd,"{""fast"": 12, ""slow"": 21, ""signal"": 9}",30.3574,132,5,44.7,1.5034,1.37,10.37,-0.6418,110.9,True
+MS,1Hour,williams_r,"{""period"": 21}",18.898,79,5,64.56,1.2986,0.44,21.11,,66.4,True
+MS,1Hour,ma_crossover,"{""short_window"": 5, ""long_window"": 30}",12.0881,73,5,35.62,1.152,0.53,14.04,0.2191,61.3,True
+MS,1Hour,stochastic,"{""k_period"": 14, ""d_period"": 3}",-4.6819,727,5,36.73,0.8486,-0.85,19.28,,610.8,False
+MS,1Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",273.585,12,5,58.33,3.2776,1.08,13.19,0.0275,10.1,False
+MS,1Hour,donchian,"{""period"": 10}",12.6965,78,5,41.03,1.1402,0.54,11.2,0.7085,65.5,False
+MS,1Hour,momentum,"{""period"": 10, ""threshold"": 3}",-131.3688,17,5,23.53,0.4081,0.01,17.53,1.6696,14.3,False
+AMD,2Hour,bollinger,"{""period"": 14, ""num_std"": 2.5}",537.575,20,6,80.0,3.763,1.15,31.05,-0.1579,14.0,True
+AMD,2Hour,donchian,"{""period"": 20}",487.9456,25,6,44.0,3.4031,1.35,20.8,-2.3906,17.5,True
+AMD,2Hour,momentum,"{""period"": 20, ""threshold"": 5}",403.7138,21,6,47.62,2.5792,1.22,30.89,-1.3424,14.7,True
+AMD,2Hour,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",362.4679,33,6,75.76,2.856,1.21,30.92,,23.1,True
+AMD,2Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",234.8094,34,6,47.06,2.0383,0.93,27.32,,23.8,True
+AMD,2Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 60}",212.4438,21,6,42.86,2.0196,0.89,21.73,-1.1036,14.7,True
+AMD,2Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",145.3573,86,6,50.0,1.9911,1.39,17.92,-3.0762,60.3,True
+AMD,2Hour,williams_r,"{""period"": 14}",130.3382,91,6,70.33,2.1421,1.14,25.51,,63.8,True
+AMD,2Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",18.2586,498,6,39.56,1.2785,1.03,21.1,-8.5097,349.1,True
+AVGO,2Hour,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",271.5587,23,6,73.91,3.3471,0.77,29.67,0.1265,16.1,True
+AVGO,2Hour,bollinger,"{""period"": 14, ""num_std"": 2}",190.139,29,6,65.52,2.1047,0.61,21.76,,20.3,True
+AVGO,2Hour,williams_r,"{""period"": 21}",102.4153,58,6,74.14,1.8506,0.74,27.29,,40.6,True
+AVGO,2Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",39.1439,96,6,40.62,1.3705,0.56,23.55,0.3629,67.3,True
+AVGO,2Hour,donchian,"{""period"": 10}",13.7729,48,6,37.5,1.0892,0.33,26.46,0.4215,33.6,True
+AVGO,2Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",10.6223,490,6,38.16,1.1876,0.72,20.95,-2.7271,343.4,True
+AVGO,2Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",-82.665,32,6,34.38,0.6308,-0.13,25.15,,22.4,False
+AVGO,2Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",45.1302,45,6,42.22,1.3204,0.5,19.54,0.6794,31.5,False
+AVGO,2Hour,momentum,"{""period"": 20, ""threshold"": 3}",-13.974,35,6,34.29,0.9375,0.19,21.57,1.1775,24.5,False
+INTC,2Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",586.505,32,6,53.12,4.8993,1.78,16.3,-1.5903,22.4,True
+INTC,2Hour,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",492.1858,33,6,75.76,3.5592,1.29,27.58,,23.1,True
+INTC,2Hour,momentum,"{""period"": 20, ""threshold"": 5}",381.2873,26,6,42.31,2.5324,0.87,39.58,-9.7739,18.2,True
+INTC,2Hour,donchian,"{""period"": 20}",323.124,25,6,44.0,2.0011,0.88,27.13,,17.5,True
+INTC,2Hour,bollinger,"{""period"": 20, ""num_std"": 2}",298.9233,27,6,81.48,2.7123,0.86,24.92,,18.9,True
+INTC,2Hour,ma_crossover,"{""short_window"": 10, ""long_window"": 60}",224.4189,28,6,32.14,1.6471,1.07,32.81,-1.6621,19.6,True
+INTC,2Hour,williams_r,"{""period"": 21}",135.1366,58,6,74.14,2.2557,0.83,21.31,,40.7,True
+INTC,2Hour,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",86.7317,115,6,44.35,1.593,1.14,30.93,-45.882,80.6,True
+INTC,2Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",23.8642,493,6,37.32,1.2984,1.12,27.57,,345.6,True
+ORCL,2Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",221.7134,29,6,34.48,2.0196,0.66,26.84,-1.2015,20.3,True
+ORCL,2Hour,ma_crossover,"{""short_window"": 10, ""long_window"": 60}",129.8772,25,6,40.0,1.6577,0.45,17.15,0.0807,17.5,True
+ORCL,2Hour,donchian,"{""period"": 20}",84.271,29,6,34.48,1.3134,0.35,25.56,0.0685,20.3,True
+ORCL,2Hour,momentum,"{""period"": 10, ""threshold"": 3}",69.5218,44,6,29.55,1.2805,0.45,22.9,-0.4511,30.8,True
+ORCL,2Hour,bollinger,"{""period"": 20, ""num_std"": 2}",48.0641,22,6,59.09,1.2272,-0.36,36.76,-5.0764,15.4,True
+ORCL,2Hour,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",20.2482,22,6,59.09,1.0784,-0.48,31.96,,15.4,True
+ORCL,2Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-3.9775,97,6,34.02,0.9749,0.04,28.26,,67.9,False
+ORCL,2Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",-7.0027,486,6,35.19,0.9039,-0.28,31.45,,340.4,False
+ORCL,2Hour,williams_r,"{""period"": 21}",-16.6368,50,6,58.0,0.9097,-0.49,36.76,,35.0,False
+BAC,2Hour,donchian,"{""period"": 20}",54.5626,23,5,47.83,1.5187,0.85,11.74,-0.7256,19.3,True
+BAC,2Hour,williams_r,"{""period"": 21}",16.5231,45,5,64.44,1.1757,0.21,26.58,-1.0052,37.8,True
+BAC,2Hour,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 70}",-4.7231,36,5,66.67,0.9538,-0.01,27.76,,30.3,False
+BAC,2Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",-12.1162,426,5,33.33,0.6444,-1.57,18.84,,358.0,False
+BAC,2Hour,bollinger,"{""period"": 14, ""num_std"": 2}",-42.2281,26,5,53.85,0.7369,-0.29,27.91,,21.8,False
+BAC,2Hour,ma_crossover,"{""short_window"": 5, ""long_window"": 60}",167.8712,17,5,58.82,4.4916,1.47,5.93,-0.5635,14.3,False
+BAC,2Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",13.6775,76,5,47.37,1.1897,0.35,12.09,0.6502,63.9,False
+BAC,2Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",10.7447,32,5,40.62,1.0982,0.28,11.73,0.5664,26.9,False
+BAC,2Hour,momentum,"{""period"": 20, ""threshold"": 3}",-37.7477,13,5,46.15,0.7409,0.52,16.21,2.8931,10.9,False
+MS,2Hour,bollinger,"{""period"": 20, ""num_std"": 2}",217.8087,23,5,86.96,7.9976,1.24,14.1,-0.1775,19.3,True
+MS,2Hour,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",214.088,20,5,80.0,5.8441,1.12,21.77,-3.9569,16.8,True
+MS,2Hour,williams_r,"{""period"": 21}",66.3174,43,5,74.42,2.9078,0.8,20.29,,36.1,True
+MS,2Hour,stochastic,"{""k_period"": 14, ""d_period"": 3}",-3.2004,389,5,40.1,0.9199,-0.26,13.06,,327.0,False
+MS,2Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",149.7933,6,5,66.67,1.8465,0.62,13.27,0.5315,5.0,False
+MS,2Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 120}",83.3,5,5,20.0,1.3517,0.9,6.86,0.5874,4.2,False
+MS,2Hour,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",30.339,62,5,41.94,1.3741,0.65,11.98,0.657,52.1,False
+MS,2Hour,donchian,"{""period"": 10}",-21.0467,42,5,38.1,0.8471,-0.01,15.73,2.1979,35.3,False
+MS,2Hour,momentum,"{""period"": 10, ""threshold"": 3}",-121.3216,19,5,36.84,0.496,-0.07,21.4,1.9928,16.0,False
+AMD,4Hour,momentum,"{""period"": 20, ""threshold"": 3}",629.551,20,6,45.0,3.5736,1.36,21.12,-2.2978,14.1,True
+AMD,4Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",508.82,26,6,34.62,2.8901,1.31,25.08,-6.7897,18.3,True
+AMD,4Hour,donchian,"{""period"": 10}",503.9995,22,6,45.45,2.8897,1.36,24.37,-1.6735,15.5,True
+AMD,4Hour,williams_r,"{""period"": 21}",181.4546,28,6,78.57,2.1911,0.62,29.06,,19.7,True
+AMD,4Hour,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 75}",174.1675,24,6,70.83,1.7834,0.54,29.52,,16.9,True
+AMD,4Hour,ma_crossover,"{""short_window"": 5, ""long_window"": 30}",169.3017,29,6,41.38,1.9025,1.03,22.36,-0.0208,20.4,True
+AMD,4Hour,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",139.4004,53,6,54.72,1.8215,1.04,15.83,-1.3587,37.2,True
+AMD,4Hour,stochastic,"{""k_period"": 9, ""d_period"": 3}",65.5421,255,6,45.49,1.6812,1.65,26.59,-2.0499,179.2,True
+AMD,4Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",720.3386,7,6,71.43,4.4659,0.71,25.17,,4.9,False
+AVGO,4Hour,williams_r,"{""period"": 21}",229.2778,32,6,81.25,3.4522,0.93,27.52,,22.5,True
+AVGO,4Hour,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 70}",139.9476,25,6,68.0,2.0877,0.56,20.24,,17.6,True
+AVGO,4Hour,momentum,"{""period"": 20, ""threshold"": 3}",-139.1691,22,6,22.73,0.5225,0.16,23.67,,15.5,False
+AVGO,4Hour,bollinger,"{""period"": 14, ""num_std"": 2}",590.7708,13,6,84.62,18.4724,0.7,28.29,,9.1,False
+AVGO,4Hour,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",38.5606,54,6,37.04,1.2668,0.33,17.02,0.5884,37.9,False
+AVGO,4Hour,adx_trend,"{""period"": 20, ""adx_threshold"": 20}",31.4431,16,6,37.5,1.1461,0.06,18.14,0.3283,11.2,False
+AVGO,4Hour,stochastic,"{""k_period"": 21, ""d_period"": 3}",9.915,240,6,43.33,1.1188,0.42,22.12,0.524,168.6,False
+AVGO,4Hour,donchian,"{""period"": 10}",-26.4338,29,6,48.28,0.8829,0.03,22.81,15.6854,20.4,False
+AVGO,4Hour,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",-40.5596,24,6,45.83,0.8087,0.27,17.78,1.1487,16.9,False
+INTC,4Hour,momentum,"{""period"": 20, ""threshold"": 3}",403.0596,23,6,43.48,2.393,1.15,27.52,,16.2,True
+INTC,4Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",390.5331,29,6,27.59,2.3947,1.18,27.27,-81.7401,20.4,True
+INTC,4Hour,rsi,"{""period"": 9, ""oversold"": 30, ""overbought"": 75}",375.6107,30,6,66.67,3.0564,0.95,27.58,,21.1,True
+INTC,4Hour,donchian,"{""period"": 10}",369.6922,23,6,39.13,1.9746,0.96,33.21,,16.2,True
+INTC,4Hour,williams_r,"{""period"": 21}",251.615,28,6,67.86,2.3045,0.71,30.44,,19.7,True
+INTC,4Hour,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",187.7232,22,6,50.0,1.7429,0.93,24.78,0.0034,15.5,True
+INTC,4Hour,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",73.5457,51,6,45.1,1.3394,0.78,24.13,0.4521,35.8,True
+INTC,4Hour,stochastic,"{""k_period"": 9, ""d_period"": 3}",65.4082,261,6,42.53,1.5579,1.41,33.45,-1.4488,183.4,True
+INTC,4Hour,bollinger,"{""period"": 14, ""num_std"": 2.5}",1023.0067,6,6,100.0,,0.82,24.55,-12.0519,4.2,False
+ORCL,4Hour,momentum,"{""period"": 10, ""threshold"": 3}",167.5676,29,6,27.59,1.6173,0.54,29.61,0.2717,20.3,True
+ORCL,4Hour,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",163.6032,47,6,44.68,1.922,0.84,18.75,-2.7216,33.0,True
+ORCL,4Hour,donchian,"{""period"": 10}",146.0181,27,6,37.04,1.5174,0.41,25.47,0.0906,18.9,True
+ORCL,4Hour,williams_r,"{""period"": 21}",136.4729,28,6,60.71,2.0206,-0.22,34.6,-3.6753,19.6,True
+ORCL,4Hour,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 70}",131.4775,28,6,75.0,1.8271,-0.04,36.7,,19.6,True
+ORCL,4Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",123.6993,28,6,42.86,1.4998,0.43,21.5,0.184,19.6,True
+ORCL,4Hour,stochastic,"{""k_period"": 9, ""d_period"": 3}",-16.6379,263,6,34.98,0.8587,-0.39,41.82,,184.5,False
+ORCL,4Hour,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",-152.4542,24,6,25.0,0.4854,-0.36,33.21,,16.8,False
+ORCL,4Hour,bollinger,"{""period"": 14, ""num_std"": 2}",395.9607,14,6,71.43,4.8312,0.14,26.56,-2.7829,9.8,False
+BAC,4Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",31.7144,27,6,44.44,1.3467,0.7,10.27,-0.3089,19.0,True
+BAC,4Hour,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",28.5971,52,6,42.31,1.3909,0.47,13.91,0.3252,36.5,True
+BAC,4Hour,stochastic,"{""k_period"": 14, ""d_period"": 3}",-2.0265,253,6,38.34,0.9559,-0.05,15.03,,177.8,False
+BAC,4Hour,williams_r,"{""period"": 10}",-22.2747,55,6,61.82,0.7892,-0.22,28.4,,38.6,False
+BAC,4Hour,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 75}",-39.9875,24,6,58.33,0.7019,-0.1,25.0,,16.9,False
+BAC,4Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",284.922,5,6,80.0,3.4711,0.39,20.14,-0.7914,3.5,False
+BAC,4Hour,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",52.2431,16,6,43.75,1.6669,1.0,7.74,0.0651,11.2,False
+BAC,4Hour,donchian,"{""period"": 10}",25.3252,21,6,52.38,1.223,0.94,10.4,0.8208,14.8,False
+BAC,4Hour,momentum,"{""period"": 20, ""threshold"": 3}",-25.6137,8,6,37.5,0.8435,1.05,10.64,1.2014,5.6,False
+MS,4Hour,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 75}",248.279,20,5,90.0,13.4492,1.26,8.4,-0.8977,16.8,True
+MS,4Hour,williams_r,"{""period"": 21}",121.5376,25,5,80.0,3.4028,0.76,19.49,-0.2465,21.1,True
+MS,4Hour,ma_crossover,"{""short_window"": 5, ""long_window"": 30}",49.9782,22,5,36.36,1.4322,0.38,12.06,0.3524,18.5,True
+MS,4Hour,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",32.3595,44,5,36.36,1.3916,0.36,12.79,0.3633,37.0,True
+MS,4Hour,stochastic,"{""k_period"": 14, ""d_period"": 3}",3.4877,204,5,39.71,1.0686,0.22,12.55,-5.9754,171.8,True
+MS,4Hour,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-3.9907,28,5,42.86,0.9675,0.01,12.28,,23.6,False
+MS,4Hour,bollinger,"{""period"": 20, ""num_std"": 2.5}",698.0867,6,5,100.0,,1.04,12.6,-1.1536,5.1,False
+MS,4Hour,momentum,"{""period"": 20, ""threshold"": 5}",343.0325,4,5,75.0,3.135,1.1,12.24,0.4521,3.4,False
+MS,4Hour,donchian,"{""period"": 30}",12.628,10,5,50.0,1.0468,0.12,11.02,0.9449,8.4,False
+AMD,1Day,stochastic,"{""k_period"": 9, ""d_period"": 3}",194.7932,44,5,45.45,2.1572,1.84,21.1,-11.1822,37.0,True
+AMD,1Day,bollinger,"{""period"": 14, ""num_std"": 2}",2500.91,1,5,100.0,,1.22,11.6,-90.2741,0.8,False
+AMD,1Day,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 70}",2291.25,1,5,100.0,,0.58,11.65,-10.8441,0.8,False
+AMD,1Day,momentum,"{""period"": 10, ""threshold"": 3}",1245.2417,6,5,66.67,5.7468,2.78,22.93,-0.2342,5.0,False
+AMD,1Day,williams_r,"{""period"": 21}",802.39,1,5,100.0,,-0.02,11.6,-7.3521,0.8,False
+AMD,1Day,donchian,"{""period"": 10}",271.595,4,5,25.0,1.352,2.06,29.06,0.5402,3.4,False
+AMD,1Day,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",0.0,0,5,0.0,,1.44,6.29,1.0,0.0,False
+AMD,1Day,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-38.07,2,5,50.0,0.6487,0.16,5.74,1.0925,1.7,False
+AMD,1Day,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-503.8025,4,5,25.0,0.2019,1.32,22.91,1.3542,3.4,False
+AVGO,1Day,stochastic,"{""k_period"": 14, ""d_period"": 3}",49.088,44,5,52.27,1.3561,1.12,12.82,0.2933,37.0,True
+AVGO,1Day,rsi,"{""period"": 14, ""oversold"": 25, ""overbought"": 75}",2274.09,1,5,100.0,,1.14,13.13,-0.0538,0.8,False
+AVGO,1Day,williams_r,"{""period"": 21}",810.2,3,5,100.0,,1.13,9.73,0.1725,2.5,False
+AVGO,1Day,momentum,"{""period"": 10, ""threshold"": 3}",395.588,5,5,60.0,5.0036,1.84,12.81,-1.1748,4.2,False
+AVGO,1Day,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",304.52,2,5,100.0,,0.42,11.92,0.8533,1.7,False
+AVGO,1Day,donchian,"{""period"": 10}",284.365,2,5,100.0,,2.34,9.72,0.785,1.7,False
+AVGO,1Day,bollinger,"{""period"": 20, ""num_std"": 2}",0.0,0,5,0.0,,-0.05,8.75,1.0,0.0,False
+AVGO,1Day,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",-188.54,3,5,33.33,0.168,0.62,9.71,2.6034,2.5,False
+AVGO,1Day,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",-248.36,1,5,0.0,0.0,0.94,10.25,1.3375,0.8,False
+INTC,1Day,stochastic,"{""k_period"": 14, ""d_period"": 3}",31.405,44,5,40.91,1.1465,0.16,35.11,,37.0,True
+INTC,1Day,bollinger,"{""period"": 14, ""num_std"": 2.5}",2000.48,1,5,100.0,,1.37,7.3,-0.2654,0.8,False
+INTC,1Day,momentum,"{""period"": 10, ""threshold"": 3}",1834.33,9,5,44.44,7.139,1.68,32.1,,7.6,False
+INTC,1Day,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 70}",1730.865,2,5,100.0,,2.0,8.79,,1.7,False
+INTC,1Day,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",1521.9067,3,5,66.67,14.662,1.41,15.97,-3.1654,2.5,False
+INTC,1Day,williams_r,"{""period"": 21}",1338.16,3,5,100.0,,1.52,8.06,0.0559,2.5,False
+INTC,1Day,adx_trend,"{""period"": 20, ""adx_threshold"": 25}",0.0,0,5,0.0,,0.1,16.62,1.0,0.0,False
+INTC,1Day,ma_crossover,"{""short_window"": 5, ""long_window"": 60}",0.0,0,5,0.0,,,0.0,,0.0,False
+INTC,1Day,donchian,"{""period"": 30}",0.0,0,5,0.0,,0.72,19.22,,0.0,False
+ORCL,1Day,stochastic,"{""k_period"": 9, ""d_period"": 3}",109.8119,42,5,59.52,1.6132,1.4,22.68,-1.9043,35.3,True
+ORCL,1Day,bollinger,"{""period"": 20, ""num_std"": 2}",4213.53,1,5,100.0,,0.23,25.19,-1.6945,0.8,False
+ORCL,1Day,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 70}",4042.97,1,5,100.0,,0.03,37.05,-1.2017,0.8,False
+ORCL,1Day,williams_r,"{""period"": 21}",2119.7,3,5,100.0,,0.51,30.46,-0.7625,2.5,False
+ORCL,1Day,ma_crossover,"{""short_window"": 5, ""long_window"": 120}",0.0,0,5,0.0,,,0.0,1.0,0.0,False
+ORCL,1Day,donchian,"{""period"": 30}",0.0,0,5,0.0,,1.6,11.6,1.0,0.0,False
+ORCL,1Day,macd,"{""fast"": 8, ""slow"": 26, ""signal"": 9}",-20.73,1,5,0.0,0.0,1.32,11.76,1.1083,0.8,False
+ORCL,1Day,momentum,"{""period"": 10, ""threshold"": 3}",-360.085,6,5,16.67,0.1854,0.84,21.13,1.5658,5.0,False
+ORCL,1Day,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",-646.45,2,5,0.0,0.0,1.55,15.53,2.8151,1.7,False
+BAC,1Day,stochastic,"{""k_period"": 14, ""d_period"": 3}",27.9568,41,5,41.46,1.3894,0.85,10.89,0.052,34.4,True
+BAC,1Day,rsi,"{""period"": 14, ""oversold"": 30, ""overbought"": 75}",852.5933,3,5,100.0,,2.21,5.75,-3.0718,2.5,False
+BAC,1Day,bollinger,"{""period"": 20, ""num_std"": 2}",685.44,1,5,100.0,,1.99,5.75,0.2475,0.8,False
+BAC,1Day,williams_r,"{""period"": 21}",564.6925,4,5,100.0,,1.31,8.85,-5.1081,3.4,False
+BAC,1Day,macd,"{""fast"": 8, ""slow"": 21, ""signal"": 9}",156.91,2,5,50.0,2.2442,0.49,8.22,-7.9255,1.7,False
+BAC,1Day,adx_trend,"{""period"": 14, ""adx_threshold"": 25}",85.85,1,5,100.0,,0.59,7.75,0.2809,0.8,False
+BAC,1Day,ma_crossover,"{""short_window"": 20, ""long_window"": 30}",34.57,3,5,66.67,1.2351,0.64,7.22,0.8729,2.5,False
+BAC,1Day,donchian,"{""period"": 30}",0.0,0,5,0.0,,0.65,5.75,1.0,0.0,False
+BAC,1Day,momentum,"{""period"": 20, ""threshold"": 5}",-250.02,2,5,0.0,0.0,0.43,7.28,1.5046,1.7,False
+MS,1Day,stochastic,"{""k_period"": 14, ""d_period"": 3}",-0.3667,49,5,38.78,0.9961,-0.05,20.24,,41.2,False
+MS,1Day,rsi,"{""period"": 9, ""oversold"": 25, ""overbought"": 75}",1804.685,2,5,100.0,,1.77,6.92,-1.2937,1.7,False
+MS,1Day,bollinger,"{""period"": 14, ""num_std"": 2}",962.91,1,5,100.0,,0.62,12.11,-0.9008,0.8,False
+MS,1Day,momentum,"{""period"": 10, ""threshold"": 3}",812.28,2,5,50.0,10.8036,2.52,6.92,-2.3013,1.7,False
+MS,1Day,williams_r,"{""period"": 21}",459.125,2,5,100.0,,-0.1,13.41,-2.3663,1.7,False
+MS,1Day,adx_trend,"{""period"": 14, ""adx_threshold"": 20}",108.85,2,5,50.0,1.8262,1.59,5.44,0.6836,1.7,False
+MS,1Day,ma_crossover,"{""short_window"": 10, ""long_window"": 30}",0.0,0,5,0.0,,1.38,0.0,1.0,0.0,False
+MS,1Day,donchian,"{""period"": 30}",0.0,0,5,0.0,,1.69,6.62,1.0,0.0,False
+MS,1Day,macd,"{""fast"": 12, ""slow"": 26, ""signal"": 9}",-191.6267,3,5,33.33,0.0321,0.98,3.98,2.9544,2.5,False

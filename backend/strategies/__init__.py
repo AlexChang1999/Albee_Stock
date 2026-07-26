@@ -8,7 +8,7 @@ STRATEGY_REGISTRY 是「策略註冊表」：
 就能找到對應的策略。新增策略時，只要在這裡登記一行即可（鬆耦合）。
 """
 
-from backend.strategies.base import BaseStrategy, Signal
+from backend.strategies.base import BaseStrategy, ScriptStrategy, Signal
 from backend.strategies.ma_crossover import MACrossoverStrategy
 from backend.strategies.rsi import RSIStrategy
 from backend.strategies.macd import MACDStrategy
@@ -19,6 +19,8 @@ from backend.strategies.momentum import MomentumStrategy
 from backend.strategies.williams_r import WilliamsRStrategy
 from backend.strategies.adx_trend import ADXTrendStrategy
 from backend.strategies.composite import CompositeStrategy
+from backend.strategies.script_breakout import ScriptBreakoutStrategy
+from backend.strategies.snr_3_0 import Snr30Strategy
 
 # 策略註冊表：代號 -> 類別
 # 之後新增策略，就在這裡多加一行對應即可。
@@ -34,6 +36,10 @@ STRATEGY_REGISTRY = {
     "adx_trend": ADXTrendStrategy,
     # Phase 8 step-03：策略組合（子策略訊號投票 / 加權 / 狀態切換）
     "composite": CompositeStrategy,
+    # 事件驅動 ScriptStrategy 範例（採納自 QuantDinger）：突破進場 + 有狀態續抱
+    "script_breakout": ScriptBreakoutStrategy,
+    # SNR 3.0：供需區（Fresh Zone）+ 拒絕/確認/結構突破多重確認
+    "snr_3_0": Snr30Strategy,
 }
 
 # 策略顯示名（中文）：代號 -> 給人看的名稱。
@@ -50,6 +56,8 @@ STRATEGY_LABELS = {
     "williams_r": "威廉指標",
     "adx_trend": "ADX 趨勢",
     "composite": "策略組合",
+    "script_breakout": "突破續抱（事件式）",
+    "snr_3_0": "SNR 3.0 供需區",
 }
 
 # 策略「合法參數 schema」：代號 -> {參數名: {default, min, max}}。
@@ -100,6 +108,26 @@ STRATEGY_PARAM_SPECS: dict[str, dict[str, dict]] = {
         "period": {"default": 14, "min": 2, "max": 50},
         "adx_threshold": {"default": 25, "min": 10, "max": 50},
     },
+    "script_breakout": {
+        "lookback": {"default": 20, "min": 5, "max": 200},        # 突破進場回看根數
+        "exit_lookback": {"default": 10, "min": 3, "max": 100},   # 跌破出場回看根數
+        "hold_bars": {"default": 0, "min": 0, "max": 250},        # 0=不靠時間出場
+    },
+    # SNR 3.0 供需區（allow_short 是行為開關非數值參數，不列入 spec 網格）
+    "snr_3_0": {
+        "zone_lookback": {"default": 80, "min": 20, "max": 250},        # 往回幾根找 swing/zone
+        "swing_window": {"default": 3, "min": 2, "max": 10},            # swing 左右各幾根確認
+        "atr_period": {"default": 14, "min": 5, "max": 50},
+        "zone_atr_width": {"default": 0.5, "min": 0.1, "max": 2.0},     # zone 寬度 = 值×ATR
+        "touch_tolerance_atr": {"default": 0.2, "min": 0.05, "max": 1.0},
+        "max_touches": {"default": 1, "min": 1, "max": 3},              # 歷史觸碰群數上限（Fresh）
+        "expansion_body_mult": {"default": 1.5, "min": 1.0, "max": 3.0},
+        "expansion_lookback": {"default": 20, "min": 5, "max": 60},
+        "rejection_wick_ratio": {"default": 0.4, "min": 0.2, "max": 0.8},
+        "structure_break_lookback": {"default": 5, "min": 2, "max": 20},
+        "reward_r": {"default": 2.0, "min": 1.0, "max": 5.0},           # 參考目標 R 倍數
+        "atr_buffer": {"default": 0.2, "min": 0.0, "max": 1.0},         # 參考停損緩衝 ×ATR
+    },
 }
 
 
@@ -132,6 +160,7 @@ def list_strategies() -> list[dict]:
 
 __all__ = [
     "BaseStrategy",
+    "ScriptStrategy",
     "Signal",
     "STRATEGY_REGISTRY",
     "STRATEGY_LABELS",

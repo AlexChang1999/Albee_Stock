@@ -20,7 +20,8 @@ from backend.database import get_db
 from backend.models import Bot, TradeLog, DecisionLog
 from backend.bots.bot_manager import bot_manager, run_bot_once
 from backend.routers.bars import _to_candles
-from backend.services import market_data
+from backend.services import market_data, timeframes
+from backend.services.exit_policies import get_exit_policy
 from backend.services.indicator_overlays import compute_overlays
 from backend.services.performance import compute_bot_stats
 from backend.services.alpaca_client import alpaca_client
@@ -44,6 +45,12 @@ class BotCreate(BaseModel):
     stop_loss_pct: float | None = None       # 固定止損
     trailing_stop_pct: float | None = None   # 追蹤止損
     check_interval_sec: int = 60             # 監測頻率（秒）
+    timeframe: str = "1Day"                  # K 線時間框架（M2；合法值見 services/timeframes.py）
+
+    # ----- 可插拔出場政策（Phase 16 M4）-----
+    # None = 沿用上面三個 % 欄位（舊行為）。合法 key 見 services/exit_policies.py。
+    exit_policy_key: str | None = None
+    exit_policy_params: dict | None = None
 
 
 class RiskUpdate(BaseModel):
@@ -87,6 +94,16 @@ def _bot_stats(db: Session, bot_id: int) -> dict:
     return compute_bot_stats(trades)
 
 
+def _validate_exit_policy(payload: BotCreate) -> None:
+    """出場政策 key/params 建檔時就驗證（試建一次實例），錯誤別等到進場那刻才炸。"""
+    if not payload.exit_policy_key:
+        return
+    try:
+        get_exit_policy(payload.exit_policy_key, payload.exit_policy_params)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"出場政策設定無效：{e}")
+
+
 def _get_bot_or_404(db: Session, bot_id: int) -> Bot:
     """共用：查出 Bot，找不到就回 404，避免每個路由重複寫。"""
     bot = db.query(Bot).filter(Bot.id == bot_id).first()
@@ -99,6 +116,7 @@ def _get_bot_or_404(db: Session, bot_id: int) -> Bot:
 @router.post("")
 def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
     """建立一個新的 Bot。"""
+    _validate_exit_policy(payload)
     bot = Bot(
         name=payload.name,
         strategy=payload.strategy,
@@ -109,6 +127,9 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
         stop_loss_pct=payload.stop_loss_pct,
         trailing_stop_pct=payload.trailing_stop_pct,
         check_interval_sec=payload.check_interval_sec,
+        timeframe=timeframes.validate(payload.timeframe),
+        exit_policy_key=payload.exit_policy_key,
+        exit_policy_params=payload.exit_policy_params,
     )
     db.add(bot)
     db.commit()
@@ -119,6 +140,7 @@ def create_bot(payload: BotCreate, db: Session = Depends(get_db)):
 @router.put("/{bot_id}")
 def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     """編輯一個既有的 Bot。"""
+    _validate_exit_policy(payload)
     bot = _get_bot_or_404(db, bot_id)
     bot.name = payload.name
     bot.strategy = payload.strategy
@@ -129,6 +151,9 @@ def update_bot(bot_id: int, payload: BotCreate, db: Session = Depends(get_db)):
     bot.stop_loss_pct = payload.stop_loss_pct
     bot.trailing_stop_pct = payload.trailing_stop_pct
     bot.check_interval_sec = payload.check_interval_sec
+    bot.timeframe = timeframes.validate(payload.timeframe)
+    bot.exit_policy_key = payload.exit_policy_key
+    bot.exit_policy_params = payload.exit_policy_params
     db.commit()
     db.refresh(bot)
     return {"id": bot.id, "name": bot.name, "symbol": bot.symbol}
@@ -175,8 +200,30 @@ def delete_bot(bot_id: int, db: Session = Depends(get_db)):
 
 @router.get("")
 def list_bots(db: Session = Depends(get_db)):
-    """列出所有 Bot（含各自的績效指標）。"""
+    """列出所有 Bot（含各自的績效指標）。
+
+    效能注意：這裡刻意「批次」抓資料，不要在迴圈裡逐 Bot 查——
+    艦隊有 190 個 Bot 時，逐 Bot 各打一次 Alpaca 持倉 API + 一次 TradeLog 查詢
+    （2 × 190 次網路往返，Neon/Alpaca 都在雲端）會讓這條 API 跑到近一分鐘。
+    改成：持倉一次抓全部、交易紀錄一次撈全部再依 bot_id 分組，往返數固定為 2。
+    """
     bots = db.query(Bot).all()
+
+    # 持倉均價：一次列出所有持倉 → {symbol: avg_entry_price}（離線/無金鑰回空，優雅降級）
+    entry_by_symbol: dict[str, float] = {}
+    for pos in alpaca_client.list_positions():
+        try:
+            entry_by_symbol[pos.symbol] = float(pos.avg_entry_price)
+        except Exception:
+            continue
+
+    # 交易紀錄：一次撈全部（由舊到新），在記憶體依 bot_id 分組
+    trades_by_bot: dict[int, list[dict]] = {}
+    for r in db.query(TradeLog).order_by(TradeLog.created_at.asc()).all():
+        trades_by_bot.setdefault(r.bot_id, []).append(
+            {"side": r.side, "qty": r.qty, "price": r.price}
+        )
+
     return [
         {
             "id": b.id,
@@ -189,14 +236,17 @@ def list_bots(db: Session = Depends(get_db)):
             "stop_loss_pct": b.stop_loss_pct,
             "trailing_stop_pct": b.trailing_stop_pct,
             "check_interval_sec": b.check_interval_sec,
+            "timeframe": getattr(b, "timeframe", None) or "1Day",
+            "exit_policy_key": getattr(b, "exit_policy_key", None),
+            "exit_policy_params": getattr(b, "exit_policy_params", None),
             "is_active": b.is_active,
             # 監聽狀態：持倉最高價（None=空手）、最後一次檢查時間（給前端顯示排程是否在動）
             "peak_price": b.peak_price,
             # 進場均價（來自 Alpaca 持倉，空手/離線為 None）：給前端圖表畫進場線/止損線用
-            "avg_entry_price": _avg_entry_price(b.symbol),
+            "avg_entry_price": entry_by_symbol.get(b.symbol),
             "last_checked_at": b.last_checked_at.isoformat() if b.last_checked_at else None,
             # 績效指標：依該 Bot 的真實交易紀錄計算（沒交易時各項為 0）
-            "stats": _bot_stats(db, b.id),
+            "stats": compute_bot_stats(trades_by_bot.get(b.id, [])),
         }
         for b in bots
     ]
@@ -245,6 +295,8 @@ def get_recent_decisions(limit: int = 30, db: Session = Depends(get_db)):
             "reason": r.reason,
             "price": r.price,
             "action": r.action,
+            "exit_kind": r.exit_kind,          # 賣出細分（止損/停利/追蹤/反轉/券商）
+            "thesis_breach": r.thesis_breach,  # 賣出時哪個買入假設失效（給即時流呈現）
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r, bot_name in rows
@@ -274,7 +326,19 @@ def get_bot_decisions(bot_id: int, limit: int = 50, db: Session = Depends(get_db
             "signal": r.signal,
             "reason": r.reason,
             "price": r.price,
+            "volume": r.volume,          # 決策當下那根 K 的成交量（量）
+            "qty": r.qty,                # 實際下單股數（觀望/跳過為 None）
+            "indicators": r.indicators,  # 該策略當下指標快照（dict 或 None）
             "action": r.action,
+            # ----- 結構化交易日誌擴充欄位 -----
+            "strategy": r.strategy,              # 觸發策略代號（自適應記實際挑中的）
+            "total_amount": r.total_amount,      # 成交總額 = 價 × 股數
+            "target_price": r.target_price,      # 預期獲利點
+            "stop_price": r.stop_price,          # 預計停損點
+            "market_snapshot": r.market_snapshot,  # 均線位置 + 量能快照（dict 或 None）
+            "position_after": r.position_after,    # 交易後庫存（dict 或 None）
+            "exit_kind": r.exit_kind,            # 賣出細分（止損/停利/追蹤/反轉/券商）
+            "thesis_breach": r.thesis_breach,    # 賣出時哪個買入假設失效
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in rows
@@ -371,3 +435,106 @@ def stop_bot(bot_id: int, db: Session = Depends(get_db)):
     db.commit()
     bot_manager.stop_bot(bot_id)
     return {"message": f"Bot {bot.name} 已停止"}
+
+
+@router.get("/daily-digest")
+def daily_digest(date: str | None = None, db: Session = Depends(get_db)):
+    """
+    每日交易摘要（快速查詢「昨天到底發生什麼」）。
+
+    讀取 DecisionLog + TradeLog，按 Bot 分組計算 round-trip P&L 與出場分析。
+    date 格式 YYYY-MM-DD，省略 = 昨天。不觸發 LLM（純資料查詢）。
+    需要 AI 分析版本請用 POST /review/daily。
+    """
+    from datetime import date as _date, timedelta, datetime as _dt
+    from collections import defaultdict
+    from backend.services.performance import compute_round_trip_returns
+
+    target_str = date or (_date.today() - timedelta(days=1)).isoformat()
+    try:
+        target_dt = _dt.strptime(target_str, "%Y-%m-%d")
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"日期格式錯誤：{target_str}，應為 YYYY-MM-DD")
+
+    day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = target_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # 抓當日所有決策
+    all_decisions = (
+        db.query(DecisionLog)
+        .filter(
+            DecisionLog.created_at >= day_start,
+            DecisionLog.created_at <= day_end,
+        )
+        .order_by(DecisionLog.bot_id, DecisionLog.created_at.asc())
+        .all()
+    )
+
+    # 抓當日成交
+    all_trades = (
+        db.query(TradeLog)
+        .filter(
+            TradeLog.created_at >= day_start,
+            TradeLog.created_at <= day_end,
+        )
+        .order_by(TradeLog.bot_id, TradeLog.created_at.asc())
+        .all()
+    )
+
+    # 按 bot_id 分組
+    by_bot_dec: dict = defaultdict(list)
+    for d in all_decisions:
+        by_bot_dec[d.bot_id].append(d)
+
+    by_bot_trade: dict = defaultdict(list)
+    for t in all_trades:
+        by_bot_trade[t.bot_id].append(t)
+
+    all_bot_ids = set(by_bot_dec.keys()) | set(by_bot_trade.keys())
+    bots_map = {b.id: b for b in db.query(Bot).filter(Bot.id.in_(all_bot_ids)).all()} if all_bot_ids else {}
+
+    result_bots = []
+    total_pnl = 0.0
+    for bot_id in sorted(all_bot_ids):
+        b = bots_map.get(bot_id)
+        decisions = by_bot_dec[bot_id]
+        trades = by_bot_trade[bot_id]
+
+        trade_dicts = [{"side": t.side, "qty": t.qty, "price": t.price,
+                        "created_at": t.created_at} for t in trades]
+        rts = compute_round_trip_returns(trade_dicts)
+        pnl = sum(r["profit"] for r in rts)
+        total_pnl += pnl
+
+        exit_kinds: dict = defaultdict(int)
+        thesis_breaches = []
+        for d in decisions:
+            if d.action == "sold":
+                if d.exit_kind:
+                    exit_kinds[d.exit_kind] += 1
+                if d.thesis_breach:
+                    thesis_breaches.append({
+                        "breach": d.thesis_breach,
+                        "price": d.price,
+                        "time": d.created_at.isoformat() if d.created_at else None,
+                    })
+
+        result_bots.append({
+            "bot_id": bot_id,
+            "bot_name": b.name if b else f"Bot#{bot_id}",
+            "strategy": b.strategy if b else "unknown",
+            "symbol": b.symbol if b else "unknown",
+            "decisions_count": len(decisions),
+            "round_trips": len(rts),
+            "pnl": round(pnl, 2),
+            "exit_kinds": dict(exit_kinds),
+            "thesis_breaches": thesis_breaches,
+        })
+
+    return {
+        "date": target_str,
+        "total_pnl": round(total_pnl, 2),
+        "bots_count": len(result_bots),
+        "bots": result_bots,
+    }

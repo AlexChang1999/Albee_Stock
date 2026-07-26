@@ -21,3 +21,17 @@ export const ACTION_META = {
 export function actionMeta(action) {
   return ACTION_META[action] || { label: action || "—", color: "text.secondary" };
 }
+
+// 賣出細分 exit_kind → 標籤 + 配色（與 backend/models/decision_log.py 的 EXIT_KIND_* 對應）。
+// 只在「賣出」紀錄才有；其餘決策回 null（畫面不顯示 exit chip）。
+export const EXIT_KIND_META = {
+  stop_loss: { label: "止損", color: NEON.red },
+  take_profit: { label: "停利", color: NEON.green },
+  trailing: { label: "追蹤止損", color: NEON.red },
+  signal_reversal: { label: "策略反轉", color: NEON.magenta },
+  broker_settled: { label: "券商成交", color: "text.secondary" },
+};
+
+export function exitKindMeta(kind) {
+  return EXIT_KIND_META[kind] || null;
+}

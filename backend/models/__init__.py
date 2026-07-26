@@ -20,6 +20,8 @@ from backend.models.political_event import PoliticalEvent
 from backend.models.macro_series import MacroObservation
 from backend.models.job_run_log import JobRunLog
 from backend.models.strategy_symbol_fit import StrategySymbolFit
+from backend.models.agent_audit import AgentAudit
+from backend.models.scheduler_lease import SchedulerLease
 
 __all__ = [
     "Bot",
@@ -37,4 +39,6 @@ __all__ = [
     "MacroObservation",
     "JobRunLog",
     "StrategySymbolFit",
+    "AgentAudit",
+    "SchedulerLease",
 ]

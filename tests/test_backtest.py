@@ -277,6 +277,276 @@ def test_resolve_source_switches_to_yfinance_on_long_range():
     print("✅ 長區間自動選 yfinance 測試通過")
 
 
+from backend.strategies.base import ScriptStrategy
+
+
+class _ThreshVec(BaseStrategy):
+    """向量化版：今天收盤 > 昨天 → buy，否則 sell（無狀態，每根都表態）。"""
+
+    def generate_signal(self, df):
+        if len(df) < 2:
+            return Signal.HOLD, "資料不足"
+        if float(df["close"].iloc[-1]) > float(df["close"].iloc[-2]):
+            return Signal.BUY, "漲"
+        return Signal.SELL, "跌"
+
+
+class _ThreshScript(ScriptStrategy):
+    """事件式版：邏輯與 _ThreshVec 完全相同，但用 on_bar + ctx 寫。"""
+
+    def on_bar(self, ctx, bar):
+        closes = ctx.history["close"]
+        if len(closes) < 2:
+            return
+        if float(closes.iloc[-1]) > float(closes.iloc[-2]):
+            ctx.buy("漲")
+        else:
+            ctx.sell("跌")
+
+
+def test_script_strategy_equivalent_to_vectorized():
+    """
+    等價性鐵則：同一條決策規則，向量化 vs 事件式 ScriptStrategy 走同一成交核心，
+    回測結果（EV / 報酬 / 交易筆數 / 資金曲線）必須完全一致 → 證明無第二條成交路徑分岔。
+    """
+    import numpy as np
+    rng = np.random.default_rng(42)
+    prices = (100 + np.cumsum(rng.standard_normal(200))).round(2)
+    df = pd.DataFrame({
+        "open": prices, "high": prices + 0.5, "low": prices - 0.5,
+        "close": prices, "volume": 1000,
+        "timestamp": pd.date_range("2020-01-01", periods=200),
+    })
+
+    vec = _run_on_df(_ThreshVec({}), df, 10000.0, commission_bps=2, slippage_bps=5)
+    scr = _run_on_df(_ThreshScript({}), df, 10000.0, commission_bps=2, slippage_bps=5)
+
+    assert vec["expected_value"] == scr["expected_value"], (vec["expected_value"], scr["expected_value"])
+    assert vec["total_return_pct"] == scr["total_return_pct"]
+    assert vec["num_trades"] == scr["num_trades"]
+    assert vec["equity_curve"] == scr["equity_curve"]
+    assert vec["trades"] == scr["trades"]
+    print(f"✅ ScriptStrategy 等價性測試通過：兩路徑 EV={scr['expected_value']}、{scr['num_trades']} 筆交易完全一致")
+
+
+# ============================================================
+# 風控出場模擬（opt-in 停損 / 停利 / 追蹤止損）
+# ============================================================
+
+def test_stop_loss_triggers_intrabar():
+    """進場 10，停損 10%（觸價 9）：當根 low 跌到 8 → 以 9 出場，資產 900。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10],
+        "high":  [10, 10, 10, 10],
+        "low":   [10, 10, 8, 10],
+        "close": [10, 10, 9.5, 10],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, stop_loss_pct=0.10)
+    assert r["num_stop_loss"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "stop_loss", sells
+    assert sells[0]["price"] == 9.0, sells
+    assert r["final_equity"] == 900.0, r
+
+
+def test_stop_loss_gap_down_fills_at_open():
+    """跳空開低穿過停損（觸價 9、開盤 7）→ 只能成交在更差的開盤價 7（保守不美化）。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 7],
+        "high":  [10, 10, 7.5],
+        "low":   [10, 10, 6.5],
+        "close": [10, 10, 7],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, stop_loss_pct=0.10)
+    assert r["num_stop_loss"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["price"] == 7.0, sells
+    assert r["final_equity"] == 700.0, r
+
+
+def test_take_profit_triggers_intrabar():
+    """進場 10，停利 20%（觸價 12）：當根 high 衝到 13 → 以 12 出場，資產 1200。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10],
+        "high":  [10, 10, 13, 10],
+        "low":   [10, 10, 10, 10],
+        "close": [10, 10, 11, 10],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, take_profit_pct=0.20)
+    assert r["num_take_profit"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "take_profit", sells
+    assert sells[0]["price"] == 12.0, sells
+    assert r["final_equity"] == 1200.0, r
+
+
+def test_trailing_stop_uses_prior_peak():
+    """
+    進場 10 → 漲到 20（peak）→ 回落跌破 20×(1−10%)=18 → 以 18 出場。
+    驗證 peak 用「前面 bar 為止」的最高價：漲到 20 那根自己不會被 9（舊 peak 10 的觸價）觸發。
+    """
+    df = pd.DataFrame({
+        "open":  [10, 10, 19, 19, 19],
+        "high":  [10, 10, 20, 19, 19],
+        "low":   [10, 10, 19, 17, 19],
+        "close": [10, 10, 20, 18, 19],
+    })
+    strat = FakeStrategy([Signal.BUY] + [Signal.HOLD] * 4)
+    r = _run_on_df(strat, df, initial_cash=1000, trailing_stop_pct=0.10)
+    assert r["num_trailing_stop"] == 1, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "trailing_stop", sells
+    assert sells[0]["price"] == 18.0, sells
+    assert r["final_equity"] == 1800.0, r
+
+
+def test_risk_params_off_behavior_unchanged():
+    """不帶風控參數（預設 None）→ 即使日內大跌也不觸發，行為與舊版完全相同。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 30],
+        "high":  [10, 10, 10, 30],
+        "low":   [10, 10, 5, 30],   # 日內曾腰斬，但沒開停損就不該出場
+        "close": [10, 10, 10, 30],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.SELL, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000)
+    assert r["num_stop_loss"] == 0 and r["num_take_profit"] == 0 and r["num_trailing_stop"] == 0, r
+    sells = [t for t in r["trades"] if t["side"] == "sell"]
+    assert sells[0]["exit_reason"] == "signal", sells
+    assert r["final_equity"] == 3000.0, r
+
+
+def test_reentry_after_risk_exit():
+    """風控出場後空手，策略再給 BUY → 次根照常再進場（風控不會把 Bot 卡死）。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10, 10],
+        "high":  [10, 10, 10, 10, 10],
+        "low":   [10, 10, 8, 10, 10],
+        "close": [10, 10, 9, 10, 10],
+    })
+    strat = FakeStrategy([Signal.BUY, Signal.HOLD, Signal.HOLD, Signal.BUY, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, stop_loss_pct=0.10)
+    buys = [t for t in r["trades"] if t["side"] == "buy"]
+    assert len(buys) == 2, r["trades"]  # 停損出場後有再進場
+    assert r["num_stop_loss"] == 1, r
+
+
+# ============================================================
+# 做空支援（allow_short；預設 False = 舊行為零改變）
+# ============================================================
+
+def test_short_profit_on_decline():
+    """開空賺跌：SELL@bar0 → 次根 open=10 開空（100 股）；BUY@bar2 → 次根 open=5 回補 → 賺 500。"""
+    df = pd.DataFrame({"open": [10, 10, 5, 5], "close": [10, 10, 5, 5]})
+    strat = FakeStrategy([Signal.SELL, Signal.HOLD, Signal.BUY, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, allow_short=True)
+    shorts = [t for t in r["trades"] if t["side"] == "short"]
+    covers = [t for t in r["trades"] if t["side"] == "cover"]
+    assert shorts and shorts[0]["price"] == 10.0, r["trades"]
+    assert covers and covers[0]["profit"] == 500.0, r["trades"]
+    assert r["final_equity"] == 1500.0, r
+    assert r["num_round_trips"] == 1 and r["win_rate_pct"] == 100.0, r
+    print("✅ 開空賺跌測試通過（+500）")
+
+
+def test_allow_short_false_unchanged():
+    """向後相容硬斷言：預設 allow_short=False，空手 SELL 被忽略 → 0 交易、資產不變。"""
+    df = pd.DataFrame({"open": [10, 10, 5, 5], "close": [10, 10, 5, 5]})
+    signals = [Signal.SELL, Signal.HOLD, Signal.BUY, Signal.HOLD]
+    r = _run_on_df(FakeStrategy(list(signals)), df, initial_cash=1000)
+    # 注意：bar2 的 BUY 空手會照常做多（舊行為），所以驗「無 short/cover」而非 0 交易
+    assert all(t["side"] in ("buy", "sell") for t in r["trades"]), r["trades"]
+    # 純多訊號下 allow_short=True 與 False 結果完全相同（開關不影響純多路徑）
+    long_signals = [Signal.BUY, Signal.HOLD, Signal.SELL, Signal.HOLD]
+    r_off = _run_on_df(FakeStrategy(list(long_signals)), df, initial_cash=1000)
+    r_on = _run_on_df(FakeStrategy(list(long_signals)), df, initial_cash=1000, allow_short=True)
+    assert r_off["trades"] == r_on["trades"], (r_off["trades"], r_on["trades"])
+    assert r_off["equity_curve"] == r_on["equity_curve"], (r_off, r_on)
+    print("✅ allow_short=False 向後相容測試通過")
+
+
+def test_short_stop_loss_on_rise():
+    """空單停損＝價格上漲：進空 10、停損 10%（觸價 11）、當根 high=12 → 以 11 回補、資產 900。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 10, 10],
+        "high":  [10, 10, 12, 10],
+        "low":   [10, 10, 10, 10],
+        "close": [10, 10, 11.5, 10],
+    })
+    strat = FakeStrategy([Signal.SELL, Signal.HOLD, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, allow_short=True, stop_loss_pct=0.10)
+    assert r["num_stop_loss"] == 1, r
+    covers = [t for t in r["trades"] if t["side"] == "cover"]
+    assert covers[0]["exit_reason"] == "stop_loss", covers
+    assert covers[0]["price"] == 11.0, covers
+    assert r["final_equity"] == 900.0, r
+    print("✅ 空單停損（價漲）測試通過")
+
+
+def test_short_gap_up_fills_at_open():
+    """跳空開高穿過空單停損（觸價 11、開盤 13）→ 只能回補在更差的開盤價 13（保守不美化）。"""
+    df = pd.DataFrame({
+        "open":  [10, 10, 13],
+        "high":  [10, 10, 13.5],
+        "low":   [10, 10, 12.5],
+        "close": [10, 10, 13],
+    })
+    strat = FakeStrategy([Signal.SELL, Signal.HOLD, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, allow_short=True, stop_loss_pct=0.10)
+    assert r["num_stop_loss"] == 1, r
+    covers = [t for t in r["trades"] if t["side"] == "cover"]
+    assert covers[0]["price"] == 13.0, covers
+    assert r["final_equity"] == 700.0, r  # 100 股 × (10-13) = -300
+    print("✅ 空單跳空開高成交在開盤價測試通過")
+
+
+def test_short_trailing_uses_prior_trough():
+    """
+    空單追蹤止損用「前面 bar 為止」的最低價：進空 10 → 跌到 6（trough）→
+    反彈破 6×(1+10%)=6.6 → 以 6.6 回補。跌到 6 那根自己不會被舊 trough 觸發。
+    """
+    df = pd.DataFrame({
+        "open":  [10, 10, 6.5, 6.5, 6.5],
+        "high":  [10, 10, 6.5, 7, 6.5],
+        "low":   [10, 10, 6, 6.4, 6.5],
+        "close": [10, 10, 6, 6.8, 6.5],
+    })
+    strat = FakeStrategy([Signal.SELL] + [Signal.HOLD] * 4)
+    r = _run_on_df(strat, df, initial_cash=1000, allow_short=True, trailing_stop_pct=0.10)
+    assert r["num_trailing_stop"] == 1, r
+    covers = [t for t in r["trades"] if t["side"] == "cover"]
+    assert covers[0]["exit_reason"] == "trailing_stop", covers
+    assert covers[0]["price"] == 6.6, covers
+    print("✅ 空單追蹤止損用 prior trough 測試通過")
+
+
+def test_no_direct_flip():
+    """持多遇 SELL 只平多（不直接翻倉）；平倉後下一次 SELL 才開空——兩段式。"""
+    df = pd.DataFrame({"open": [10] * 6, "close": [10] * 6})
+    strat = FakeStrategy([
+        Signal.BUY, Signal.HOLD, Signal.SELL, Signal.SELL, Signal.HOLD, Signal.HOLD
+    ])
+    r = _run_on_df(strat, df, initial_cash=1000, allow_short=True)
+    sides = [t["side"] for t in r["trades"]]
+    assert sides == ["buy", "sell", "short"], r["trades"]  # SELL@bar2 平多、SELL@bar3 才開空
+    print("✅ 不直接翻倉（兩段式）測試通過")
+
+
+def test_short_slippage_direction():
+    """空單滑價方向必須對自己不利：開空成交 < raw、回補成交 > raw。"""
+    df = pd.DataFrame({"open": [10, 10, 5, 5], "close": [10, 10, 5, 5]})
+    strat = FakeStrategy([Signal.SELL, Signal.HOLD, Signal.BUY, Signal.HOLD])
+    r = _run_on_df(strat, df, initial_cash=1000, allow_short=True, slippage_bps=100)  # 1%
+    shorts = [t for t in r["trades"] if t["side"] == "short"]
+    covers = [t for t in r["trades"] if t["side"] == "cover"]
+    assert shorts[0]["price"] == 9.9, shorts    # 開空 10 × (1−1%) = 9.9（賣得更低，不利）
+    assert covers[0]["price"] == 5.05, covers   # 回補 5 × (1+1%) = 5.05（買得更高，不利）
+    print("✅ 空單滑價方向（對己不利）測試通過")
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))

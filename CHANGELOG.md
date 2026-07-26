@@ -15,6 +15,400 @@
 
 ## [未發布]
 
+### 新增 (Added) — 給 AI Agent 的專案規格書（2026-07-07）
+
+- 新文件 `docs/reference/project-spec-for-ai-agents.md`：一頁式規格書，讓任何 AI agent
+  讀完即知 (1) 架構怎麼設計（分層/資料流/三道安全閘）、(2) 雷區地圖（按致命度分級：
+  look-ahead/樣本內挑冠軍/繞雙閘/Alembic/cp950…）、(3) Claude Code subagent 分工實作
+  （`.claude/agents/*.md` 格式 + dev-coder/code-reviewer/qa-tester/ui-ux/devops/
+  frontend-dev 六角色守則 + pipeline 協作流程）。`docs/README.md` 索引同步補列。
+
+### 新增 (Added) — doc-chain-sync 文件全鏈健檢 skill（2026-07-04）
+
+- 新 skill `.claude/skills/doc-chain-sync/`：把「文件全鏈同步健檢」流程固化——
+  讀檔順序（主規範→索引→SOP→skill→explorations）、四類問題（缺漏/衝突/過期/斷鏈）
+  分級處置（衝突停下出裁定題，禁擅修）、舊關鍵字掃殘留驗證、固定格式報告。
+  `references/checklist.md` 收歷次漂移熱點（含曾炸紀錄）與「同套規則多副本」對照表。
+  結果落地：CHANGELOG + `explorations/doc-sync-<日期>.md` + INDEX 路標（跨對話記憶，
+  下次健檢先讀上次紀錄）。本次健檢報告已存 `explorations/doc-sync-2026-07-04.md`。
+
+### 變更 (Changed) — 系統文件健檢：過期/斷鏈同步修正（2026-07-04）
+
+- 文件全鏈健檢（規範/索引/SOP/skill），修正 7 處過期與斷鏈，程式零改動：
+  - `CLAUDE.md`：開發階段表補 Phase 14/15/16（編號跳過 13）；結構樹補 Phase 14~16
+    services（scheduler_lock/timeframes/exit_policies/trend_filters/decision_layer/
+    relative_strength/sectors/catchup/daily_watch/bot_review 等）與 strategies
+    （composite/script_breakout/snr_3_0/indicators/context + 資料夾 CLAUDE.md）；
+    前端頁清單補 Funnel/StockArena/BotReview；雙閘註記補第三閘 leader lock；backlog「A~G」→「A~H」。
+  - `README.md`：資料庫改 Neon PG 現況、進度表補 Phase 11~16、策略數 9→12、
+    工作流圖 4→6 張、可用 strategy 清單補齊。
+  - `docs/README.md`：backlog「A~G 七項」→「A~H 八項」、Phase 16 進度（M1~M10+M12 完成）、
+    前端 17→20 頁、索引補 `reference/analysis-2026-07-03/`。
+  - `docs/remaining-work-backlog.md`：頭部「最後更新/剩餘建議」對齊現況（剩 H 人工驗收 + D step-05）。
+  - `docs/reference/frontend-pages-map.md`：17→20 頁，工作流圖與資料來源表補
+    Funnel/StockArena/BotReview 三頁。
+  - `.claude/skills/strategy-builder/references/how-to-register.md`：`__init__.py` 註冊
+    「兩處」→「四處」（+LABELS/+PARAM_SPECS 範本）、落地點表對齊 `backend/strategies/CLAUDE.md` 的 6 落地點。
+  - `explorations/INDEX.md`：補 `review-2026-07-02.md` 路標（實檔在、索引漏）。
+
+### 新增 (Added) — SNR 3.0 供需區策略 + 回測引擎做空支援 + 策略開發合約（2026-07-03）
+
+- **新策略 `snr_3_0`（SNR 3.0 供需區）**：Fresh Zone（swing±ATR 寬度、觸碰群計數 ≤ max_touches）
+  + 左側爆發驗證（Expansion/Engulfing）+ 進場序列（Rejection→Confirmation→Structure Break
+  於當根收尾才發訊）。13 參數入 `STRATEGY_PARAM_SPECS`、`lookback.py` 補回看門檻、
+  前端清單同步。v1 單一 OHLCV 日線可回測、不做真 H4/M30/M1 多時間框架；
+  疊圖與向量化 v1 豁免（比照 composite，走事件式）。規格文件
+  [`docs/reference/strategies/snr_3_0.md`](docs/reference/strategies/snr_3_0.md)、
+  測試 `tests/test_snr_3_0.py` 9 個（含鏡像 SELL + stale touch 計數陷阱鎖定）。
+- **回測引擎做空支援 `allow_short`**（預設 False＝行為零改變，既有測試全綠護欄）：
+  SELL 空手開空（side="short"）、BUY 持空回補（side="cover"）、持多 SELL 仍只平多
+  （兩段式不翻倉）；position 負股數、equity 公式自動正確；空單風控鏡像
+  （停損=價漲、停利=價跌、追蹤用持倉最低價 trough）；滑價/手續費方向對己不利；
+  統計 round-trip 改依「帶 profit 的平倉筆」（純多路徑逐位元組相同）。
+  `POST /backtest` 與 agent API 加 `allow_short` 欄位；BacktestPanel 交易明細
+  補「開空/回補」標籤。⚠️ 無保證金模型（空單 equity 可為負）、
+  **僅回測評估用，實盤 Bot 只做多**。測試 `tests/test_backtest.py` +7 個。
+- **`backend/strategies/CLAUDE.md` 策略開發合約**：進資料夾自動載入的速查合約
+  （BaseStrategy 合約、防偷看未來鐵則、6 落地點表、SPY/QQQ 大盤 ETF 實跑驗證流程、
+  做空語意）；strategy-builder skill 步驟 2 補正 `__init__.py` 四處註冊
+  （REGISTRY+LABELS+PARAM_SPECS）。
+
+### 新增 (Added) — 報酬率期望檢討書（2026-07-03）
+
+- 新 `docs/reference/return-expectation-review-2026-07.md`：回應「半年翻一倍」期望——
+  現實基準表（SPY/本系統 OOS ~20%/巴菲特/Medallion）、翻倍所需 ~10 倍槓桿的破產數學
+  （MaxDD×槓桿、滿 Kelly 過度下注區）、五條合法放大手段與代價（集中/2x 保證金/
+  高頻已驗死路/期權期貨不支援/≤10% 高風險實驗艙）、修正目標（年化 15~30% 複利 + 本金計畫）。
+  無程式變更；`docs/README.md` 索引同步。
+
+### 新增 (Added) — 後端每日自動啟動腳本 + M6 冠軍組合部署（2026-07-03）
+
+- 新 `scripts/autostart_backend.ps1`：排程用啟動器——先查 8000 埠，
+  後端已在跑就跳過（不重複啟動搶埠），否則最小化視窗啟動既有 `start_backend.bat`
+  （看門狗 + 開機補跑行為不變）。
+- 新 `scripts/setup-autostart.ps1`：一鍵註冊 Windows 排程工作
+  `AlbeeStock-Backend-AutoStart`——每天 21:15（開盤前）+ 登入時觸發，
+  WakeToRun 從睡眠喚醒（⚠️ 完全關機叫不醒）；`-Remove` 移除。
+  **需系統管理員 PowerShell 跑一次**。踩坑：.ps1 含中文必須 UTF-8 **帶 BOM**，
+  無 BOM 會炸 PowerShell 5.1 parser。
+- 部署 M6 冠軍組合 24 隻 paper Bot（id 213~236）：★主力 4 組合
+  （30Min/1Hour bollinger 訊號出場、2Hour donchian+swing_rr1.5、
+  4Hour macd+swing_rr4）× 核心 6 檔，參數取各檔 Round 2 冠軍、$1000/bot，
+  日內框架自動走 M8 掃描迴圈——開始累積 paper 實跑 vs 回測 OOS 的 tracking 資料。
+
+### 新增 (Added) — Phase 16 M6 完成 + M12 最終報告（2026-07-03）
+
+- **M6 四輪漏斗全部跑完**（核心 6 檔 × 730 天，walk-forward 聚合 OOS）：
+  - Round 1（48 格）：甜蜜點 30Min~4Hour；1Min 僅 momentum、1Day 僅 stochastic 存活。
+  - Round 2（120 格）：**20 組比較中出場政策只贏 baseline 6 組**——均值回歸型策略
+    掛 stop 砍掉回彈利潤，訊號出場是強基準；R:R 越大越好（rr=None/4 最佳）。
+    出場政策價值在定義 R + 券商端 GTC 保護（保險費），不在拉 EV。
+  - Round 3（48 格）：**vwap_side 是唯一普遍加分的 filter**（6/8 timeframe 建議上線）；
+    hh_hl 次之（5/8）；bos/regime/ema_stack 多數不值得。
+  - Round 4（48 格，M10 驗證）：**adaptive_exit 日內全滅、只在 1Day worth 4/6**；
+    decision_gate 幾乎沒攔到單（改善 +0 = 無證據）→ 除 1Day 外全不掛。
+- `scripts/research_matrix.py` 加 `--round 3` 報表參數化（與 Round 4 共用 worth 矩陣格式）。
+- **M12** 新 `scripts/final_report.py`：聚合 checkpoint 產 13 節最終報告
+  （timeframe/stop/R:R 比較、過擬合分析、池瘦身、scanner 效能、最終上線建議表——
+  filter/decision layer 逐 timeframe 判「worth ≥3 檔且改善總和 >0」才掛）。
+  報告落 `docs/reference/analysis-2026-07-03/final-report.md`。
+
+### 新增 (Added) — Phase 16 M8：日內單一掃描迴圈（批次抓全池）（2026-07-03）
+
+- `bot_manager` 加 `run_intraday_scan()` + `BotManager.schedule_intraday_scan()`：
+  日內 timeframe 的啟用 Bot 不再各掛 interval job（38 bot 各自抓 = 76+ req/min
+  撞 200 上限），改一個 30 秒 job：每 timeframe 一次 `get_bars_multi` +
+  一次 `get_latest_prices` + 一次 `list_positions`（~6 req/min）→ 塞預取快取
+  → 逐 bot 走**既有 `run_bot_once`**（決策邏輯零分岔）。
+  - 快取過期 / 掃描關閉 / 1Day Bot → 自動退回原單檔 REST 路徑，行為與 M8 前一致。
+  - `start_bot` 分流：日內 Bot 併入掃描迴圈不掛 per-bot job；1Day Bot 照舊
+    （300s 甜蜜點不變）。休市時掃描直接返回（不逐 bot 灌 DecisionLog）。
+  - 訊號只用已收完 bar（`_drop_unclosed_today_bar` 日內分支砍最後一根）。
+  - 單輪耗時列印 + 超過間隔推播警告；`INTRADAY_SCAN_INTERVAL_SEC`（預設 30，0=關）。
+  - `main.py` `_promote_to_leader` 掛載（leader-only，降級自動卸下）。
+  - 測試 `tests/test_intraday_scan.py`：7 個（批次一次/只派發日內/休市返回/快取過期
+    與 positions 不可信語意/run_bot_once 吃快取不打單檔 REST/start_bot 分流）。
+    ⚠️ 踩坑：模組層預取快取會污染同行程其他測試 → autouse fixture 前後都清。全套 694 綠。
+
+### 新增 (Added) — Phase 16 M10：AI Decision Layer（規則式進場評分 + 動態出場）（2026-07-03）
+
+- 新 `backend/services/decision_layer.py`：策略喊 BUY 之後的第二層守門。
+  - `entry_score(df, i, params)` → `DecisionVerdict(enter|half_size|skip, score, reasons)`：
+    四特徵子分數平均（ADX 趨勢、量比、5 日動能、ATR% 波動——全復用
+    `regime_features.compute_features`），參數化 dict 可進 PARAM_GRIDS 掃描。
+    特徵覆蓋率不足 → 誠實「不干預」放行（本層要靠證據否決，沒證據不砍單）。
+  - `apply_entry_gate(signals, df)`：回測掛點，skip → BUY 改 HOLD + 審計清單；
+    **單向約束**：只否決/縮量，HOLD/SELL 原樣、絕不無中生有 BUY（與 meta_label 同格）。
+    half_size 回測端視同 enter（全進全出引擎無法半倉——不高估縮量好處）。
+- `backend/services/exit_policies.py` 加 `AdaptiveExitPolicy`（key="adaptive"，M4
+  on_bar 掛點的第一個動態政策）：ATR 停損起手，持倉中 (1) 波動升 ≥1.5× → 收緊
+  trailing、(2) ADX 走強**且 +DI>−DI**（ADX 不分方向，空頭走強不是做多續抱理由）
+  → target rr+1 續抱（只放寬一次）、(3) 價跌量縮動能衰竭 → stop 上移當根收盤
+  次根出場（stop 永不倒退）。每次調整記 `ExitPlan.meta.adjustments` 可稽核。
+- `scripts/research_matrix.py` 加 `--round 4`：M10 層驗證——Round 2 冠軍組合上
+  baseline vs（gate / adaptive / gate+adaptive）逐 fold OOS，`is_layer_worth_it`
+  判去留（**worth 才掛實盤**；上線判準未過前不接 bot_manager）。
+- 測試 `tests/test_decision_layer.py`：12 個（評分界線/資料不足不干預/參數化/
+  單向約束/adaptive 三規則含方向性與 stop 不倒退）。全套 687 綠。
+
+### 新增 (Added) — Phase 16 M6-3：研究矩陣 Round 3（進場過濾器 OOS 判去留）（2026-07-03）
+
+- `scripts/research_matrix.py` 加 `--round 3`：Round 2 每 timeframe 冠軍
+  （策略 × 出場組合，baseline 也有資格）× M5 的 6 個 trend filters，
+  每 filter 逐 fold「不加層 vs 加層」跑 OOS，交 `validation.is_layer_worth_it` 判定。
+  報表輸出 worth 判定矩陣（symbol × filter），規則「worth 檔數 ≥3 才建議上線，
+  加不了分就砍」（macro 層教訓）。
+
+### 新增 (Added) — Phase 16 M6-2：研究矩陣 Round 2（stop × R:R）（2026-07-03）
+
+- `scripts/research_matrix.py` 加 `--round 2`：Round 1 存活組合（每 timeframe 前 3
+  且守門通過 ≥3 檔——單檔獨強不算策略功勞）× 出場政策網格 28 組：
+  atr/swing × rr∈{None,1.5,2,2.2,2.5,3,4}、fixed_pct 四型
+  （只SL/只Trailing/SL+Trailing/SL+Target）、vwap（僅日內）+ baseline（無政策）對照。
+  - 訊號走 `vectorized_engine.SIGNAL_BUILDERS` 快路徑、模擬走
+    `backtest_engine._simulate_from_signals(exit_policy=...)`——M4 出場政策
+    在回測端的第一次大規模消費，零改後端。
+  - fold 切法與 Round 1 同一套（密度換算窗）→ baseline 數字可與 Round 1 對上；
+    報表每張表第一列 baseline，出場組合沒贏 baseline 就不值得加。
+- **Round 1 已跑完**（核心 6 檔 × 8 timeframe × 730 天，40 分鐘）：
+  甜蜜點在 30Min~4Hour（多檔普遍通過守門、年交易 17~80 次無 PDT 疑慮）；
+  1Min 幾乎全滅（僅 momentum 4/6）、1Day 僅 stochastic 5/6。
+  榜單見 `docs/reference/analysis-2026-07-03/research-matrix-round1.md`。
+
+### 新增 (Added) — Phase 16 M6-1：研究矩陣 Round 1（timeframe 海選）（2026-07-03）
+
+- 新 `scripts/research_matrix.py`：M6 三輪漏斗的第一輪——
+  全策略（PARAM_GRIDS 9 種）× 全 timeframe × 無 filter × fixed_pct baseline。
+  - 單格掃描直接復用 `optimizer.run_auto_backtest`（walk-forward 聚合 OOS +
+    樣本數/過擬合守門 + 向量化快路徑），本腳本只做外層編排。
+  - **fold 窗按 bar 密度換算**：`VALIDATION_*` 預設 180/60/60「根」是日 K 語意，
+    1Min 40 萬根會切出幾千個一小時級的無意義 fold → 換算成等效交易日
+    （180/60/60 交易日 × 該檔實際密度 len(df)/交易日數，含盤前盤後真實值）。
+  - 斷點續跑：每格 checkpoint 落 `data/research/<study_tag>/`（gitignore），
+    中斷重跑跳過已完成格；`--force` 重算、`--no-db` 跳過落庫。
+  - 每格冠軍落一筆 `BacktestRun`（metrics 帶 `study_tag`）；跨 symbol 聚合排名鍵
+    =（守門通過檔數, 平均 OOS EV）——先普遍性再期望值；日內高頻組合
+    （估計年交易 >150）標 ⚠️PDT。榜單 + 全格 CSV 落 `docs/reference/analysis-<日期>/`。
+
+### 新增 (Added) — Phase 16 M6-0：分鐘 K 批次預熱 + 資料品質體檢（2026-07-03）
+
+- 新 `scripts/warm_cache.py`：研究矩陣（M6）前置的快取預熱 CLI。
+  - 抓取走既有 `bar_cache.get_bars_cached_multi`（缺口才補、parquet 冪等 →
+    **中斷重跑同指令即斷點續跑**）；限流走 `alpaca_client` 內建 token bucket（200 req/min）。
+  - 預設核心 6 檔（AMD/AVGO/INTC/ORCL/BAC/MS，stock-pool 體檢核心池）×
+    全部 8 timeframe × 730 天；`--symbols/--timeframes/--days/--source` 可調。
+  - 順帶 **IEX 稀疏率體檢**：只數 RTH（9:30–16:00 ET）bar 對比理論根數
+    （IEX 會回盤前盤後 bar，總數會灌水掩蓋 RTH 缺格——實測 AMD 5Min 一天 166 根
+    vs 理論 78 根）；≥30% ⚠️、≥60% ❌ 該組合回測不可信。
+    報告落 `docs/reference/analysis-<日期>/warm-cache-quality.md`，
+    給 M6 Round 1 擴池前的人在迴路判斷。
+
+### 修正 (Fixed) — 後端啟動：188 Bot 重掛期間 Neon 連線被掐斷導致啟動失敗（2026-07-02）
+
+- `backend/main.py` `_resume_active_bots()`：原本整段重掛迴圈（上百 Bot、跑數分鐘）
+  抱著同一條 Neon 連線，中途被雲端掐斷（`SSL connection has been closed unexpectedly`），
+  `db.close()` rollback 直接炸掉 lifespan、`Application startup failed`。
+  改為查完 active Bot 立即歸還 session，再用 detached 物件跑重掛迴圈
+  （`start_bot` 只讀 id/name/check_interval_sec，查詢時已載入，安全）。
+
+### 新增 (Added) — Phase 16 M7+M9：RS 池瘦身 + 週報進 scheduler（2026-07-02）
+
+- **M7 相對強度 RS 模組**：
+  - 新 `backend/services/relative_strength.py`：`rs_score`（標的報酬% − 基準報酬%）+
+    `rs_scores`（1/5/20 日多窗口 + 等權綜合分；資料不足誠實回 None）——把
+    fund_flow_report 的「報酬 − SPY」邏輯泛化成可重用服務。
+  - 新 `backend/services/sectors.py`：38 檔手工 sector 對照（SPDR ETF key + 中文標籤），
+    yfinance 補洞、查不到回 unknown。
+  - `scripts/stock_pool_report.py` 擴充：每檔加 sector + RS 1/5/20/綜合欄；
+    新「池瘦身建議」段——OOS EV>0 才有資格、指數 ETF 保留、
+    **同 sector 只留 RS 綜合分前 3 檔**、上限 20（核心池優先），附依據表 +
+    建議 `.env` 字串。**只產建議，人核准後才自行改 .env（程式不動 .env）**。
+  - 已跑批：2026-07-02 建議 38 → 20 檔（見
+    [`docs/reference/analysis-2026-07-02/stock-pool.md`](docs/reference/analysis-2026-07-02/stock-pool.md)）。
+- **M9 報告腳本進 scheduler**：
+  - 4 支報告腳本（full_backtest_report / fund_flow_report / stock_pool_report /
+    scan_frequency_study）各重構出 `run() -> str`（回 markdown 全文）可呼叫介面，
+    CLI 殼保留、行為不變；輸出夾改 `analysis-<當日>`（stock_pool 找不到當日冠軍檔
+    自動退回最近一份）。`scripts/` 加 `__init__.py` 成 package。
+  - `bot_manager.schedule_weekly_reports()`：每週一 08:00（台北）依序跑 4 支
+    （順序有依賴：全池回測先產冠軍檔），摘要 `notify` 推播、全文落當日夾；
+    單支失敗不擋後面且失敗也推播。掛在 `main.py _promote_to_leader()`（leader-only），
+    降級時隨 `unschedule_outbound_jobs` 卸下。heartbeat 沿用不動。
+- 測試 `tests/test_relative_strength.py` 8 個（RS 數學/缺值/sector 對照/cron 註冊/
+  失敗隔離）；全套 676 passed。
+
+### 新增 (Added) — Phase 16 M5：進場趨勢過濾器框架（2026-07-02）
+
+- **新 `backend/services/trend_filters.py`**：`TrendFilter` 基底（`allow_entry(df, i)`）+
+  六個過濾器註冊表——只否決 BUY、不產生訊號、不碰 SELL/HOLD（只煞車不猜方向）：
+  - `ema_stack`：EMA20>50>200 多頭排列（pandas ewm，因果不偷看）
+  - `vwap_side`：價在 session VWAP 上（日內專用；日 K 放行 + 註明不適用）
+  - `adx_min`：ADX ≥ 門檻（復用 `indicators.adx_components`；NaN 保守否決）
+  - `hh_hl`：近 N 根「最後兩個 swing 高/低點都走高」的上升結構（復用 M4 swing 偵測）
+  - `bos`：收盤突破最近已確認 swing high（break of structure）
+  - `regime`：Phase 7 `classify_regime` == trending 才進
+- **引擎掛點**：`_run_on_df(+entry_filters)` 在訊號產生後、成交模擬前過濾；
+  被否決記 HOLD + 否決理由。`None`（預設）行為與現況 bit-for-bit 相同。
+- **M5 只建框架**：哪個 filter 上線由 M6 研究矩陣 `is_layer_worth_it` OOS 判定，
+  加不了分就砍（比照 Phase 11 macro 層前例）。
+- 測試 `tests/test_trend_filters.py` 11 個；全套 668 passed。
+
+### 新增 (Added) — Phase 16 M4：可插拔出場政策 ExitPolicy（2026-07-02）
+
+- **新 `backend/services/exit_policies.py`**：`ExitPlan`（stop/target/trailing + meta 依據）+
+  `ExitPolicy` 基底（`on_entry` 進場算計畫、`on_bar` 逐 bar 更新＝M10 動態出場掛點）+ 註冊表：
+  - `fixed_pct`：包既有 % 止盈損（與舊參數路徑**逐欄全等**，回歸基準）
+  - `atr`：stop = entry − k×ATR(n)，波動大放遠、波動小收緊；資料不足誠實回無停損
+  - `swing`：stop = 近 N 根已確認 swing low − buffer（防未來：右邊需 right 根確認）
+  - `vwap`：日內跌破 session VWAP 出場（動態逐 bar 更新；日 K 誠實拋錯）
+  - R:R 內建：`target = entry + rr_multiple ×(entry − stop)`（M6 掃 1.5~4R）
+- **回測引擎統一走政策路徑**：`_simulate_from_signals(+exit_policy)`，舊 % 參數內部轉接
+  FixedPctPolicy（兩者互斥、同給拋錯）；每筆有 stop 的交易記 `r_multiple`（損益/初始風險 R），
+  彙總 `avg_r_multiple`；optimizer walk-forward 聚合回填 `oos_avg_r_multiple`（M3 留的欄）。
+  `run_backtest(+exit_policy_key/exit_policy_params)`。
+- **swing/ATR 偵測進 `strategies/indicators.py`**（`atr`/`swing_lows`/`swing_highs`，
+  M5 BOS/HH-HL 共用；嚴格低於左右鄰居才算 swing，水平盤不誤判）。
+- **實盤側同一份政策（回測=實盤鐵則）**：
+  - Bot 加 `exit_policy_key`/`exit_policy_params`/`exit_plan`（遷移 `03274cbd08de`；
+    exit_plan 存進場當下算好的計畫，重啟不會用「現在的指標」重算而漂移）。
+  - `risk_manager.check_exit_plan`：吃絕對觸價的出場判斷（順序同回測：停損→追蹤→停利）。
+  - `protective_orders.protective_order_from_exit_plan`：券商端 GTC stop 價由
+    ExitPlan.stop_price 供給（`order_matches_plan` 自癒對帳沿用零改動）。
+  - `bot_manager`：進場用「跑訊號同一份 K 線」算 plan 並持久化；持倉輪檢查吃 plan；
+    續抱時動態政策 on_bar 更新；平倉/券商端成交/空手清 plan。
+  - bots API 收 `exit_policy_key`/`exit_policy_params`（建檔即驗證，錯誤回 400）。
+- 測試 `tests/test_exit_policies.py` 16 個（各政策數學/防未來/intrabar 觸發順序/跳空成交/
+  r_multiple/與舊路徑全等回歸/check_exit_plan/保護單轉接）；全套 657 passed。
+
+### 新增 (Added) — Phase 16 M3.5：前端顯示 walk-forward OOS 診斷欄位 + timeframe 選單（2026-07-02）
+
+- **回測歷史列表補 M3 欄位**（`backend/routers/presets.py _run_summary`）：
+  `oos_expected_value` / `overfit_gap` / `oos_num_round_trips` / `timeframe`
+  （舊紀錄沒跑 walk-forward 回 None，前端顯示 "—"）。
+- **前端三處補顯示**（Gap > 0.5 紅色警示＝後端排名守門的沉底線；顏色吃 theme/NEON）：
+  - `BacktestRunsPage`：EV 榜加「OOS EV / Gap / K線」三欄。
+  - `StockArenaPage`：排行榜加「Gap / OOS 回合 / OOS Sharpe」欄；新增 K 線時間框架下拉，
+    掃描與**部署 bot 都帶同一個 timeframe**（回測=實盤鐵則）。
+  - `AutoBacktestPanel`：新增 timeframe 下拉；排行榜加可排序欄「OOS EV / Gap / OOS 交易」。
+- `frontend/src/constants.js` 新增 `TIMEFRAMES` / `DEFAULT_TIMEFRAME`
+  （與後端 `services/timeframes.py ALL_TIMEFRAMES` 同一份清單）。
+- 元件測試：`AutoBacktestPanel.test.jsx` 新檔 + StockArena / BacktestRuns 各補一測
+  （前端 141 passed、後端 641 passed 全綠）。
+
+### 修正 (Fixed) — 測試樁補 timeframe 參數（2026-07-02）
+
+- M2 給 `market_data.get_bars` / `bar_cache.get_bars_cached` / `yfinance_client.get_bars`
+  加了 `timeframe` 參數後，4 個測試檔（`test_bar_cache` / `test_batch_fetch` /
+  `test_bot_manager` / `test_oos`）的 monkeypatch 假函式簽名沒跟上，收到
+  `timeframe` kwarg 直接 TypeError（13 failed）。全部補上 `timeframe="1Day"` 預設參數。
+
+### 新增 (Added) — Phase 16 短線轉型 M1~M3：選主鎖租約制 + 多 timeframe 地基 + optimizer walk-forward（2026-07-02）
+
+> 藍圖與 M4~M12 計畫書：[`docs/history/phase-16-intraday-swing/`](docs/history/phase-16-intraday-swing/README.md)
+
+- **M1 選主鎖修復（修掉唯一真金風險：靜默失鎖 → 雙 leader 重複下單）**：
+  - `backend/services/scheduler_lock.py` 重寫為**租約制**（新表 `scheduler_lease` 單列，
+    遷移 `2768500820b2`——同時補建 Neon 幽靈 rev 的血緣）：原子 UPDATE 搶租約（TTL 90s、
+    DB 時鐘 UTC）、leader 每 30s 續約驗鎖、續約失敗**先立旗擋單再卸排程**、
+    follower 每 30s 嘗試接手自動升級（VM 重啟後零人工自動重取鎖）。
+  - `alpaca_client` 下單**第三閘** `assert_leader()`：非 leader 一律拒單（與實盤雙閘並列）。
+  - `main.py` lifespan 重構：leader 區塊抽成 `_promote_to_leader()`；無論輸贏都掛租約守護 job。
+  - `bot_manager.unschedule_outbound_jobs()`：降級時卸下所有對外 job。失鎖行為＝只停新單、
+    不自動平倉（持倉靠券商端 GTC 保護單）。測試 `tests/test_scheduler_lock.py` 12 個。
+- **M2 多 timeframe 資料地基**（1Min/5Min/15Min/30Min/1Hour/2Hour/4Hour/1Day，
+  預設 "1Day" 零改動相容）：
+  - 新 `backend/services/timeframes.py` 單一事實來源（年化基數 `periods_per_year`、
+    bar↔日曆天換算）。`alpaca_client` / `yfinance_client`（超限誠實拋錯）/ `market_data` /
+    `bar_cache`（timeframe 目錄維度；日內「今天」永遠當尾缺口重抓）/ `lookback` /
+    `analytics`（Sharpe/Sortino 年化基數修正；日內 calmar/cagr 誠實回 None）/
+    `backtest_engine`（日內一律 alpaca 源）全鏈貫穿。
+  - `bots.timeframe` 欄位（遷移 `d0d0c19d13b0`）；實盤 `_run_strategy` 用 Bot 自己的
+    timeframe 抓資料（回測=實盤鐵則）；`_drop_unclosed_today_bar` 泛化為日內濾未收完 bar。
+    測試 `tests/test_timeframes.py` 12 個。
+- **M3 Optimizer walk-forward 聚合 OOS + 排行榜擴充**：
+  - `run_auto_backtest(+timeframe, +walk_forward=True)`：`_wf_aggregate` 把所有滾動 fold 的
+    OOS round trips 串接聚合（EV/勝率/PF/MaxDD 取各 fold 最差/串接報酬算 Sharpe·Sortino），
+    OOS 樣本數從單次切分的 1~2 筆拉高到可信程度；資料太短誠實退回單次切分。
+  - 新欄位 `overfit_gap =(IS−OOS)/|IS|`、`oos_num_round_trips`（跨折加總）、`oos_folds`、
+    `oos_sharpe/oos_sortino/oos_profit_factor/oos_max_drawdown_pct`、`oos_avg_r_multiple`
+    （留 M4 回填）。**排名守門**：OOS 交易 < `OPTIMIZER_MIN_OOS_TRIPS`(20) 或
+    gap > `OPTIMIZER_MAX_OVERFIT_GAP`(0.5) 直接沉底。
+  - `/auto-backtest` API 加 `timeframe`/`walk_forward` 參數、摘要回傳全部新欄位
+    （BacktestRun.metrics 為 JSON，零遷移）。測試 `tests/test_optimizer_walkforward.py` 6 個。
+
+### 新增 (Added) — 回測驗證日：風控出場模擬 + 4 支全池分析 CLI（2026-07-02）
+
+- **回測引擎 opt-in 風控出場模擬**（`backend/services/backtest_engine.py`）：
+  `stop_loss_pct` / `take_profit_pct` / `trailing_stop_pct` 參數（預設 None＝行為 bit-for-bit 不變）。
+  日 K 粒度誠實近似：high/low 觸價、跳空穿停損成交在更差開盤價、追蹤止損 peak 不偷看當根、
+  檢查順序同實盤 `risk_manager`（停損→追蹤→停利）；交易紀錄加 `exit_reason`、結果加
+  `num_stop_loss/num_take_profit/num_trailing_stop` 觸發統計。補 6 個單元測試。
+  ——補上「回測=實盤」原則在出場端的缺口（實盤有風控出場、舊回測只認策略訊號）。
+- **4 支全池分析 CLI**（`scripts/`，只讀不寫 DB、不下單）＋總報告
+  [`docs/reference/analysis-2026-07-02/`](docs/reference/analysis-2026-07-02/README.md)：
+  - `full_backtest_report.py`：38 檔 × 9 策略 × 參數網格、OOS EV 排名、蒙地卡羅壓力測試、
+    風控對照組（發現：風控組 29/38 檔回撤變小、但停利 15% 傷報酬；只有 17/38 冠軍贏 Buy&Hold）。
+  - `scan_frequency_study.py`：分鐘 K 實測 30~600s 掃頻的風控出場延遲滑價 + API 用量
+    （結論：日 K 策略掃頻不影響進場；190 bots 下 **300s 維持不變**，60s 會打滿 Alpaca 限流）。
+  - `stock_pool_report.py`：38 檔逐檔 OOS EV / 假突破率 / DecisionLog 訊號活動分層
+    （誠實發現：32 檔 OOS 樣本僅 1~2 筆屬統計噪音；已證實核心池僅 AMD/AVGO/INTC/ORCL/BAC/MS 6 檔）。
+  - `fund_flow_report.py`：11 產業 ETF 相對強度輪動 + 領漲股 + 隔日發動候選 + 資金流納入策略路線圖。
+
+### 修正 (Fixed) — 回測驗證日系統體檢（2026-07-02）
+
+- `/bots` API 190 個 Bot 逐檔打 Alpaca 持倉 + 逐檔查 TradeLog（2×190 次往返、實測 57 秒）
+  → 改批次抓（固定 2 次往返）（`backend/routers/bots.py`）。
+- `layer_validation` 兩個包裝策略（MetaFiltered/AdaptiveMapped）缺 `produce_signals`
+  （回測引擎統一入口改版後漏改）→ 改繼承 `BaseStrategy` 取得預設實作。
+- `script_breakout` 漏接指標疊圖映射（`indicator_overlays.py` 補 builder）；
+  向量化覆蓋測試的豁免改「ScriptStrategy 子類」原則性判斷（新增 Script 策略不再漏接）。
+- `catchup.py` 開機補跑在 cp950 主控台印 emoji 直接炸掉整個補跑 job → 編碼失敗退回 ASCII。
+- `notifier.notify()` 的主控台回音 print 在 cp950 下炸掉，會**連後面的 Discord 推播一起死**
+  （心跳日報實測沒發出去）→ print 包 try/except，log 失敗不擋推播本體。
+- （已知未修）排程選主鎖「靜默失鎖」可能導致雙 leader：VM 失鎖後仍自以為 leader 跑排程。
+  處置與根治方案見總報告第 0 節；需重啟 VM 服務 + 後續加「定期驗鎖」。
+
+### 新增 (Added) — 採納 QuantDinger 兩項能力：ScriptStrategy 引擎 + Agent Gateway/MCP
+
+> 分析外部專案 [QuantDinger](https://github.com/brokermr810/QuantDinger) 後採納兩項架構能力，
+> 簡單版優先。守住既有「回測=實盤同路徑」與實盤雙閘鐵則。
+
+- **事件驅動 ScriptStrategy 引擎**（`backend/strategies/base.py` 新增 `ScriptStrategy` +
+  `backend/strategies/context.py` 新增 `BacktestContext`）：用 `on_bar(ctx, bar)` +
+  `ctx.buy()/sell()/close()` 寫有狀態的進出場邏輯（讀得到 `ctx.in_position`/`bars_held`/`history`）。
+  - 統一入口 `produce_signals(df)` / `evaluate_last(df)`：向量化策略走預設實作（行為逐位元組不變）、
+    事件式策略覆寫成 on_bar 驅動，但**壓出的訊號仍走同一個 `_simulate_from_signals` 成交核心**
+    （次根開盤 + 含成本），零分岔。`backtest_engine._run_on_df` 與 `bot_manager._run_strategy` 改吃統一入口。
+  - 範例策略 `script_breakout`（突破進場 + 有狀態續抱）：已註冊 + 前端 `constants.js` + 參數 schema。
+  - 等價性測試證明「同一規則的向量化 vs 事件式」回測結果（EV/報酬/交易/資金曲線）完全一致。
+- **Agent Gateway**（`backend/routers/agent.py`，`/api/agent/v1/*`）：讓 Claude/Cursor 等外部 AI
+  透過 bearer token 驅動我們的回測/策略/帳戶/機會/知識庫查詢，並可下「預設 paper」的單。
+  - 三道安全閘：① `AGENT_API_TOKEN`（未設＝整組回 503）；② 唯讀為主；③ 下單預設 paper，
+    碰真錢須 `AGENT_LIVE_TRADING_ENABLED=true` 第三道閘 + 既有 Alpaca 實盤雙閘把關。
+  - 每筆呼叫落 `agent_audits` append-only 審計表（`backend/models/agent_audit.py` + Alembic 遷移 `f7a8b9c0d1e2`）。
+- **自家 MCP server**（`mcp_server/server.py` + `README.md`）：stdio MCP 薄包 Agent Gateway，
+  工具一對一映射（list_strategies / run_backtest / get_account / list_bots / submit_order 等）。
+  `requirements.txt` 加 `mcp>=1.0`（僅跑 MCP 時需要，後端本體不依賴）。
+- **設定**：`config.py` + `.env.example` 加 `AGENT_API_TOKEN`、`AGENT_LIVE_TRADING_ENABLED`（預設關）。
+- **測試**：`tests/test_agent_gateway.py`（503/401/200 + 審計 + 實盤下單 403）、
+  `tests/test_backtest.py` 等價性測試、`tests/test_strategies.py` ScriptStrategy 註冊測試。
+
+### 新增 (Added) — AI 交易日誌分析 + 策略進化反饋迴圈
+
+- **`GET /bots/daily-digest`**：每日交易摘要端點，按 Bot 分組顯示 P&L、exit_kind 分佈、thesis_breach 清單，快速查「昨天到底發生什麼」
+- **`POST /review/daily`**：手動觸發 AI 每日交易事後檢討，讀 DecisionLog + TradeLog → LLM 分析虧損模式 → 寫 `explorations/review-YYYY-MM-DD.md` → 推播摘要
+- **`GET /review/daily`**：確認指定日期 review 檔案是否存在
+- **`backend/services/trade_review.py`**：AI 每日交易分析服務（自動在 UTC 20:00 觸發，LLM 不可用時仍回傳統計）
+- **`backend/services/strategy_feedback.py`**：策略進化反饋迴圈——Bot 被汰弱/降級後 LLM 自動分析失效原因、提案新參數候選，寫入 StrategyKnowledge（status=candidate, origin=paper_feedback）
+- **`StrategyKnowledge` 新增三欄位**（Alembic 遷移 c5040cf68986）：`origin`（來源：manual/paper_feedback/discovery）、`parent_id`（前版本血緣）、`evolution_note`（AI 分析文字）
+- **前端 KnowledgeCard**：`paper_feedback` 候選顯示「從實跑學習」Chip + AI 分析展開
+- **前端 EvolutionPage**：新增「來源」篩選 toggle（全部/從實跑學習/人工建立/探勘橋）
+- **汰弱/降級後自動觸發反饋**：`bot_review._cull_bot` 和 `tracking._demote_bot` 停 Bot 後自動呼叫 `generate_candidate_from_paper`（LLM 不可用優雅跳過）
+- **APScheduler 排程**：`schedule_trade_review()`，每日 UTC 20:00 自動跑 AI 檢討
+- **catchup.py**：開機補跑管線加入 `trade_review`（美股收盤後才排）
+
+
+
 ### 接下來要做（我跟你，下個 session 接手）
 
 > 本批程式已落地（全套件 547 passed / 0 failed），但**有幾件要人觸發 / 要拍板的事還沒做**：
@@ -44,8 +438,16 @@
   `promotion.propose_promotion` 達標證據 + `GET /backtest-runs/{id}/report` 報告都已存在，但**沒有排程
   自動把達標 bot 提議送審**。下一步可加「auto_propose」排程串起最後一哩。
 
+### 修正
+
+- **`POST /discovery/validate-batch` 改為非同步（202）**：原同步呼叫跑 38 籃子 walk-forward 回測需數分鐘以上，HTTP 請求必逾時。改用 FastAPI `BackgroundTasks` 立刻回 202；前端 CompanyPage「驗證」鈕按下後改為每 10 秒輪詢 `/company/overview`，偵測到 `candidate/validated/rejected` 數字變動時自動解鎖，最多等 10 分鐘（`backend/routers/discovery.py` + `frontend/src/pages/CompanyPage.jsx`）。
+- **`test_discovery_api` 不再連 Neon + 補修非同步後遺漏的斷言（根治 flaky）**：`tests/conftest.py` 在 import `backend.config` 之前把 `DATABASE_URL` 指到暫存 SQLite，讓全域 engine（lifespan 的 `init_db`/resume/排程、`validate-batch` 背景任務 `run_auto_validate(None)` 自建的 `SessionLocal`——這些都不經 `get_db` 覆寫）改走本機檔案，整個測試程序與 Neon 脫鉤（全套件受惠，逐測試仍各自用 `tmp_path` SQLite 隔離）。同時把上一筆 validate-batch 改 202 時漏改的測試斷言（仍期待 `200 + "validated"`）更新為 `202 + status=="started"`。
+- **實盤進場訊號改吃「已收盤」日K，根治盤中 whipsaw + 對齊回測隔日成交語意**：`alpaca_client.get_bars` 只給 `start` 沒給 `end`，盤中每次抓資料，最後一根「今天」的日K都是還在跳動、尚未收盤的未完成棒；但 `ma_crossover`/`macd`/`rsi` 等策略設計時的邏輯語意是「用已收盤價判斷金叉死叉/超買賣」。同一天內盤中價格晃動讓指標跟著晃，可能反覆翻轉買賣訊號，且訊號一出就立即市價成交，跟回測「隔日開盤成交」的 EV 假設完全對不上——這是實盤持續虧損、回測歷史績效對實盤沒有參考力的主因。新增 `bot_manager._drop_unclosed_today_bar`：market_is_open=True 時濾掉「今天」那根未收盤日K，只留已收盤資料算訊號；訊號因此在盤中固定不變，靠既有空手/持倉狀態機自然讓成交發生在開盤後第一輪，貼近回測「隔日開盤成交」語意，不需另外疊加排程機制（`_run_strategy`/`_run_adaptive_strategy` 簽章加收 `market_is_open`，`run_bot_once` 查一次 `is_market_open()` 往下傳）。
+- **購買力守門套用現金緩衝比例 + 加鎖防多 Bot 並發搶單**：`_available_buying_power()` 原直接回 Alpaca 帳戶原始 `buying_power`，沒套用既有 `PORTFOLIO_CASH_RESERVE_RATIO`（`capital.py::plan_capital` 已實作這個緩衝概念，但只用在模式 B 批次部署規劃、沒接到單一 Bot 的即時買進路徑），現改為回傳扣除緩衝比例後的可用額度。另外 APScheduler 用執行緒池同時跑多個 Bot，`_handle_flat` 買進前「查購買力→送單」原本沒有互斥保護，多個 Bot 幾乎同時觸發買進時可能各自查到「購買力足夠」而一起送單；加一個模組層級 `threading.Lock()` 包住這段臨界區，避免本機並發搶單導致總曝險超過預期。
+
 ### 變更
 
+- **側邊欄改為依操作流程的 5 階段分組導覽（可折疊收納）**：原本一條扁平 20 項導覽清單（`SidebarLayout.jsx` 的 `NAV_ITEMS`）順序混亂、核心頁被 Phase 10~14 的戰情／實驗頁夾在中間，整理成依「操作流程」由上而下的 5 個階段——① 監控看盤 → ② 找題材 → ③ 研究‧驗證 → ④ 策展‧演進 → ⑤ 部署。每組標題可點展開/收合，次要的「④ 策展‧演進」「⑤ 部署」**預設收合**讓畫面更短；展開狀態記進 `localStorage`（`albee-nav-open`，照 colorMode 範式），直接走訪收合階段內的頁會自動展開該組、不會把目前頁的導覽藏起來。**純前端呈現層改動：路由、頁面、Outlet context 全部不動，20 頁一頁不刪、皆可達**（`frontend/src/components/SidebarLayout.jsx` + 同層測試）。
 - **移除 LINE 通知**：LINE Notify 2025 停服後遺留的 Messaging API 推播已全數移除（`notifier.py` / `config.py` / `requirements.txt` 砍 `line-bot-sdk`）；通知管道統一走 Discord Webhook（`DISCORD_WEBHOOK_URL`）。
 - **Discord Webhook 429 重試**：`_send_discord` 遇到 rate limit 時依 `retry_after` 等完再重試，最多 3 次，不再印 ⚠️ 警告。
 - **政治專討員看門狗修正**：沒設 `POLITICAL_DISCORD_TOKEN` 或未裝 `discord.py` 時改以 `sys.exit(2)` 退出；`.bat` 看門狗偵測到 exit code 2 即停止（不再無窮重啟）。
@@ -53,6 +455,19 @@
 
 ### 新增
 
+- **結構化交易日誌（買入假設 → 賣出失效回填）**：把每筆買賣的決策脈絡補到可回溯整個假設生命週期，讓週報/月報自我檢討真的有料可讀（延續 Phase 15「決策 Log 加深」）。
+  - **`DecisionLog` 加 8 欄**（Alembic `26c1a3a4aef1`，全 nullable 向後相容，既有 ~30 處寫入點不傳也不壞）：`strategy`（冗存策略代號，自適應記實際挑中的）、`total_amount`（成交總額）、`target_price`/`stop_price`（買進依風控門檻算出的停利/停損價）、`market_snapshot`（均線 5/20/60 排列+位置、量能倍數）、`position_after`（交易後庫存 best-effort）、`exit_kind`（把粗粒度 `sold` 細分成止損/停利/追蹤/策略反轉/券商）、`thesis_breach`（賣出回填「哪個買入假設失效」）。
+  - **新 `services/decision_context.py`（純函式，不碰 DB）**：`compute_market_snapshot`（收盤均線/均量**複用圖表同公式**）、`classify_exit_kind`（從 reason 判出場類型，處理「追蹤止損」含「止損」的判斷順序與券商端優先）、`build_thesis_breach`（撈最近一筆買進的 target/stop 跟出場價對照，產「跌破預設停損 $X（進場 $Y，−Z%）；當初預期漲抵 $T 未達；持有 N 天」）。
+  - **`bot_manager` 全分支接線**：`_run_strategy`/`_run_adaptive` 的 ctx 多帶 `market_snapshot`+`strategy`；買進算 target/stop/total/position_after；賣出三路（風控/策略/券商回填）算 `exit_kind` + 撈最近買進回填 `thesis_breach`。`get_bot_decisions`/`get_recent_decisions` API 補新鍵。
+  - **閉環到「讀教訓」**：`chat._format_decision_history` 把 `exit_kind`/停利停損/行情/`thesis_breach` 一併餵 LLM，覆盤教練 system prompt 加引導善用「假設失效」歸納反覆犯的錯。DecisionsPage 表格加 exit chip（吃 NEON 色票）、🎯停利/⛔停損、「行情」tooltip、假設失效小字。
+  - 測試：新 `tests/test_decision_context.py`（15 條：快照各分支／出場分類關鍵字順序／假設失效回填）+ 擴 `test_decision_log`（買進記 target/stop/total、止損回填假設失效、策略反轉分類）。
+  - **本批未做（範圍外，標記待後續）**：`STRONG_BUY` 信心分級需策略介面輸出信心分數；「預期持有時間」需 Bot 新增參數 + 前端編輯——兩者皆動既有介面，未納本批。
+- **每股多策略艦隊落地 + 決策教訓 Log（Phase 15）**：把「每股只有一個 bot」真正變成「每股多策略並存虛擬交易」，並讓每筆決策記下夠深的脈絡供回頭學。
+  - **個股擂台一鍵建艦隊**：`StockArenaPage` 加批次「🚀 部署前 N 名為 paper bots」（N 預設 5）+ 可設每單金額／輪詢秒數；去重（先查 `getBots` 比對同 `symbol+strategy` 已存在就跳過），一次把排行榜前段策略各建一個 paper bot 對該股虛擬交易，最佳由汰弱審查員浮現。全程 paper、複用既有 `createBot`/`startBot`，零新後端。
+  - **決策 Log 加深（量／股數／指標快照）**：`DecisionLog` 加 `volume`（決策當下那根 K 的成交量）、`qty`（實際下單股數）、`indicators`（該策略當下指標快照，如 `{"rsi":28.1}`）三欄（Alembic `4810c1ec25d9`）。`bot_manager._run_strategy`/`_run_adaptive_strategy` 改回 `(signal, reason, ctx)`，ctx 的指標快照**複用 `indicator_overlays.compute_overlays`** 取各序列末根（零策略改寫）；各決策分支補傳，`get_bot_decisions` API 補三鍵。
+  - **讀教訓（LLM 覆盤摘要）**：新端點 `POST /chat/bot-lessons`——撈該 Bot 決策史（含量/股數/指標）請本機 LLM 產一段「為何那些點買/賣/沒動、下次怎麼改」的檢討。複用 chat 既有 LLM client + **雲端外送閘**（`_cloud_blocked`）；只讀資料不下單。DecisionsPage 表格加「量／股數」欄 + 指標 tooltip + 頭部「📖 讀教訓」鈕。
+  - **「300 秒太久？」結論**：不是。`AUTO_DEPLOY_KNOWLEDGE_CHECK_INTERVAL=300` 只用於大型自動艦隊防 Alpaca 限流；手動部署本來就 60 秒，且止損是券商端 GTC 單即時成交、不受輪詢延遲影響。改為**部署時可自選輪詢秒數**，全域預設不動。
+  - 測試：`tests/test_bot_lessons.py`（新，端點閘 400/404 + stub 成功）+ 擴 `test_decision_log`（寫入量/股數/指標、`_run_strategy` 回 3-tuple ctx）+ `StockArenaPage.test.jsx`（新，批次部署 + 去重）+ `DecisionsPage.test.jsx`（量欄 + 讀教訓）。藍圖 `docs/history/phase-15-fleet-and-lessons/`。
 - **公司可操作化 + 漏斗透明 + 個股策略擂台（Phase 14）**：把「探勘管線預設全關、後端能力沒前端入口、淘汰項被藏」三個讓人困惑的缺口補上，全程人工逐步推進（不開任何排程旗標）。
   - **每個 AI 角色一顆「跑一次」鈕**：戰情頁漏斗卡變操作台（收料／探勘／驗證／部署／審查），跑完漏斗數字當場跳動。後端新增 `backend/routers/discovery.py`（`/discovery/run`、`/triage/{id}`、`/validate-batch`、`/auto-deploy`）+ `POST /collector/scan`；`run_discovery_batch`/`run_auto_validate`/`run_auto_deploy_knowledge` 加 `force`（只略過 `*_ENABLED`，**安全閘全留**）。
   - **文字 → 策略橋可見可按**：CollectorPage 每筆加「🔬 試轉策略」（打 `/discovery/triage/{id}`，走共用 `discovery.triage_one`，防幻覺約束不變）、顯示 `triage_note` + 候選連結；`_serialize` 補 `triage_note`/`knowledge_id`。

@@ -41,8 +41,8 @@ class _FakeGetBars:
         self.calls = []
         self.today = _T
 
-    def __call__(self, symbol, days=60, source="alpaca"):
-        self.calls.append({"symbol": symbol, "days": days, "source": source})
+    def __call__(self, symbol, days=60, source="alpaca", timeframe="1Day"):
+        self.calls.append({"symbol": symbol, "days": days, "source": source, "timeframe": timeframe})
         end = self.today
         start = end - timedelta(days=days - 1)
         idx = pd.date_range(start, end, freq="D")

@@ -109,6 +109,9 @@ def _dict(k: StrategyKnowledge) -> dict:
         "status": k.status,
         "oos_metrics": k.oos_metrics,
         "regime_affinity": k.regime_affinity,
+        "origin": k.origin,
+        "parent_id": k.parent_id,
+        "evolution_note": k.evolution_note,
         "created_at": k.created_at.isoformat() if k.created_at else None,
         "updated_at": k.updated_at.isoformat() if k.updated_at else None,
     }

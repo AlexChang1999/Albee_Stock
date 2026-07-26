@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from backend.config import settings
 from backend.database import SessionLocal
-from backend.models import StrategyPreset, BacktestRun
+from backend.models import StrategyPreset, BacktestRun, Bot, DecisionLog
 from backend.strategies import STRATEGY_REGISTRY
 from backend.services import explorations
 
@@ -38,6 +38,7 @@ _TIMEOUT_SEC = 120        # 本機 CPU 生成可能較慢，逾時給寬一點
 _MAX_PICK = 3             # 事後檢討時，最多挑幾篇過去探討來參考
 _MAX_SELECT_TOKENS = 200  # 「挑檔」那一段只需回短短的檔名清單
 _MAX_REF_CHARS = 6000     # 注入的過去探討總字數上限（避免本機模型 prompt 爆）
+_LESSON_DECISIONS = 60    # 讀教訓時注入的決策史筆數上限（取最近 N 筆）
 
 # 可用策略鍵（放進 system 提示，讓助手草擬策略時用對的代號）
 _STRATEGY_KEYS = ", ".join(STRATEGY_REGISTRY.keys())
@@ -345,5 +346,109 @@ def postmortem(payload: PostmortemRequest):
         run.claude_postmortem = analysis
         db.commit()
         return {"run_id": run.id, "postmortem": analysis, "references": refs, "stub": False}
+    finally:
+        db.close()
+
+
+class BotLessonsRequest(BaseModel):
+    bot_id: int
+
+
+def _snapshot_brief(s) -> str:
+    """市場快照 → 精簡片段（給決策史一行用）：均線排列 / 量能狀態。無則回空字串。"""
+    if not isinstance(s, dict):
+        return ""
+    bits = [s[k] for k in ("ma_stack", "vol_state") if s.get(k)]
+    return f"｜行情{'/'.join(bits)}" if bits else ""
+
+
+def _format_decision_history(decisions: list) -> str:
+    """把決策史（時間倒序撈來）排成「時間正序、一行一筆」的可讀表，注入 LLM。
+
+    每行：時間｜動作(出場類型)/訊號｜價(🎯停利 ⛔停損)｜量 行情｜股數｜指標｜原因｜假設失效。
+    含「沒成交但有決策」的觀望/跳過——教訓常藏在「沒進場」與「為何沒進」裡。
+    結構化日誌欄位（exit_kind / target/stop / market_snapshot / thesis_breach）一併餵入，
+    讓覆盤教練能看出「賣出時哪個買入假設破了、在放量還是縮量時進出場」。缺值自動略過。
+    """
+    lines = []
+    for d in reversed(decisions):  # 撈的是 desc，反轉成正序讀起來才順
+        t = d.created_at.strftime("%m-%d %H:%M") if d.created_at else "—"
+        act = d.action + (f"({d.exit_kind})" if d.exit_kind else "")
+        price = f"${d.price:.2f}" if d.price is not None else "—"
+        # 買進附上當初設定的停利/停損目標——賣出回填「假設失效」的對照基準
+        tgt = []
+        if d.target_price is not None:
+            tgt.append(f"🎯${d.target_price:.2f}")
+        if d.stop_price is not None:
+            tgt.append(f"⛔${d.stop_price:.2f}")
+        price_cell = price + (f"（{' '.join(tgt)}）" if tgt else "")
+        vol = f"{int(d.volume):,}" if d.volume is not None else "—"
+        qty = f"{d.qty:g}股" if d.qty is not None else "—"
+        snap = _snapshot_brief(d.market_snapshot)
+        inds = json.dumps(d.indicators, ensure_ascii=False) if d.indicators else "—"
+        tail = f"｜假設失效:{d.thesis_breach}" if d.thesis_breach else ""
+        lines.append(
+            f"{t}｜{act}/{d.signal}｜價{price_cell}｜量{vol}{snap}｜{qty}｜指標{inds}｜{d.reason or ''}{tail}"
+        )
+    return "\n".join(lines)
+
+
+@router.post("/chat/bot-lessons")
+def bot_lessons(payload: BotLessonsRequest):
+    """讀某 Bot 的決策史，請本機 LLM 產一段「教訓摘要」（為何在那些點買/賣/沒動，下次怎麼改）。
+
+    資料源用 DecisionLog（Phase 15 起含 量/股數/指標快照）——它是成交與觀望的超集，
+    比 TradeLog 更全。鐵則不破：助手只讀資料 + 產文字，不下單、不啟停 Bot。
+    """
+    client = _get_client()
+    if client is None:
+        raise HTTPException(status_code=400, detail=_NO_LLM_DETAIL)
+    if _cloud_blocked():
+        raise HTTPException(status_code=400, detail=_CLOUD_BLOCKED_DETAIL)
+
+    db = SessionLocal()
+    try:
+        bot = db.query(Bot).filter(Bot.id == payload.bot_id).first()
+        if not bot:
+            raise HTTPException(status_code=404, detail=f"找不到 Bot #{payload.bot_id}")
+
+        decisions = (
+            db.query(DecisionLog)
+            .filter(DecisionLog.bot_id == bot.id)
+            .order_by(DecisionLog.created_at.desc(), DecisionLog.id.desc())
+            .limit(_LESSON_DECISIONS)
+            .all()
+        )
+        if not decisions:
+            return {
+                "bot_id": bot.id,
+                "lessons": "（這個 Bot 還沒有決策紀錄，等它跑幾輪再來讀教訓。）",
+                "stub": False,
+            }
+
+        history = _format_decision_history(decisions)
+        sys_text = (
+            "你是交易 Bot 的覆盤教練。看一支 Bot 的決策史，找出可學的教訓。"
+            "判斷以『期望值 EV』為主、不是只看勝率（高勝率但一次大賠＝負 EV，要點出）。"
+            "賣出紀錄附『假設失效』欄（當初買入預期哪個破了）與『行情』（均線排列/量能），"
+            "請善用它們歸納反覆犯的錯（例：總在量縮、空頭排列追高後被停損）。"
+            "回答用繁體中文，簡潔具體、可執行。"
+        )
+        prompt = (
+            f"這支 Bot：{bot.name}｜策略 {bot.strategy}｜標的 {bot.symbol}｜"
+            f"參數 {json.dumps(bot.params or {}, ensure_ascii=False)}\n\n"
+            f"最近 {len(decisions)} 筆決策（時間正序；含沒成交的觀望/跳過）：\n{history}\n\n"
+            "請給：①一句話總評（整體像在賺還賠、什麼型態）"
+            "②2~3 個具體型態觀察（如：量縮時進場常被巴、某指標值附近反覆停損）"
+            "③下次可調整的 1~2 個方向（參數／風控／進出場時機）。"
+        )
+        try:
+            lessons = _complete(client, [
+                {"role": "system", "content": sys_text},
+                {"role": "user", "content": prompt},
+            ])
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=_friendly_err(e))
+        return {"bot_id": bot.id, "lessons": lessons, "stub": False}
     finally:
         db.close()

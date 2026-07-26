@@ -63,6 +63,30 @@ def plan_protective_order(
     return None
 
 
+def protective_order_from_exit_plan(exit_plan: dict | None) -> dict | None:
+    """
+    M4 可插拔出場政策版的保護單規劃：直接吃持久化的 ExitPlan dict
+    （bot.exit_plan），輸出格式與 plan_protective_order 相同
+    （order_matches_plan 的自癒對帳直接沿用，零改動）。
+
+    優先序同 plan_protective_order：trailing > stop。
+    政策無 stop 也無 trailing（如 ATR 資料不足的誠實空計畫）→ 回 None 不掛。
+    """
+    if not exit_plan:
+        return None
+
+    trailing_pct = exit_plan.get("trailing_pct")
+    if trailing_pct and trailing_pct > 0:
+        return {"type": "trailing_stop", "trail_percent": round(trailing_pct * 100, 2)}
+
+    stop_price = exit_plan.get("stop_price")
+    if stop_price and stop_price > 0:
+        # Alpaca 要求 $1 以上股票的 stop_price 最多 2 位小數
+        return {"type": "stop", "stop_price": round(stop_price, 2)}
+
+    return None
+
+
 def order_matches_plan(
     order_type: str,
     stop_price: float | None,
