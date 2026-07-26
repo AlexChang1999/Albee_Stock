@@ -15,6 +15,22 @@
 
 ## [未發布]
 
+### 新增 (Added) — Docker 一鍵起後端 + 前端 + smoketest（2026-07-14）
+
+- `backend/Dockerfile`：Python 3.13-slim，開機先跑 `alembic upgrade head` 再起 `uvicorn`。
+- `frontend/Dockerfile`：Node 22-slim 跑 Vite dev server（`--host 0.0.0.0`）。
+- `docker-compose.yml`：`docker compose up --build` 一次起後端(8000) + 前端(5173)，
+  backend 有 healthcheck，frontend 等 backend healthy 才起。
+- **`.env.docker.example`（安全沙盒設定，關鍵）**：docker 容器讀 `.env.docker`、
+  **不是**正式 `.env`——正式 `.env` 指向 Neon 雲端 DB，若被容器讀到，容器開機會把
+  自己當成第二個排程 leader，resume 正式環境所有啟用中的 Bot（已實測炸過：190+
+  Bot 同時掛起、Discord 推播打到 429）。`.env.docker` 強制走容器內獨立 SQLite
+  （`albee_backend_data` volume）+ 全部自動化排程關閉，開機是乾淨空 DB，安全。
+  `.env.docker` 已加入 `.gitignore`。
+- `scripts/smoketest.py`：純標準庫、免依賴，起完服務後驗證後端 `/`、`/status`、
+  `/docs`、`/strategies` 與前端首頁 HTML 都正常回應。
+- `.dockerignore` / `frontend/.dockerignore`：排除 `.git`/`node_modules`/`venv`/
+  `docs`/`.env` 等不該進 image 的東西。
 ### 新增 (Added) — 給 AI Agent 的專案規格書（2026-07-07）
 
 - 新文件 `docs/reference/project-spec-for-ai-agents.md`：一頁式規格書，讓任何 AI agent

@@ -1,0 +1,44 @@
+# Albee Stock — 後端 + 前端 docker 一鍵起服務
+# 用法：docker compose up --build
+# 前提：專案根目錄有 .env.docker（從 .env.docker.example 複製即可，預設值已經安全）。
+#
+# ⚠️ 刻意讀 .env.docker、不是正式 .env：正式 .env 指向 Neon 雲端 DB，若被容器讀到，
+# 容器一開機會把自己當成第二個排程 leader，resume 正式環境裡所有啟用中的 Bot
+# （已實測炸過：190+ Bot 同時掛起、Discord 打到 429）。docker 沙盒必須與正式環境
+# 資料庫完全隔離，容器內用的是獨立 SQLite（albee_backend_data volume），空 DB
+# 開機不會有任何 Bot 可 resume。想在沙盒裡測 Alpaca 連線，自行在 .env.docker
+# 填 Paper 金鑰（不要填正式 .env 的金鑰進來）。
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env.docker
+        required: false
+    volumes:
+      - albee_backend_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      # 瀏覽器在 host 端執行，走 host 對外映射的埠，不是容器內部網路
+      VITE_API_URL: http://127.0.0.1:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  albee_backend_data:
