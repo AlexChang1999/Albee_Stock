@@ -1,0 +1,21 @@
+# 後端容器 build context 是專案根目錄，這裡排除不需要進 image 的東西
+.git/
+.github/
+venv/
+.venv/
+__pycache__/
+*.pyc
+frontend/
+node_modules/
+tests/
+docs/
+explorations/
+scripts/
+mcp_server/
+data/
+*.db
+.env
+.env.*
+!.env.example
+*.md
+.claude/
